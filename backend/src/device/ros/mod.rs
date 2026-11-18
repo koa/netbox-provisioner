@@ -40,7 +40,7 @@ pub(crate) mod hw_facts;
 pub mod l2;
 mod maintenance;
 mod mtu;
-mod ospf;
+pub mod ospf;
 mod poe;
 pub mod progress;
 pub(crate) mod radio;
@@ -85,7 +85,12 @@ mikrotik_model!(
         )),
         ospf_instance(by_key(path = "routing/ospf/instance", key = name)),
         ospf_area(by_key(path = "routing/ospf/area", key = name)),
-        ospf_interface(by_id(path = "routing/ospf/interface-template", keys(area))),
+        // the shared template of an area has no comment, a segment with credentials one of its
+        // own (`ospf::OWN_TEMPLATE`)
+        ospf_interface(by_id(
+            path = "routing/ospf/interface-template",
+            keys(area, comment)
+        )),
         dhcp_v4_client(by_id(path = "ip/dhcp-client", keys(interface))),
         // one per interface; the provisioner's at the internet uplinks, the others stay
         // (`keep_dhcp_v6_clients`)

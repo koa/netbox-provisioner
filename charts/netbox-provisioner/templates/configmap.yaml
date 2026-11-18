@@ -51,6 +51,12 @@ data:
       {{- with $s.internet_targets }}
       internet_targets: {{ . | toJson }}
       {{- end }}
+      {{- with $s.ospf_auth }}
+      {{- if .current }}
+      ospf_auth:
+        current: {{ .current | int }}
+      {{- end }}
+      {{- end }}
       {{- with $s.device_syslog }}
       {{- if .remote }}
       device_syslog:

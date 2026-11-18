@@ -50,6 +50,11 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   mit dieser Bedingung, für das automatische Rollout). Eine antwortende pro Familie genügt.
   Vorgabe: die Anycast-Resolver von Cloudflare, Quad9 und Google (`1.1.1.1`, `9.9.9.9`,
   `8.8.8.8`, `2606:4700:4700::1111`, `2620:fe::fe`, `2001:4860:4860::8888`).
+- **OSPF-Authentisierung** ([OSPF-Authentisierung](ospf-auth.md)): `ospf_auth` mit
+  `current` (die Version, auf die Segmente wechseln, 1–255) und `secrets` (ein Geheimnis pro
+  Version, im Chart jedes ein `value` oder `secretKeyRef`, als
+  `APP_SETTINGS__OSPF_AUTH__SECRETS__<Version>`). Ohne `current` fasst der Provisioner keine
+  Credentials an. Ein altes Geheimnis bleibt, solange Segmente seine Version haben.
 - **Webhook aus NetBox** (das [automatische Rollout](auto-rollout.md)):
   `netbox_webhook_secret` (ein Secret im Chart, `value` oder `secretKeyRef`). Ohne antwortet
   `/netbox-webhook` mit 404, mit falscher Signatur 403. In NetBox ein Webhook auf

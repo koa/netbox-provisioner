@@ -23,6 +23,7 @@ mod chr_network {
     pub mod multicast;
     pub mod network_map;
     pub mod node;
+    pub mod ospf_auth;
     pub mod ospf_chain;
     pub mod ospf_segment;
     pub mod perimeter;

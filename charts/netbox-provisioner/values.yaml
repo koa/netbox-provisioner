@@ -94,6 +94,15 @@ settings:
     root:
       value: ""
       secretKeyRef: {}
+  # OSPF authentication of the segments (docs/concepts/ospf-auth.md): the version the segments
+  # go to (`auth-id` on the devices; empty: none, no credentials on a device are touched) and a
+  # secret per version (1 to 255), each like a secret. A segment moves only in an apply of all
+  # its ends together, so keep a version's secret while segments still have it
+  ospf_auth:
+    current: ""
+    secrets: {}
+    #   "1":
+    #     secretKeyRef: {name: ospf-auth, key: v1}
   # the syslog server every device logs to, in CEF (for Loki); empty `remote`: the devices log
   # only locally
   device_syslog:

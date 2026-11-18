@@ -11,6 +11,63 @@ pub enum ApplyWarning {
     CapOffOutsideWlanGroup(CapOffOutsideWlanGroup),
     WatchTargetSilent(WatchTargetSilent),
     ApiClientsOutside(ApiClientsOutside),
+    OspfAuthKept(OspfAuthKept),
+}
+
+/// The OSPF credentials of the segment at `port` aren't the ones the provisioner has for it,
+/// and this apply leaves them (A10): only an apply of every end of the segment together moves
+/// them, and only when nothing is in doubt; `doubt` says what is.
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
+pub struct OspfAuthKept {
+    pub port: Box<str>,
+    /// the segment's IPv4 network
+    pub network: Box<str>,
+    pub doubt: OspfAuthDoubt,
+}
+
+#[derive(Clone, Debug, PartialEq, Union)]
+pub enum OspfAuthDoubt {
+    EndsOutside(OspfEndsOutside),
+    EndNotOspf(OspfEndNotOspf),
+    ForeignNeighbor(OspfForeignNeighbor),
+    NeighborMissing(OspfNeighborMissing),
+    CredentialsDiffer(OspfCredentialsDiffer),
+}
+
+/// Ends of the segment that aren't in the apply.
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
+pub struct OspfEndsOutside {
+    pub devices: Box<[Box<str>]>,
+}
+
+/// NetBox has `address` in the segment where it is no OSPF end the provisioner sets up: not
+/// on an interface with `ospf` of a RouterOS device with a primary IPv4, or with another
+/// prefix length, or the device's config has no OSPF port in the segment there.
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
+pub struct OspfEndNotOspf {
+    pub address: Box<str>,
+    pub device: Option<Box<str>>,
+}
+
+/// `device` has an OSPF neighbor at the segment's port that is none of its ends.
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
+pub struct OspfForeignNeighbor {
+    pub device: Box<str>,
+    pub router_id: Box<str>,
+}
+
+/// `device` doesn't see the end `missing` as a neighbor at the segment's port (`Full` or
+/// `2-Way`), in OSPFv2 or v3: the segment may be down.
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
+pub struct OspfNeighborMissing {
+    pub device: Box<str>,
+    pub missing: Box<str>,
+}
+
+/// The ends have different credentials now: they aren't in line with each other.
+#[derive(Clone, Debug, PartialEq, SimpleObject)]
+pub struct OspfCredentialsDiffer {
+    pub devices: Box<[Box<str>]>,
 }
 
 /// Clients connected to the plain API right now (the provisioner among them) whose address

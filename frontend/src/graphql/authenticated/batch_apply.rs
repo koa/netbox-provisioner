@@ -1,8 +1,8 @@
 //! Scope: The queries for applying several devices together; nothing else.
 //!
 //! Applying the config to a device together with others (`components::device::batch_apply`): the
-//! devices to pick (`batchCandidates`), the plan of each (`generateCfg`), the batch started
-//! (`applyBatch`).
+//! devices to pick (`batchCandidates`), the plan of each as the batch would plan it
+//! (`generateCfg(together:)`), the batch started (`applyBatch`).
 use super::{schema::schema, types::ApplyWarning};
 
 #[derive(cynic::QueryVariables, Debug)]
@@ -59,11 +59,18 @@ pub struct CandidateSite {
     pub name: String,
 }
 
+#[derive(cynic::QueryVariables, Debug)]
+pub struct PlanVariables {
+    pub id: i32,
+    /// every device of the batch
+    pub together: Vec<i32>,
+}
+
 #[derive(cynic::QueryFragment, Debug)]
 #[cynic(
     schema = "authenticated",
     graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables"
+    variables = "PlanVariables"
 )]
 pub struct BatchDevice {
     pub topology: PlanTopology,
@@ -73,7 +80,7 @@ pub struct BatchDevice {
 #[cynic(
     schema = "authenticated",
     graphql_type = "TopologyHolder",
-    variables = "DeviceVariables"
+    variables = "PlanVariables"
 )]
 pub struct PlanTopology {
     #[arguments(id: $id)]
@@ -81,15 +88,24 @@ pub struct PlanTopology {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "DeviceAccess")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "DeviceAccess",
+    variables = "PlanVariables"
+)]
 pub struct PlanDevice {
     pub access: Option<PlanAccess>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "AccessibleDevice")]
+#[cynic(
+    schema = "authenticated",
+    graphql_type = "AccessibleDevice",
+    variables = "PlanVariables"
+)]
 pub struct PlanAccess {
     pub connected: Connected,
+    #[arguments(together: $together)]
     pub generate_cfg: Option<PlannedCfg>,
 }
 

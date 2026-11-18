@@ -32,6 +32,7 @@ pub mod internet;
 pub mod leftovers;
 pub mod metrics;
 pub mod neighbors;
+pub mod ospf_auth;
 pub mod partitions;
 pub mod poe;
 pub mod power_cycle;
@@ -336,6 +337,10 @@ pub struct AccessibleDevice {
     /// an apply changing a radio suspended its watch address (`radio_hold`): the checks after
     /// it keep what the device has there
     watchdog_held: std::sync::atomic::AtomicBool,
+    /// what the plan of an apply decided on the OSPF segments (`ospf_auth`): the checks after it
+    /// keep the segments it moved at the provisioner's credentials, and look for their
+    /// neighbors
+    ospf_decision: std::sync::Mutex<ospf_auth::Decision>,
     /// the youngest age the request takes facts at (`access(maxAge:)`), below the resolvers'
     /// own
     max_age: Option<Duration>,
@@ -410,6 +415,7 @@ impl AccessibleDevice {
             login,
             device_config,
             watchdog_held: Default::default(),
+            ospf_decision: Default::default(),
             max_age: None,
         })
     }

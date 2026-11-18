@@ -1,8 +1,9 @@
 //! Scope: Applying a device together with others; nothing else.
 //!
 //! Applying the config to a device together with others (`applyBatch`): the other ends of its
-//! wireless links are picked, more devices of the sites can be added, and each picked device
-//! shows its planned changes before anything is applied.
+//! wireless links are picked, more devices of the sites can be added, and each device of the
+//! batch, this one first, shows its changes as the batch would plan them (with the others:
+//! OSPF segments with every end in it move) before anything is applied.
 use crate::{
     components::diff_view::DiffView,
     error::{FrontendError, ServerProblem},
@@ -10,7 +11,7 @@ use crate::{
     graphql::{
         authenticated::batch_apply::{
             ApplyBatch, ApplyBatchVariables, BatchCandidate as Candidate, BatchCandidates,
-            BatchDevice, DeviceVariables,
+            BatchDevice, DeviceVariables, PlanVariables,
         },
         request, request_response,
     },
@@ -66,7 +67,10 @@ pub struct BatchApply {
     open: bool,
     candidates: Option<Result<Vec<Candidate>, String>>,
     picked: BTreeSet<i32>,
+    /// the plans of the batch's devices, this one's too, for the pick of `round`
     planned: HashMap<i32, Planned>,
+    /// counts the picks: a plan for an earlier one is dropped
+    round: u32,
     starting: bool,
     error: Option<FrontendError>,
 }
@@ -75,7 +79,7 @@ pub enum BatchMessage {
     Open,
     Candidates(Result<Vec<Candidate>, String>),
     Toggle(i32),
-    Planned(i32, Planned),
+    Planned(u32, i32, Planned),
     Apply,
     Started(Result<Vec<(i32, i32, String)>, FrontendError>),
 }
@@ -90,6 +94,7 @@ impl Component for BatchApply {
             candidates: None,
             picked: BTreeSet::new(),
             planned: HashMap::new(),
+            round: 0,
             starting: false,
             error: None,
         }
@@ -103,19 +108,22 @@ impl Component for BatchApply {
             }
             BatchMessage::Candidates(candidates) => {
                 if let Ok(candidates) = &candidates {
-                    for candidate in candidates.iter().filter(|c| c.partner) {
-                        self.pick(ctx, candidate.device.id);
-                    }
+                    self.picked
+                        .extend(candidates.iter().filter(|c| c.partner).map(|c| c.device.id));
                 }
                 self.candidates = Some(candidates);
+                self.plan_all(ctx);
             }
             BatchMessage::Toggle(id) => {
                 if !self.picked.remove(&id) {
-                    self.pick(ctx, id);
+                    self.picked.insert(id);
                 }
+                self.plan_all(ctx);
             }
-            BatchMessage::Planned(id, planned) => {
-                self.planned.insert(id, planned);
+            BatchMessage::Planned(round, id, planned) => {
+                if round == self.round {
+                    self.planned.insert(id, planned);
+                }
             }
             BatchMessage::Apply => {
                 self.starting = true;
@@ -185,17 +193,28 @@ impl Component for BatchApply {
                 </ul>
             },
         };
+        let own = ctx.props().id as i32;
         let ready = !self.picked.is_empty()
             && self
                 .picked
                 .iter()
+                .chain([&own])
                 .all(|id| matches!(self.planned.get(id), Some(Planned::Ready { .. })));
         let count = self.picked.len() + 1;
+        let this_device = (!self.picked.is_empty()).then(|| {
+            html! {
+                <div class="batch-this-device">
+                    <strong>{t::THIS_DEVICE}</strong>
+                    {self.planned_view(own)}
+                </div>
+            }
+        });
         html! {
             <Card class="batch-apply">
                 <CardHeader><CardTitle>{t::TITLE}</CardTitle></CardHeader>
                 <CardBody>
                     <p>{t::EXPLANATION}</p>
+                    {this_device}
                     {candidates}
                     if let Some(error) = &self.error {
                         {error.to_html()}
@@ -216,14 +235,45 @@ impl Component for BatchApply {
 }
 
 impl BatchApply {
-    fn pick(&mut self, ctx: &Context<Self>, id: i32) {
-        self.picked.insert(id);
-        if !matches!(
-            self.planned.get(&id),
-            Some(Planned::Ready { .. } | Planned::Loading)
-        ) {
+    /// Plans every device of the batch anew, this one too: what one plans depends on who is
+    /// in it.
+    fn plan_all(&mut self, ctx: &Context<Self>) {
+        self.round += 1;
+        self.planned.clear();
+        if self.picked.is_empty() {
+            return;
+        }
+        let together: Vec<i32> = std::iter::once(ctx.props().id as i32)
+            .chain(self.picked.iter().copied())
+            .collect();
+        for &id in &together {
             self.planned.insert(id, Planned::Loading);
-            fetch_planned(ctx.link().clone(), id);
+            fetch_planned(ctx.link().clone(), self.round, id, together.clone());
+        }
+    }
+
+    /// What device `id` would get in the batch.
+    fn planned_view(&self, id: i32) -> Html {
+        match self.planned.get(&id) {
+            None | Some(Planned::Loading) => html!(<Spinner size={SpinnerSize::Sm}/>),
+            Some(Planned::Problem(problem)) => html!(
+                <Alert inline=true r#type={AlertType::Danger} title={t::unreachable(problem)}/>
+            ),
+            Some(Planned::Ready {
+                diff,
+                warnings,
+                connected,
+            }) => html! {<>
+                if let Some(connected) = connected {
+                    <p class="batch-connected">{connected.clone()}</p>
+                }
+                { for warnings.iter().map(|w| html!(<Alert inline=true r#type={AlertType::Warning} title={w.clone()}/>)) }
+                if diff.script.trim().is_empty() {
+                    <p>{t::IN_LINE}</p>
+                } else {
+                    <DiffView diff={diff.clone()}/>
+                }
+            </>},
         }
     }
 
@@ -238,23 +288,7 @@ impl BatchApply {
                 {&candidate.device.name}
             }
         };
-        let planned = picked.then(|| match self.planned.get(&id) {
-            None | Some(Planned::Loading) => html!(<Spinner size={SpinnerSize::Sm}/>),
-            Some(Planned::Problem(problem)) => html!(
-                <Alert inline=true r#type={AlertType::Danger} title={t::unreachable(problem)}/>
-            ),
-            Some(Planned::Ready { diff, warnings, connected }) => html! {<>
-                if let Some(connected) = connected {
-                    <p class="batch-connected">{connected.clone()}</p>
-                }
-                { for warnings.iter().map(|w| html!(<Alert inline=true r#type={AlertType::Warning} title={w.clone()}/>)) }
-                if diff.script.trim().is_empty() {
-                    <p>{t::IN_LINE}</p>
-                } else {
-                    <DiffView diff={diff.clone()}/>
-                }
-            </>},
-        });
+        let planned = picked.then(|| self.planned_view(id));
         html! {
             <li>
                 <label>
@@ -293,9 +327,9 @@ fn fetch_candidates(scope: Scope<BatchApply>, id: u32) {
     });
 }
 
-fn fetch_planned(scope: Scope<BatchApply>, id: i32) {
+fn fetch_planned(scope: Scope<BatchApply>, round: u32, id: i32, together: Vec<i32>) {
     spawn_local(async move {
-        let plan = BatchDevice::build(DeviceVariables { id });
+        let plan = BatchDevice::build(PlanVariables { id, together });
         let planned = match request_response(scope.clone(), plan).await {
             Err(error) => Planned::Problem(error.message()),
             Ok(response) => {
@@ -327,7 +361,7 @@ fn fetch_planned(scope: Scope<BatchApply>, id: i32) {
                 }
             }
         };
-        scope.send_message(BatchMessage::Planned(id, planned));
+        scope.send_message(BatchMessage::Planned(round, id, planned));
     });
 }
 

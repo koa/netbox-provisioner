@@ -26,6 +26,8 @@ use crate::{
     Error,
     config::CONFIG,
     device::connect_for_job,
+    device::ospf_auth::{self, Decision, ExpectedNeighbors, MemberRead},
+    device::ros::apply::PlanRead,
     device::{
         AccessibleDevice,
         access::Session,
@@ -77,14 +79,16 @@ pub struct BatchStopped {
     pub device: Box<str>,
 }
 
-/// After the scripts, `devices` weren't reached, `not_applied` not in line and `no_internet`
-/// didn't reach the internet over IPv4 and IPv6 (where the batch needs it): no fallback is
+/// After the scripts, `devices` weren't reached, `not_applied` not in line, `no_internet`
+/// didn't reach the internet over IPv4 and IPv6 (where the batch needs it) and `ospf_missing`
+/// didn't see a neighbor of a segment whose OSPF credentials the batch moved: no fallback is
 /// taken away, every device of the batch loads its config from before.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct BatchIncomplete {
     pub devices: Box<[Box<str>]>,
     pub not_applied: Box<[Box<str>]>,
     pub no_internet: Box<[Box<str>]>,
+    pub ospf_missing: Box<[Box<str>]>,
 }
 
 /// How long setting up the fallback and leaving the script on a device may take.
@@ -120,6 +124,11 @@ pub(crate) trait Watched: Send + Sync {
     fn last_look(&self) -> impl Future<Output = Result<Box<str>, Error>> + Send;
     /// What of the internet the device reaches after its script; `None` not reached.
     fn internet_after(&self) -> impl Future<Output = Option<InternetReached>> + Send;
+    /// Whether the neighbors of the OSPF segments the plan moved are back after its script
+    /// (`Full` or `2-Way`, v2 and v3); `None` not reached. Without such a segment, `true`.
+    fn ospf_back(&self) -> impl Future<Output = Option<bool>> + Send {
+        std::future::ready(Some(true))
+    }
     /// Takes the fallback away (`FallbackStopped`, or `FallbackLeft`).
     fn stop(
         &self,
@@ -138,9 +147,20 @@ pub(crate) trait Watched: Send + Sync {
 /// A device of the batch before its plan ([`run`]): one reached over the provisioner's
 /// connection ([`Linked`]) or, in the tests, a stand-in.
 pub(crate) trait Planning {
+    type Read: Reading;
+    /// Connects and reads what the plan needs, the OSPF segments' neighbors too.
+    fn read(self, log: &Log) -> impl Future<Output = Result<Self::Read, Error>> + Send;
+}
+
+/// A device of the batch once read: what the decision over the batch's OSPF segments needs
+/// (`ospf_auth::decide`), then its plan with the decision.
+pub(crate) trait Reading: Send {
     type Planned: Applying;
-    /// Connects and plans the diff (`ApplyPlanned`); `None` when there is nothing to do.
-    fn plan(self, log: &Log) -> impl Future<Output = Result<Option<Self::Planned>, Error>> + Send;
+    /// None without `ospf_auth`, or in the tests.
+    fn ospf(&self) -> Option<&MemberRead>;
+    /// Plans the diff with the batch's decision on the device's segments (`ApplyPlanned`);
+    /// `None` when there is nothing to do.
+    fn plan(self, ospf: Decision, log: &Log) -> Result<Option<Self::Planned>, Error>;
 }
 
 /// The steps of one device's apply after its plan, as the batch runs them ([`run`]).
@@ -199,6 +219,8 @@ pub(crate) struct Reached {
     link: AccessibleDevice,
     planned: PlannedApply,
     control: Session,
+    /// the neighbors of the OSPF segments the plan moved, to be back after the script
+    expected: Box<[ExpectedNeighbors]>,
     hold: Mutex<Option<RadioHold>>,
     /// the run of the script, to read its marks
     run: Mutex<Option<Box<str>>>,
@@ -225,23 +247,49 @@ struct Seen {
     shown: bool,
 }
 
+/// A device of the batch read, its connections open (no login between the steps).
+pub(crate) struct LinkedRead {
+    linked: Linked,
+    link: AccessibleDevice,
+    read: PlanRead,
+    control: Session,
+}
+
 impl Planning for Linked {
-    type Planned = Reached;
-    async fn plan(self, log: &Log) -> Result<Option<Reached>, Error> {
+    type Read = LinkedRead;
+    async fn read(self, log: &Log) -> Result<LinkedRead, Error> {
         let link = connect_for_job(&self.device, DeviceTarget::default(), log).await?;
         link.prepare_certificate(log).await?;
-        let planned = link.plan_apply(log).await?;
+        let read = link.read_plan().await?;
+        let control = link.connect_again().await?;
+        Ok(LinkedRead {
+            linked: self,
+            link,
+            read,
+            control,
+        })
+    }
+}
+
+impl Reading for LinkedRead {
+    type Planned = Reached;
+    fn ospf(&self) -> Option<&MemberRead> {
+        self.read.ospf.as_ref()
+    }
+    fn plan(self, ospf: Decision, log: &Log) -> Result<Option<Reached>, Error> {
+        let expected = ospf.expected.clone();
+        let planned = self.link.plan_from(self.read, ospf, log)?;
         if planned.is_empty() {
             return Ok(None);
         }
-        let control = link.connect_again().await?;
         Ok(Some(Reached {
-            device: self.device,
-            batch: self.batch,
-            claimed: self.claimed,
-            link,
+            device: self.linked.device,
+            batch: self.linked.batch,
+            claimed: self.linked.claimed,
+            link: self.link,
             planned,
-            control,
+            control: self.control,
+            expected,
             hold: Mutex::new(None),
             run: Mutex::new(None),
             seen: Mutex::new(Seen::default()),
@@ -346,6 +394,19 @@ impl Watched for Reached {
     }
     async fn internet_after(&self) -> Option<InternetReached> {
         internet_on(&self.link).await
+    }
+    async fn ospf_back(&self) -> Option<bool> {
+        if self.expected.is_empty() {
+            return Some(true);
+        }
+        tokio::time::timeout(Duration::from_secs(25), async {
+            let session = self.link.connect_again().await.ok()?;
+            let neighbors = ospf_auth::read_neighbors(&session).await.ok()?;
+            Some(ospf_auth::back(&self.expected, &neighbors))
+        })
+        .await
+        .ok()
+        .flatten()
     }
     async fn stop(&self, fires: Instant, delay: Duration, log: &Log) -> Result<(), Error> {
         let rearmed = self.seen.lock_anyway().rearmed;
@@ -604,6 +665,8 @@ pub(crate) struct Running<M> {
     checked: Option<Result<Box<str>, Error>>,
     /// what it reached of the internet after its script, last seen (a batch needing it)
     internet: Option<InternetReached>,
+    /// whether the neighbors of the OSPF segments its plan moved are back, last seen
+    ospf: Option<bool>,
 }
 
 /// A member that failed and how.
@@ -665,18 +728,48 @@ pub(crate) async fn run<M: Planning>(
             .collect::<Vec<_>>()
     };
 
-    // connect and plan, all at once
-    let planned = join_all(
+    // connect and read, all at once; then decide on the OSPF segments over all of them, and
+    // plan each with that
+    let read = join_all(
         members
             .into_iter()
             .zip(&logs)
             .map(|(member, log)| async move {
                 log.check()?;
                 log.enter(ApplyState::Planning);
-                member.plan(log).await
+                member.read(log).await
             }),
     )
     .await;
+    if let Some(first) = read.iter().position(Result::is_err) {
+        let mut first_error = None;
+        for (index, read) in read.into_iter().enumerate() {
+            match read {
+                Err(error) if index == first => first_error = Some(error),
+                // its own reason, not the first one's
+                Err(error) => results[index] = Some(Err(error)),
+                Ok(_) => {}
+            }
+        }
+        stop(&mut results, first, first_error.expect("the first failed"));
+        return finish(results);
+    }
+    let read = read.into_iter().flatten().collect::<Vec<_>>();
+    let mut decisions = {
+        let members = read.iter().filter_map(Reading::ospf).collect::<Vec<_>>();
+        ospf_auth::decide_together(&members)
+    };
+    let planned = read
+        .into_iter()
+        .zip(&logs)
+        .map(|(read, log)| {
+            let decision = read
+                .ospf()
+                .and_then(|member| decisions.remove(&member.device.id()))
+                .unwrap_or_default();
+            read.plan(decision, log)
+        })
+        .collect::<Vec<_>>();
     let mut running = Vec::new();
     let mut failure = None;
     let mut failed_too = Vec::new();
@@ -691,6 +784,7 @@ pub(crate) async fn run<M: Planning>(
                 fallback: true,
                 checked: None,
                 internet: None,
+                ospf: None,
             }),
             Err(error) if failure.is_none() => failure = Some((index, error)),
             // its own reason, not the first one's
@@ -892,6 +986,7 @@ pub async fn resume(
                 },
                 checked: None,
                 internet: None,
+                ospf: None,
             },
         )
         .collect();
@@ -966,7 +1061,22 @@ pub(crate) async fn watch<M: Watched>(
                 }
             }
         }
-        let online = |m: &Running<M>| !needs_internet || m.internet.is_some_and(|i| i.both());
+        // in line, the neighbors of the segments whose OSPF credentials it moved
+        let looks = join_all(
+            running
+                .iter()
+                .filter(|m| in_line(m) && m.ospf != Some(true))
+                .map(|m| async move { (m.index, m.member.ospf_back().await) }),
+        )
+        .await;
+        for (index, back) in looks {
+            if let Some(member) = running.iter_mut().find(|m| m.index == index) {
+                member.ospf = back.or(member.ospf);
+            }
+        }
+        let online = |m: &Running<M>| {
+            (!needs_internet || m.internet.is_some_and(|i| i.both())) && m.ospf == Some(true)
+        };
         let pending: Vec<_> = running.iter().filter_map(|m| m.member.pending()).collect();
         // one that fired takes the batch back, waiting on the others is for nothing
         let fired = pending.iter().any(|seen| seen.pending == Pending::Gone);
@@ -1030,7 +1140,16 @@ pub(crate) async fn watch<M: Watched>(
         .filter(|m| !m.internet.is_some_and(|i| i.both()))
         .map(|m| m.name.clone())
         .collect();
-    if unreached.is_empty() && not_applied.is_empty() && no_internet.is_empty() {
+    let ospf_missing: Vec<Box<str>> = running
+        .iter()
+        .filter(|m| in_line(m) && m.ospf != Some(true))
+        .map(|m| m.name.clone())
+        .collect();
+    if unreached.is_empty()
+        && not_applied.is_empty()
+        && no_internet.is_empty()
+        && ospf_missing.is_empty()
+    {
         let stopped = join_all(running.iter().map(|m| async {
             let stopped = match m.fallback {
                 true => {
@@ -1066,11 +1185,13 @@ pub(crate) async fn watch<M: Watched>(
             devices: unreached.clone().into(),
             not_applied: not_applied.clone().into(),
             no_internet: no_internet.clone().into(),
+            ospf_missing: ospf_missing.clone().into(),
         };
         let list: Box<str> = unreached
             .iter()
             .chain(&not_applied)
             .chain(&no_internet)
+            .chain(&ospf_missing)
             .map(AsRef::as_ref)
             .collect::<Vec<&str>>()
             .join(", ")
@@ -1085,6 +1206,8 @@ pub(crate) async fn watch<M: Watched>(
                 FallbackLeftReason::NotApplied
             } else if no_internet.contains(&member.name) {
                 FallbackLeftReason::NoInternet
+            } else if ospf_missing.contains(&member.name) {
+                FallbackLeftReason::OspfMissing
             } else {
                 FallbackLeftReason::BatchIncomplete
             };

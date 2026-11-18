@@ -168,7 +168,7 @@ pub async fn known(device: &DeviceAccess) -> KnownDiff {
     };
     let scope = Credentials::Named(credentials.into()).fact_key();
     let reader = Reader::stored(device.id(), &scope);
-    match generate(&reader, device, known_password(device.id())).await {
+    match generate(&reader, device, known_password(device.id()), &[]).await {
         Ok(generated) => KnownDiff {
             diff: Some(generated.planned().clone()),
             error: None,

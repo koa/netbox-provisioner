@@ -36,6 +36,9 @@ pub struct Settings {
     /// with it, WebFig goes over HTTPS with a certificate of this CA on every device, and plain
     /// HTTP (`www`) off (A7)
     pub www_ca: Option<WwwCa>,
+    /// OSPF authentication of the segments (A10, `docs/concepts/ospf-auth.md`); without, no
+    /// credentials on a device are touched.
+    pub ospf_auth: Option<OspfAuth>,
 
     /// The device every other device is reached through, e.g. the entry router of a network
     /// not routed to the provisioner.
@@ -133,6 +136,69 @@ pub struct WwwCa {
     pub certificate: Box<str>,
     pub key: Box<str>,
     pub root: Option<Box<str>>,
+}
+
+/// The secrets the segments' OSPF keys come from, by version, and the version they go to
+/// (`device::ospf_auth`). The version is `auth-id` on the devices, so a segment shows which it
+/// has; a secret may go once no segment has its version.
+#[derive(Deserialize)]
+#[serde(try_from = "OspfAuthSettings")]
+pub struct OspfAuth {
+    current: u8,
+    secrets: HashMap<u8, Box<str>>,
+}
+
+/// [`OspfAuth`] as written: the versions as keys of a map, which come as text from the
+/// environment (`APP_SETTINGS__OSPF_AUTH__SECRETS__2`).
+#[derive(Deserialize)]
+struct OspfAuthSettings {
+    current: u8,
+    secrets: HashMap<Box<str>, Box<str>>,
+}
+
+impl TryFrom<OspfAuthSettings> for OspfAuth {
+    type Error = String;
+    fn try_from(settings: OspfAuthSettings) -> Result<Self, String> {
+        let secrets = settings
+            .secrets
+            .into_iter()
+            .map(|(version, secret)| match version.parse::<u8>() {
+                Ok(number) if number > 0 && !secret.is_empty() => Ok((number, secret)),
+                Ok(number) if number > 0 => Err(format!("ospf_auth.secrets.{version}: empty")),
+                _ => Err(format!(
+                    "ospf_auth.secrets.{version}: a version is 1 to 255"
+                )),
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
+        if !secrets.contains_key(&settings.current) {
+            return Err(format!(
+                "ospf_auth.current: no secret of version {}",
+                settings.current
+            ));
+        }
+        Ok(Self {
+            current: settings.current,
+            secrets,
+        })
+    }
+}
+
+impl OspfAuth {
+    /// One version with its secret, the current one (tests, the CHR harness).
+    pub fn new(current: u8, secret: &str) -> Self {
+        Self {
+            current,
+            secrets: [(current, secret.into())].into(),
+        }
+    }
+    /// The version the segments go to.
+    pub fn current(&self) -> u8 {
+        self.current
+    }
+    /// The secret of the version the segments go to.
+    pub fn current_secret(&self) -> &str {
+        &self.secrets[&self.current]
+    }
 }
 
 #[derive(Deserialize)]
@@ -286,6 +352,31 @@ settings:
         let networks = settings.api_networks.expect("api_networks");
         assert_eq!(networks.len(), 2);
         assert_eq!(networks[1].to_string(), "2a02:16a:fe00:8000::/50");
+    }
+
+    /// The version comes from the file, its secret from the environment (a Secret of the
+    /// chart); a version without a secret is refused.
+    #[test]
+    fn ospf_auth_takes_its_secrets_by_version() {
+        let yaml = format!("{YAML}  ospf_auth:\n    current: 2\n");
+        let env = [
+            ("APP_SETTINGS__OSPF_AUTH__SECRETS__1", "old"),
+            ("APP_SETTINGS__OSPF_AUTH__SECRETS__2", "new"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect();
+        let settings = settings_from(
+            File::from_str(&yaml, FileFormat::Yaml),
+            environment().source(Some(env)),
+        )
+        .unwrap();
+        let auth = settings.ospf_auth.expect("ospf_auth");
+        assert_eq!((auth.current(), auth.current_secret()), (2, "new"));
+
+        let yaml = format!("{YAML}  ospf_auth:\n    current: 3\n    secrets:\n      \"1\": old\n");
+        let refused = settings_from(File::from_str(&yaml, FileFormat::Yaml), environment());
+        assert!(refused.is_err());
     }
 
     /// Without `topics` the devices send what they sent before the provisioner.

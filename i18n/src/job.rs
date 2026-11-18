@@ -261,6 +261,7 @@ pub mod event {
         unreached: &[String],
         not_applied: &[String],
         no_internet: &[String],
+        ospf_missing: &[String],
     ) -> String {
         let mut parts = Vec::new();
         if !unreached.is_empty() {
@@ -271,6 +272,12 @@ pub mod event {
         }
         if !no_internet.is_empty() {
             parts.push(format!("ohne Internet: {}", no_internet.join(", ")));
+        }
+        if !ospf_missing.is_empty() {
+            parts.push(format!(
+                "OSPF-Nachbar mit neuem Schlüssel fehlt: {}",
+                ospf_missing.join(", ")
+            ));
         }
         format!(
             "Nicht alle durch ({}). Kein Fallback wird weggenommen, alle Geräte laden die \
@@ -287,6 +294,7 @@ pub mod event {
         NotApplied,
         BatchIncomplete,
         NoInternet,
+        OspfMissing,
         Other(&'a str),
     }
     pub fn fallback_left(reason: FallbackLeft, seconds: u64) -> String {
@@ -310,6 +318,11 @@ pub mod event {
             FallbackLeft::NoInternet => {
                 "Erreichbar und angewendet, aber ohne Internet über IPv4 und IPv6, der Fallback \
                  bleibt"
+                    .into()
+            }
+            FallbackLeft::OspfMissing => {
+                "Erreichbar und angewendet, aber ein OSPF-Nachbar eines Segments mit neuem \
+                 Schlüssel ist nicht zurück, der Fallback bleibt"
                     .into()
             }
             FallbackLeft::Other(other) => format!("Fallback bleibt ({other})"),

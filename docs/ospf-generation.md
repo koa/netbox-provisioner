@@ -77,7 +77,10 @@ gar kein OSPF generiert.
    Schnittstellen. Ein vorhandenes `networks=""` dagegen passt auf keines, RouterOS macht dann
    kein Interface daraus (berghof-haus-stall, 7.24.6: kein OSPFv2 auf der Bridge). Die
    Abweichung zeigt es als `!networks`, ein Apply entfernt es (CHR-Test
-   `an_empty_networks_is_unset_by_the_apply`).
+   `an_empty_networks_is_unset_by_the_apply`). Ein Port mit eigenen Credentials liegt in einem
+   eigenen Template (Kommentar `netbox-provisioner: ospf <Netz>`), die Credentials übernimmt
+   der Generator vom Gerät, solange kein Anwenden sie freigibt
+   ([OSPF-Authentisierung](ospf-auth.md)).
 5. IPv6 ist auf jedem Gerät eingeschaltet (`/ipv6/settings disable-ipv6=no`, der Werkszustand).
    Mit abgeschaltetem IPv6 sind die IPv6-Adressen `invalid` und `default-v3` findet keinen
    Nachbarn, obwohl Adressen und Instanz angewendet aussehen (so auf lab-ap1).

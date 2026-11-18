@@ -54,6 +54,13 @@ chart's Secret, `secret` the setting ({value} or {secretKeyRef}); only those giv
 {{- $all = append $all (dict "env" "APP_SETTINGS__WWW_CA__ROOT" "key" "www_ca_root" "secret" .) -}}
 {{- end -}}
 {{- end -}}
+{{- with $s.ospf_auth -}}
+{{- if .current -}}
+{{- range $version, $secret := .secrets -}}
+{{- $all = append $all (dict "env" (printf "APP_SETTINGS__OSPF_AUTH__SECRETS__%v" $version) "key" (printf "ospf_auth_secret_%v" $version) "secret" $secret) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- range $name, $c := $s.mikrotik_credentials -}}
 {{- if or $c.password $c.previous_password -}}
 {{- if ne $name (lower $name) -}}

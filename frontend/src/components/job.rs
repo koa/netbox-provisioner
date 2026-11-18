@@ -551,6 +551,7 @@ fn describe(event: &Logged) -> Html {
                 FallbackLeftReason::Due => e::FallbackLeft::Due,
                 FallbackLeftReason::BatchIncomplete => e::FallbackLeft::BatchIncomplete,
                 FallbackLeftReason::NoInternet => e::FallbackLeft::NoInternet,
+                FallbackLeftReason::OspfMissing => e::FallbackLeft::OspfMissing,
                 FallbackLeftReason::Other(other) => e::FallbackLeft::Other(other),
             },
             seconds(left.fires_in),
@@ -567,6 +568,7 @@ fn describe(event: &Logged) -> Html {
             &incomplete.devices,
             &incomplete.not_applied,
             &incomplete.no_internet,
+            &incomplete.ospf_missing,
         ),
         Event::InternetChecked(checked) => {
             e::internet_checked(checked.v4, checked.v6, checked.after_script)

@@ -73,6 +73,18 @@ impl Topology {
             .copied()
             .map(move |id| vlan::VlanAccess::create(topo.clone(), id))
     }
+    /// Every address NetBox has in `network`, on whatever it is assigned to (only the hosts:
+    /// `Topology::addresses_in`).
+    pub fn address_records_in(
+        self: &Arc<Self>,
+        network: ipnet::IpNet,
+    ) -> impl Iterator<Item = ip_addresses::IpAddressAccess> {
+        let topo = self;
+        self.ip_addresses
+            .iter()
+            .filter(move |(_, address)| network.contains(&address.ip.addr()))
+            .map(move |(id, _)| ip_addresses::IpAddressAccess::create(topo.clone(), *id))
+    }
     pub fn get_interface_by_id(self: &Arc<Self>, id: InterfaceId) -> Option<InterfaceAccess> {
         self.interfaces
             .contains_key(&id)

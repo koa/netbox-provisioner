@@ -280,6 +280,60 @@ pub mod warning {
              wie sie ist, bis api_networks diese Adressen enthält."
         )
     }
+
+    /// What keeps the OSPF credentials of a segment (`OspfAuthDoubt`).
+    pub enum OspfDoubt<'a> {
+        EndsOutside(&'a [String]),
+        EndNotOspf {
+            address: &'a str,
+            device: Option<&'a str>,
+        },
+        ForeignNeighbor {
+            device: &'a str,
+            router_id: &'a str,
+        },
+        NeighborMissing {
+            device: &'a str,
+            missing: &'a str,
+        },
+        CredentialsDiffer(&'a [String]),
+        Unknown,
+    }
+
+    /// the OSPF credentials of the segment at `port` stay, though they aren't the
+    /// provisioner's
+    pub fn ospf_auth_kept(port: &str, network: &str, doubt: OspfDoubt) -> String {
+        let doubt = match doubt {
+            OspfDoubt::EndsOutside(devices) => format!(
+                "nicht im selben Anwenden: {}; gemeinsam mit ihnen anwenden",
+                devices.join(", ")
+            ),
+            OspfDoubt::EndNotOspf {
+                address,
+                device: Some(device),
+            } => format!("NetBox hat {address} an {device}, dort ist aber kein OSPF-Ende"),
+            OspfDoubt::EndNotOspf {
+                address,
+                device: None,
+            } => format!("NetBox hat {address} im Segment, dort ist aber kein OSPF-Ende"),
+            OspfDoubt::ForeignNeighbor { device, router_id } => {
+                format!("{device} hat dort einen fremden OSPF-Nachbarn ({router_id})")
+            }
+            OspfDoubt::NeighborMissing { device, missing } => {
+                format!("{device} sieht {missing} dort nicht als OSPF-Nachbarn")
+            }
+            OspfDoubt::CredentialsDiffer(devices) => format!(
+                "die Enden haben verschiedene Schlüssel ({})",
+                devices.join(", ")
+            ),
+            OspfDoubt::Unknown => "unbekannter Grund".into(),
+        };
+        format!(
+            "Der OSPF-Schlüssel an {port} ({network}) bleibt, wie er ist: {doubt}. Er wechselt \
+             nur, wenn alle Enden des Segments gemeinsam angewendet werden und nichts im \
+             Zweifel ist."
+        )
+    }
 }
 
 /// What a job left on the device (`components::device::leftovers`).

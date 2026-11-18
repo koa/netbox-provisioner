@@ -234,8 +234,63 @@ pub enum ApplyWarning {
     CapOffOutsideWlanGroup(CapOffOutsideWlanGroup),
     WatchTargetSilent(WatchTargetSilent),
     ApiClientsOutside(ApiClientsOutside),
+    OspfAuthKept(OspfAuthKept),
     #[cynic(fallback)]
     Unknown,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct OspfAuthKept {
+    pub port: String,
+    pub network: String,
+    pub doubt: OspfAuthDoubt,
+}
+
+/// Why an OSPF segment's credentials stay (`OspfAuthDoubt`).
+#[derive(cynic::InlineFragments, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub enum OspfAuthDoubt {
+    OspfEndsOutside(OspfEndsOutside),
+    OspfEndNotOspf(OspfEndNotOspf),
+    OspfForeignNeighbor(OspfForeignNeighbor),
+    OspfNeighborMissing(OspfNeighborMissing),
+    OspfCredentialsDiffer(OspfCredentialsDiffer),
+    #[cynic(fallback)]
+    Unknown,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct OspfEndsOutside {
+    pub devices: Vec<String>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct OspfEndNotOspf {
+    pub address: String,
+    pub device: Option<String>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct OspfForeignNeighbor {
+    pub device: String,
+    pub router_id: String,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct OspfNeighborMissing {
+    pub device: String,
+    pub missing: String,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct OspfCredentialsDiffer {
+    pub devices: Vec<String>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

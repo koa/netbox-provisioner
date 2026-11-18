@@ -37,7 +37,10 @@ Von oben nach unten:
      (Partitionieren, Device-Mode anpassen, von einer Partition starten) brauchen eine
      Bestätigung.
    - **Änderungen:** die Warnungen zum Anwenden, das Skript und „Anwenden“, daneben „Gemeinsam
-     anwenden“ für die Geräte einer Funkstrecke. Ist das Skript leer: „Gerät entspricht NetBox“.
+     anwenden“ für die Geräte einer Funkstrecke; dort zeigt jedes Gerät der Auswahl, dieses
+     zuerst, die Änderungen, die es mit den anderen bekäme (`generateCfg(together:)`: OSPF-Segmente
+     mit allen Enden in der Auswahl wechseln die Credentials, [OSPF-Authentisierung](ospf-auth.md)),
+     neu geladen bei jeder Änderung der Auswahl. Ist das Skript leer: „Gerät entspricht NetBox“.
      Der Diff steht in Tabs (`components::diff_view`, ebenso beim gemeinsamen Anwenden, in der
      Vorschau der Helfer und im Popup „Details“ von „Abweichung von NetBox“ der Site, dort ohne
      die Übersicht, die daneben steht): **Übersicht** zuerst, die

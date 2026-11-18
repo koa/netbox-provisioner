@@ -47,7 +47,8 @@ always build the pushed revisions in `Cargo.lock`. A change of
 `frontend/node/package-lock.json` needs the new `npmDeps` hash in `flake.nix` (the build names
 it). The Helm chart is `charts/netbox-provisioner`: every setting of `config.yaml` is a value
 of its own (`settings`), the chart writes them to a ConfigMap without the secrets; a secret
-(`netbox_token`, `netbox_write_token`, a credential's or the proxy's `password`) is a `value` or
+(`netbox_token`, `netbox_write_token`, a credential's or the proxy's `password`, each
+`ospf_auth` secret) is a `value` or
 a `secretKeyRef` and reaches the binary as `APP_SETTINGS__…` variable; so do both parts of
 `www_ca`, the certificate too, as it comes from the same Secret as its key (cert-manager's
 `tls.crt`, `tls.key`). A new setting in
@@ -728,6 +729,30 @@ pings `internet_targets` (`device::internet`, one answer per family) before its 
 (`CheckingInternet`; one without IPv4 and IPv6 stops all with `NO_INTERNET`) and, in line after
 its script, until both answer or the batch gives up; one without sends all back
 (`BatchIncomplete.no_internet`, `FallbackLeftReason::NoInternet`). `SavedBatch` keeps the flag.
+
+OSPF authentication (A10, `docs/ospf-auth.md`, setting `ospf_auth`: `current` version and a
+secret per version, key `hex(HMAC-SHA256(secret, "<network>"))`, `auth=sha256`,
+`auth-id=<version>`) changes a segment's credentials only when proven safe, in doubt never:
+a segment is an IPv4 network of `ospf` interfaces (`ospf_segments`, a port with exactly one),
+and `device::ospf_auth::decide` moves it only with every NetBox end (an `ospf` interface of a
+RouterOS device with a primary IPv4, same prefix length) a member of the apply, each seeing
+exactly the others at that port (router id, `Full`/`TwoWay`, v2 and v3; a neighbor without
+interface counts at every port) and all with the same credentials today; else the device's
+credentials stay (`current_credentials`) with the warning `OspfAuthKept` naming the doubt. The
+generator keeps everything as the device has it (`place_ospf_credentials`, also without the
+setting); a port with credentials other than its area's shared template gets its own template
+(comment `netbox-provisioner: ospf <network>`; the shared one goes once no port is left in
+it), and `templates_added_first` puts adds of
+templates before the sort's changes: a port taken out of the shared one first lost its
+adjacency at once (CHR 7.24.6), added first it stayed `Full`. Alone (`plan_apply`,
+`generateCfg`) only a segment with the device its one end moves (`decide_alone`); a batch reads
+all members' ports and neighbors (`batch::Reading::ospf`) and decides over all
+(`decide_together`), `generateCfg(together:)` as such a batch would (the batch preview asks it
+for every device of the pick). The decision is kept on the device
+(`AccessibleDevice.ospf_decision`) for the checks after the script, and a batch takes the
+fallbacks away only once the expected neighbors are back at each moved port
+(`Watched::ospf_back`; else `BatchIncomplete.ospf_missing`, `FallbackLeftReason::OspfMissing`).
+CHR test `ospf_credentials_move_with_both_ends_of_a_segment`.
 
 `auto_rollout` (C20, `docs/auto-rollout.md`) applies NetBox changes to the RouterOS devices of
 sites with the custom field `auto_rollout` (a device's `false` leaves it out; `allow_apply`

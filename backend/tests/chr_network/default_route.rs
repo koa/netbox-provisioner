@@ -143,6 +143,11 @@ pub async fn apply_directly(
         .expect("fetch");
     cfg.generate_from(device, KeepNameGenerator)
         .expect("generate");
+    apply_generated(node, &client, cfg).await;
+}
+
+/// Applies the diff of `cfg`, generated, directly as [`apply_directly`] does.
+pub async fn apply_generated(node: &RunningNode, client: &Session, mut cfg: DeviceCfg) {
     // as `generate_for`, without `api_networks`
     cfg.setup_services(None);
     let mutations = cfg.generate_mutations().expect("mutations");
@@ -158,7 +163,10 @@ pub async fn apply_directly(
         ],
     )
     .expect("sort");
-    for mutation in sorted {
+    // as `DeviceCfg::sorted_mutations`
+    let sorted =
+        backend::device::ros::ospf::templates_added_first(sorted.into_iter().cloned().collect());
+    for mutation in &sorted {
         let moves_management = mutation.resource == b"ip/dhcp-client".as_slice()
             && matches!(&mutation.operation, ResourceMutationOperation::UpdateByKey(key) if key.key == b".id".as_slice());
         if mutation.resource == b"ip/dhcp-client".as_slice()
@@ -196,7 +204,7 @@ pub async fn apply_directly(
             mutation.operation,
             mutation.fields
         );
-        apply_mutation(&client, &mutation)
+        apply_mutation(client, &mutation)
             .await
             .unwrap_or_else(|e| panic!("[{}] apply: {e:#}", node.name));
     }

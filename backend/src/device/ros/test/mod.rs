@@ -8,6 +8,7 @@ mod hand_made;
 mod mac_server;
 mod mtu;
 mod netbox_example;
+mod ospf_auth;
 mod poe;
 mod radio;
 mod router_advertisements;

@@ -8,6 +8,8 @@ pub const EXPLANATION: &str = "Alle ausgewählten Geräte und dieses bekommen ih
 pub const NO_CANDIDATES: &str = "Keine anderen RouterOS-Geräte an diesem Standort oder am \
     anderen Ende einer Funkstrecke.";
 pub const PARTNER: &str = "Funkstrecke";
+/// the page's own device in the list, with its changes in the batch
+pub const THIS_DEVICE: &str = "Dieses Gerät";
 pub const IN_LINE: &str = "Keine Änderungen";
 pub const NO_ACCESS: &str = "Keine Adresse oder Zugangsdaten";
 pub const NOT_READY: &str = "Erst wenn alle ausgewählten Geräte erreichbar sind und ihre \

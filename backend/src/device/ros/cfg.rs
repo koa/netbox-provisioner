@@ -13,12 +13,17 @@ use crate::{
     config::CONFIG,
     device::{
         access,
+        ospf_auth::{self, Decision, MemberRead},
         ros::{
             BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent,
             W60GDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
             graphql::GraphqlSystemRouterboard,
             hw_facts::{RadioPackage, SwitchChips, build_w60g_ports, radio_package},
             needed_radio_package,
+            ospf::{
+                OSPF_AREAS, OspfPort, OspfSwitch, current_credentials, ospf_segments,
+                templates_added_first,
+            },
             warning::{ApplyWarning, CapOffOutsideWlanGroup},
         },
         www_certificate::{self, WwwCertificate},
@@ -26,6 +31,7 @@ use crate::{
     topology::{PhysicalPortId, access::device::DeviceAccess},
 };
 use async_graphql::SimpleObject;
+use ipnet::Ipv4Net;
 use log::{debug, info, warn};
 use mikrotik_model::{
     action::PoeMonitorOnce,
@@ -42,7 +48,7 @@ use mikrotik_model::{
 use prometheus::{HistogramOpts, HistogramVec, Registry};
 use std::sync::LazyLock;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     net::IpAddr,
 };
 
@@ -80,6 +86,14 @@ pub struct DeviceCfg {
     live_warnings: Vec<ApplyWarning>,
     /// what `generate_live` found of WebFig's certificate (A7); `Off` before it
     www_certificate: WwwCertificate,
+    /// the segments this apply moves to new OSPF credentials (A10, `device::ospf_auth`); empty,
+    /// every template keeps its credentials
+    ospf_switch: OspfSwitch,
+    /// the segment of each OSPF port, from `generate_from`
+    ospf_segments: BTreeMap<AsciiString, Ipv4Net>,
+    /// the segments whose credentials stay though they aren't the provisioner's, and why
+    /// (`OspfAuthKept`, from the decision)
+    ospf_warnings: Box<[ApplyWarning]>,
 }
 
 /// The certificates CAPsMAN names as generated for itself, as long as they carry the names
@@ -206,6 +220,12 @@ impl DeviceCfg {
         let renamed =
             following_renames(&self.base_target, &self.base_current, &self.radio_renames());
         self.base_target.keep_dhcp_v6_clients(&renamed);
+        self.ospf_segments = ospf_segments(&l2);
+        self.base_target.place_ospf_credentials(
+            &self.base_current,
+            &self.ospf_segments,
+            &self.ospf_switch,
+        );
         if let Some(package) = self.idle_radios {
             warnings.push(ApplyWarning::CapOffOutsideWlanGroup(
                 CapOffOutsideWlanGroup {
@@ -377,6 +397,52 @@ impl DeviceCfg {
     pub(crate) fn www_certificate(&self) -> WwwCertificate {
         self.www_certificate
     }
+    /// Takes the decision on the OSPF segments (`device::ospf_auth::decide`, made after a
+    /// generate): its segments get the provisioner's credentials, now and in every generate
+    /// after, and what it keeps is a warning.
+    pub fn take_ospf_decision(&mut self, decision: &Decision) {
+        self.ospf_switch = decision.switch.clone();
+        self.base_target.place_ospf_credentials(
+            &self.base_current,
+            &self.ospf_segments,
+            &self.ospf_switch,
+        );
+        self.ospf_warnings = decision
+            .kept
+            .iter()
+            .cloned()
+            .map(ApplyWarning::OspfAuthKept)
+            .collect();
+    }
+    /// What the decision on the OSPF segments needs of this device, read over `raw` after a
+    /// generate; none without `ospf_auth` (nothing is decided then, nothing read).
+    pub(crate) async fn read_ospf(
+        &self,
+        device: &DeviceAccess,
+        raw: &impl Reads,
+    ) -> Result<Option<MemberRead>, Error> {
+        if CONFIG.ospf_auth.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(MemberRead {
+            device: device.clone(),
+            ports: self.ospf_ports(),
+            neighbors: ospf_auth::read_neighbors(raw).await?,
+        }))
+    }
+    /// Each OSPF port with a segment and the credentials it has on the device, after a
+    /// generate: what `device::ospf_auth::decide` decides on.
+    pub fn ospf_ports(&self) -> Box<[OspfPort]> {
+        self.ospf_segments
+            .iter()
+            .map(|(port, network)| OspfPort {
+                port: port.clone(),
+                network: *network,
+                v2: current_credentials(&self.base_current, OSPF_AREAS[0], port, *network),
+                v3: current_credentials(&self.base_current, OSPF_AREAS[1], port, *network),
+            })
+            .collect()
+    }
     /// The diff from [`Self::generate_mutations`] in an order where everything a command
     /// refers to exists before it.
     pub fn sorted_mutations(&self) -> Result<Box<[ResourceMutation<'_>]>, Error> {
@@ -389,7 +455,7 @@ impl DeviceCfg {
             mutations.as_ref(),
             provided_by_routeros(),
         )?;
-        Ok(sorted.iter().map(|m| (*m).clone()).collect())
+        Ok(templates_added_first(sorted.iter().map(|m| (*m).clone()).collect()).into())
     }
     /// The diff as a RouterOS script.
     pub fn script(&self) -> Result<Box<str>, Error> {
@@ -404,6 +470,7 @@ impl DeviceCfg {
             return [
                 self.wifi_warnings.clone(),
                 self.live_warnings.clone().into(),
+                self.ospf_warnings.clone(),
             ]
             .concat();
         }
@@ -420,6 +487,7 @@ impl DeviceCfg {
         let mut warnings = self.wifi_warnings.to_vec();
         warnings.extend(self.base_target.poe_warnings(&self.base_current, &powered));
         warnings.extend(self.live_warnings.iter().cloned());
+        warnings.extend(self.ospf_warnings.iter().cloned());
         warnings
     }
 }
@@ -717,6 +785,9 @@ impl DeviceCfg {
             wifi_warnings: Box::default(),
             idle_radios,
             live_warnings: Vec::new(),
+            ospf_switch: OspfSwitch::new(),
+            ospf_segments: BTreeMap::new(),
+            ospf_warnings: Box::default(),
             www_certificate: WwwCertificate::Off,
         })
     }

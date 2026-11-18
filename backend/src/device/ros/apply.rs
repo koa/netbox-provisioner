@@ -11,7 +11,7 @@ use crate::{
     device::{
         AccessibleDevice, Password,
         access::{act, answering, remove_if_present},
-        partitions,
+        ospf_auth, partitions,
         radio_hold::RadioHold,
         ros::{
             fallback::{self, Disarmed, Pending, Rearmed},
@@ -24,6 +24,7 @@ use crate::{
     },
     device_state::ApplyState,
     error_info::ErrorInfo,
+    lock::LockAnyway,
     topology::access::AccessTopology,
 };
 use crate::{
@@ -210,6 +211,9 @@ pub enum FallbackLeftReason {
     /// reached and in line, but it doesn't reach the internet over IPv4 and IPv6 anymore, in
     /// a batch that needs it: all go back
     NoInternet,
+    /// reached and in line, but a neighbor of an OSPF segment whose credentials the batch
+    /// moved isn't back (`OspfNeighborsMissing`): all go back, to the credentials before
+    OspfMissing,
 }
 
 /// The radios of a CAPsMAN, which [`provision_radios`] provisions again.
@@ -481,6 +485,13 @@ pub(crate) enum Back {
 }
 
 /// A device's diff, read and generated for an apply.
+/// What the plan of an apply read ([`AccessibleDevice::read_plan`]).
+pub(crate) struct PlanRead {
+    cfg: DeviceCfg,
+    /// what the decision on the device's OSPF segments needs; none without `ospf_auth`
+    pub(crate) ospf: Option<ospf_auth::MemberRead>,
+}
+
 pub(crate) struct PlannedApply {
     cfg: DeviceCfg,
     script: Box<str>,
@@ -887,11 +898,35 @@ impl AccessibleDevice {
         }
         Ok(())
     }
-    /// The diff to apply, planned (`ApplyPlanned`); an empty one is nothing to do.
+    /// The diff to apply, planned (`ApplyPlanned`), for this device alone: no OSPF segment with
+    /// another end moves (`ospf_auth`); an empty one is nothing to do.
     pub(crate) async fn plan_apply(&self, log: &Log) -> Result<PlannedApply, Error> {
+        let read = self.read_plan().await?;
+        let decision = ospf_auth::decide_alone(read.ospf.as_ref());
+        self.plan_from(read, decision, log)
+    }
+    /// What the plan reads from the device: the config, generated, and what the decision on its
+    /// OSPF segments needs; [`Self::plan_from`] then plans with the decision.
+    pub(crate) async fn read_plan(&self) -> Result<PlanRead, Error> {
         let mut cfg = DeviceCfg::fetch(&self.login.client, &self.device_config).await?;
         cfg.generate_live(&self.device_config, &self.login.client)
             .await?;
+        let ospf = cfg
+            .read_ospf(&self.device_config, &self.login.client)
+            .await?;
+        Ok(PlanRead { cfg, ospf })
+    }
+    /// The diff to apply from what [`Self::read_plan`] read, with `decision` on the OSPF
+    /// segments, planned (`ApplyPlanned`); the checks after it keep the decision.
+    pub(crate) fn plan_from(
+        &self,
+        read: PlanRead,
+        decision: ospf_auth::Decision,
+        log: &Log,
+    ) -> Result<PlannedApply, Error> {
+        let mut cfg = read.cfg;
+        cfg.take_ospf_decision(&decision);
+        *self.ospf_decision.lock_anyway() = decision;
         let mutations = cfg.sorted_mutations()?;
         let script = render_script(&mutations)?;
         let restarts_radio = restarts_radio(&mutations);
@@ -1106,6 +1141,7 @@ impl AccessibleDevice {
             let client = self.connect_again().await?;
             let mut cfg = DeviceCfg::fetch(&client, &self.device_config).await?;
             cfg.generate_live(&self.device_config, &client).await?;
+            cfg.take_ospf_decision(&self.ospf_decision.lock_anyway());
             if self.watchdog_held.load(Ordering::Relaxed) {
                 cfg.base_target.watchdog.watch_address =
                     cfg.base_current.watchdog.watch_address.clone();

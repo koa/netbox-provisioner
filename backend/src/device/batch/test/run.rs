@@ -1,8 +1,11 @@
 //! Scope: Tests of `batch::run` with stand-ins for the devices; nothing else.
 //!
 //! The rules of a batch, with stand-ins for the devices.
-use crate::device::batch::{Applying, PendingSeen, Planning, Running, Timing, Watched, run, watch};
+use crate::device::batch::{
+    Applying, PendingSeen, Planning, Reading, Running, Timing, Watched, run, watch,
+};
 use crate::device::internet::InternetReached;
+use crate::device::ospf_auth::{Decision, MemberRead};
 use crate::{
     Error,
     device::ros::{apply::FallbackLeftReason, fallback::Pending},
@@ -38,6 +41,9 @@ struct Fake {
     offline_looks: usize,
     /// it never reaches the internet after its script
     offline_after: bool,
+    /// a neighbor of a segment whose OSPF credentials its plan moved isn't back after its
+    /// script
+    ospf_missing: bool,
     looks: Arc<Mutex<usize>>,
     seen: Arc<Mutex<Option<Instant>>>,
     calls: Arc<Mutex<Vec<String>>>,
@@ -61,10 +67,20 @@ impl Fake {
 }
 
 impl Planning for Fake {
-    type Planned = Fake;
-    async fn plan(self, _log: &Log) -> Result<Option<Fake>, Error> {
+    type Read = Fake;
+    async fn read(self, _log: &Log) -> Result<Fake, Error> {
         self.call("plan");
         self.fails(self.plan_fails)?;
+        Ok(self)
+    }
+}
+
+impl Reading for Fake {
+    type Planned = Fake;
+    fn ospf(&self) -> Option<&MemberRead> {
+        None
+    }
+    fn plan(self, _ospf: Decision, _log: &Log) -> Result<Option<Fake>, Error> {
         Ok((!self.nothing_to_do).then_some(self))
     }
 }
@@ -149,6 +165,9 @@ impl Watched for Fake {
         } else {
             Ok("".into())
         }
+    }
+    async fn ospf_back(&self) -> Option<bool> {
+        Some(!self.ospf_missing)
     }
     async fn internet_after(&self) -> Option<InternetReached> {
         let mut looks = self.looks.lock().unwrap();
@@ -673,6 +692,7 @@ async fn resumed(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>,
             member,
             checked: None,
             internet: None,
+            ospf: None,
         }
     })
     .collect();
@@ -791,6 +811,32 @@ async fn no_internet_after_sends_all_back() {
     );
     assert_eq!(left(&logs[0]), [FallbackLeftReason::BatchIncomplete]);
     assert_eq!(left(&logs[1]), [FallbackLeftReason::NoInternet]);
+}
+
+/// A device in line whose moved OSPF segment has no neighbor back sends all back, to the
+/// credentials before; also in a batch by hand.
+#[tokio::test]
+async fn an_ospf_neighbor_missing_after_sends_all_back() {
+    let (calls, results, logs) = batch(
+        Fake::default(),
+        Fake {
+            ospf_missing: true,
+            ..Fake::default()
+        },
+    )
+    .await;
+    assert!(
+        !calls.iter().any(|call| call.starts_with("stop")),
+        "{calls:?}"
+    );
+    assert!(
+        results
+            .iter()
+            .all(|r| matches!(r, Err(Error::BatchIncomplete(d)) if &**d == "far")),
+        "{results:?}"
+    );
+    assert_eq!(left(&logs[0]), [FallbackLeftReason::BatchIncomplete]);
+    assert_eq!(left(&logs[1]), [FallbackLeftReason::OspfMissing]);
 }
 
 /// Without the need, nothing pings the internet.

@@ -456,12 +456,12 @@ async fn test_radio_bridge_with_a_static_address_runs_ospf() {
         .map(|(net, _)| net.to_string())
         .collect::<Vec<_>>();
     assert_eq!(on_bridge, ["172.17.0.42/29"]);
-    let backbone = &target.ospf_interface[&(AsciiString::from("backbone-v2"),)];
+    let backbone = &target.ospf_interface[&(AsciiString::from("backbone-v2"), None)];
     assert_eq!(backbone.interfaces.iter().collect::<Vec<_>>(), [&bridge]);
     // never DR or BDR of the segment it shares with the routers (E7)
     for area in ["backbone-v2", "backbone-v3"] {
         assert_eq!(
-            target.ospf_interface[&(AsciiString::from(area),)].priority,
+            target.ospf_interface[&(AsciiString::from(area), None)].priority,
             0,
             "{area}"
         );

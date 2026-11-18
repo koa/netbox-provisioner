@@ -5,7 +5,8 @@
 //! the generated script, RouterOS versions, partitions, the live checks, each as a fact.
 use super::cfg::{DeviceCfg, DeviceStats, GeneratedCfg, render_script};
 use crate::facts::{self, FactKey, FactKind, Freshness};
-use crate::topology::access::device::DeviceAccess;
+use crate::topology::DeviceId;
+use crate::topology::access::{DeviceTarget, device::DeviceAccess};
 use crate::{
     Error,
     config::CONFIG,
@@ -18,7 +19,7 @@ use crate::{
     },
     error_info::ApiError,
 };
-use async_graphql::{Context, Object, SimpleObject};
+use async_graphql::{Context, Object, SimpleObject, futures_util::future::join_all};
 use mikrotik_model::{
     hwconfig::DeviceType,
     model::{LogState, LogTopic, SystemIdentityCfg, SystemRouterboardState},
@@ -99,10 +100,22 @@ impl AccessibleDevice {
     /// The script that would bring the device in line with NetBox, and what to know before
     /// applying it; `null` with the error in the response's errors when that fails, so a
     /// device the generator fails on still shows the rest (an update may be what it needs).
-    async fn generate_cfg(&self, ctx: &Context<'_>) -> Option<Arc<GeneratedCfg>> {
+    /// With `together`, as an apply of the device with those devices would (`applyBatch`):
+    /// the OSPF segments with every end among them move (`device::ospf_auth`).
+    async fn generate_cfg(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(default)] together: Vec<u32>,
+    ) -> Option<Arc<GeneratedCfg>> {
+        let topology = self.device_config.topology();
+        let together = together
+            .into_iter()
+            .filter(|&id| id != self.device_config.id().0)
+            .filter_map(|id| topology.get_device_by_id(&DeviceId(id)))
+            .collect::<Vec<_>>();
         nullable(
             ctx,
-            self.generated_cfg(self.freshness(CONFIG_AGE))
+            self.generated_cfg_together(self.freshness(CONFIG_AGE), &together)
                 .await
                 .map(Arc::new),
         )
@@ -317,8 +330,16 @@ impl AccessibleDevice {
     /// The planned changes, from what the device answered as `freshness` takes it: shared by
     /// the device page and `diffSite`.
     pub async fn generated_cfg(&self, freshness: Freshness) -> Result<GeneratedCfg, Error> {
+        self.generated_cfg_together(freshness, &[]).await
+    }
+    /// [`Self::generated_cfg`] as an apply together with `together` would plan it.
+    pub async fn generated_cfg_together(
+        &self,
+        freshness: Freshness,
+        together: &[DeviceAccess],
+    ) -> Result<GeneratedCfg, Error> {
         let reader = self.reader().at(freshness);
-        generate(&reader, &self.device_config, self.password()).await
+        generate(&reader, &self.device_config, self.password(), together).await
     }
     /// A reader of this login taking what it reads as old as `own` (or the younger age the
     /// request asked for).
@@ -343,14 +364,43 @@ impl AccessibleDevice {
     }
 }
 
+/// What the decision on the OSPF segments needs of each of `devices`, as their plans would
+/// read it: those that can't be reached are left out, so their segments stay.
+async fn ospf_of(devices: &[DeviceAccess]) -> Vec<crate::device::ospf_auth::MemberRead> {
+    let reads = join_all(devices.iter().map(|device| async move {
+        let link = device.connect(DeviceTarget::default()).await.ok()??;
+        let reader = link.reading(CONFIG_AGE);
+        let mut cfg = DeviceCfg::fetch(&reader, device).await.ok()?;
+        cfg.generate_for(device).ok()?;
+        cfg.read_ospf(device, &reader).await.ok()?
+    }))
+    .await;
+    reads.into_iter().flatten().collect()
+}
+
 /// The planned changes of `device` from what `reader` reads, logged in with `password`.
 pub(crate) async fn generate(
     reader: &Reader,
     device: &DeviceAccess,
     password: Password,
+    together: &[DeviceAccess],
 ) -> Result<GeneratedCfg, Error> {
     let mut device_cfg = DeviceCfg::fetch(reader, device).await?;
     device_cfg.generate_live(device, reader).await?;
+    // as the apply would decide on the OSPF segments: alone the segments it shares stay
+    // (`OspfAuthKept`), with `together` those with every end among them move
+    let ospf = device_cfg.read_ospf(device, reader).await?;
+    let decision = match ospf {
+        Some(own) if !together.is_empty() => {
+            let others = ospf_of(together).await;
+            let members = std::iter::once(&own).chain(&others).collect::<Vec<_>>();
+            crate::device::ospf_auth::decide_together(&members)
+                .remove(&device.id())
+                .unwrap_or_default()
+        }
+        own => crate::device::ospf_auth::decide_alone(own.as_ref()),
+    };
+    device_cfg.take_ospf_decision(&decision);
     let (script, revert_script, entries, mut tables) = {
         let mutations = device_cfg.sorted_mutations()?;
         (

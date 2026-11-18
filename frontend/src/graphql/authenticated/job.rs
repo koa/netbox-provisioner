@@ -403,6 +403,7 @@ pub struct BatchIncomplete {
     pub devices: Vec<String>,
     pub not_applied: Vec<String>,
     pub no_internet: Vec<String>,
+    pub ospf_missing: Vec<String>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -619,6 +620,7 @@ pub enum FallbackLeftReason {
     NotApplied,
     BatchIncomplete,
     NoInternet,
+    OspfMissing,
     #[cynic(fallback)]
     Other(String),
 }
