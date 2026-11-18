@@ -37,7 +37,7 @@ pub struct QueryResident {
 pub enum RoleKind {
     Admin,
     Resident,
-    /// neither, which the endpoint refuses before; for a request without a role
+    /// neither: sees nothing
     Nobody,
 }
 

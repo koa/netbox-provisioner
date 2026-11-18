@@ -39,6 +39,9 @@ pub mod auto_rollout;
 /// Updates across the network (`pages::rollout`).
 pub mod rollout;
 
+/// What a resident sees of its network (`components::resident`, `pages::residents`).
+pub mod resident;
+
 /// The site's devices and edges as OSPF sees them (`components::network_map`).
 pub mod network_map;
 

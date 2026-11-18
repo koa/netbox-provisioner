@@ -27,7 +27,7 @@ Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
 - [Gerätemetriken](device-metrics.md): WLAN-Clients, Health, PoE, System, Interfaces und Leases der Geräte an `/metrics`, statt des mikrotik-metrik-exporter.
 - [Netz-Ansicht](network-map.md): die Karte aus der OSPF-LSDB, Zustand der Kanten und Knoten, Health, PoE-Pfeile und -Budget, Layout.
 - [Deployment](deployment.md): Binary, Image mit Nix, Helm-Chart, GitHub Actions.
-- [GraphQL](graphql.md): die Abfragen mit cynic, die beiden Schemas des Frontends, die NetBox-Abfrage.
+- [GraphQL](graphql.md): die Abfragen mit cynic, die drei Schemas des Frontends, die NetBox-Abfrage.
 
 Was noch nicht umgesetzt ist, steht als Konzept in [concepts/](concepts/), die Aufgaben dazu in
 [todo.md](todo.md).

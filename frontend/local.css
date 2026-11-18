@@ -758,3 +758,93 @@ dl.site-diff span.diff-line {
 dl.site-diff > dd > .pf-v6-c-button {
     flex: none;
 }
+
+/* The residents' view (components::resident), after the prototype
+   (docs/concepts/self-service-ui.dc.html): a socket row is the port's card, a cable and what
+   is at its other end or the port's network; on a phone stacked, the cable upright. */
+.resident-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-t--global--spacer--md);
+    max-width: 1240px;
+}
+.resident-site {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-t--global--spacer--sm);
+    margin-block: var(--pf-t--global--spacer--md);
+}
+.sock-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: 12px;
+}
+.sock-side {
+    flex: 1 1 240px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-t--global--spacer--sm);
+}
+.sock-conn {
+    flex: 0 0 72px;
+    align-self: stretch;
+    padding-top: 34px;
+}
+.sock-line {
+    border-top: 2px solid var(--pf-t--global--border--color--default);
+}
+.sock-text {
+    text-align: center;
+    padding-top: 4px;
+}
+.sock-net {
+    padding: var(--pf-t--global--spacer--md);
+    border-radius: var(--pf-t--global--border--radius--medium);
+    border: 1px solid var(--pf-t--global--border--color--default);
+}
+.sock-none {
+    border-style: dashed;
+}
+.resident-networks {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--pf-t--global--spacer--md);
+    margin-top: var(--pf-t--global--spacer--md);
+}
+.resident-facts {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+@media (max-width: 767px) {
+    .resident-site {
+        gap: var(--pf-t--global--spacer--xl);
+    }
+    .sock-row {
+        row-gap: 0;
+    }
+    .sock-side {
+        flex: 1 1 100%;
+    }
+    /* a port without cable: its network right below it */
+    .sock-conn:empty {
+        min-height: 4px;
+    }
+    .sock-conn {
+        flex: 1 1 100%;
+        padding: 0 0 0 32px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 12px;
+    }
+    .sock-line {
+        border-top: 0;
+        border-left: 2px solid var(--pf-t--global--border--color--default);
+        height: 32px;
+    }
+    .sock-text {
+        padding: 0;
+    }
+}

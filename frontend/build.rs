@@ -1,11 +1,12 @@
 use anyhow::Result;
-use backend::graphql::{create_anonymous_schema, create_schema};
+use backend::graphql::{create_anonymous_schema, create_schema, resident::create_resident_schema};
 use std::fs;
 
 fn main() -> Result<()> {
     fs::create_dir_all("target")?;
     write_graphql_schema()?;
     write_anonymous_graphql_schema()?;
+    write_resident_graphql_schema()?;
     Ok(())
 }
 
@@ -24,5 +25,12 @@ fn write_anonymous_graphql_schema() -> Result<()> {
     let schema = create_anonymous_schema();
     fs::write("target/anonymous_schema.graphql", schema.sdl())?;
     cynic_codegen::register_schema("anonymous").from_sdl_file("target/anonymous_schema.graphql")?;
+    Ok(())
+}
+/// Registers it for cynic as "resident" (`graphql::resident::schema`), apart from the admins'.
+fn write_resident_graphql_schema() -> Result<()> {
+    let schema = create_resident_schema(Default::default());
+    fs::write("target/resident_schema.graphql", schema.sdl())?;
+    cynic_codegen::register_schema("resident").from_sdl_file("target/resident_schema.graphql")?;
     Ok(())
 }

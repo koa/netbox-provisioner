@@ -9,7 +9,7 @@ keine; den Text einer Abfrage gibt `operation.query`.
 
 ## Frontend
 
-`frontend/build.rs` schreibt die Schemas der beiden Endpunkte und registriert sie, ohne Default:
+`frontend/build.rs` schreibt die Schemas der drei Endpunkte und registriert sie, ohne Default:
 
 - **authenticated** (`/graphql`, nach dem Login): die Abfragen in
   `frontend/src/graphql/authenticated/<bereich>.rs` (`device`, `job`, `netbox_plan`,
@@ -18,11 +18,13 @@ keine; den Text einer Abfrage gibt `operation.query`.
   `ErrorInfo`, `JobPhase`, `ApplyWarning`, `DeviceVariables`, `JobId`, …), der Input `Helper`
   (ein `@oneOf`, als Enum) in `authenticated/helper.rs`.
 - **anonymous** (`/graphql_anonymous`, vor dem Login): nur `Settings` in `graphql/anonymous/`.
-  Die beiden bleiben getrennt; kein Typ des einen taugt für das andere.
+- **resident** (`/graphql/resident`, nach dem Login, für alle Rollen): die Rolle und die
+  Anwohner in `graphql/resident/` ([Self-Service](self-service.md)).
+  Die drei bleiben getrennt; kein Typ des einen taugt für ein anderes.
 
 Gesendet wird mit `graphql::request` (die Daten, ohne Daten die Fehler als
 `FrontendError::Graphql`) oder `request_response` (Daten und Fehler nebeneinander, z.B. das
-Gerät mit dem Grund, warum es nicht erreichbar ist), anonym mit `request_anonymous`.
+Gerät mit dem Grund, warum es nicht erreichbar ist), anonym mit `request_anonymous`, an den Endpunkt der Anwohner mit `request_resident`.
 `graphql::live::watch` abonniert über die WebSocket des Tabs ([Gerätezustand](device-state.md)),
 `watch_data` gibt wie `request` die Daten. Antwort und Fehler sind cynics
 (`graphql::Response`, `GraphqlError`, mit den `extensions` als JSON für `code` und `params`);

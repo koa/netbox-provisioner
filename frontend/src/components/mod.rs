@@ -13,6 +13,7 @@ pub mod job;
 pub mod neighbors;
 pub mod netbox_helper;
 pub mod network_map;
+pub mod resident;
 pub mod saved_jobs;
 pub mod site;
 pub mod widgets;

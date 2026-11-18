@@ -6,6 +6,8 @@ pub const ALL_DEVICES: &str = "Alle Geräte";
 pub const ALL_SITES_MAP: &str = "Netz-Karte (alle Sites)";
 /// the rollout over several sites, an entry of the sites' dropdown and its title there
 pub const ROLLOUT: &str = "Netz aktualisieren";
+/// the residents' view for support, an entry of the sites' dropdown and its title there
+pub const RESIDENTS: &str = "Anwohner";
 /// the site's network map, an entry of the devices' dropdown and its title there
 pub const SITE_MAP: &str = "Netz-Karte";
 

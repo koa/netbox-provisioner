@@ -10,11 +10,13 @@ use crate::{
     error::FrontendError,
     graphql::{
         anonymous::settings::{Authentication, Settings},
-        request_anonymous,
+        request_anonymous, request_resident,
+        resident::residents::{RoleKind, WhoAmI},
     },
     i18n,
     pages::{
         network_map::AllSitesMap,
+        residents::ResidentsPage,
         rollout::Rollout,
         site::{Devices, device::show::ShowDevice, map::SiteMap},
         sites::Sites,
@@ -110,12 +112,70 @@ pub fn main_oauth2(props: &MainOAuth2Props) -> Html {
     html! {
      <OAuth2 {config} {scopes}>
         <Authenticated>
-            <Router<AppRoute> default={AppRoute::default()}>
-                <MainPage/>
-            </Router<AppRoute>>
+            <RoleGate/>
         </Authenticated>
         <Login/>
       </OAuth2>
+    }
+}
+
+/// Asks the user's role first (`graphql::resident`): an admin gets the admins' pages, a
+/// resident its own page only, nobody a hint.
+pub struct RoleGate {
+    role: Option<Result<RoleKind, FrontendError>>,
+}
+
+impl Component for RoleGate {
+    type Message = Result<RoleKind, FrontendError>;
+    type Properties = ();
+    fn create(_ctx: &Context<Self>) -> Self {
+        Self { role: None }
+    }
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+        self.role = Some(msg);
+        true
+    }
+    fn view(&self, _ctx: &Context<Self>) -> Html {
+        match &self.role {
+            None => html!(<Bullseye><Spinner/></Bullseye>),
+            Some(Ok(RoleKind::Admin)) => html! {
+                <Router<AppRoute> default={AppRoute::default()}>
+                    <MainPage/>
+                </Router<AppRoute>>
+            },
+            Some(Ok(RoleKind::Resident)) => html! {
+                <ToastViewer>
+                    <LoginExpired/>
+                    <div class="pf-v6-c-page pf-m-no-sidebar app-page">
+                        <div class="pf-v6-c-page__main-container">
+                            <main class="pf-v6-c-page__main" id="main-content" tabindex="-1">
+                                <PageSection><ResidentsPage/></PageSection>
+                            </main>
+                        </div>
+                    </div>
+                </ToastViewer>
+            },
+            Some(Ok(RoleKind::Nobody | RoleKind::Other(_))) => {
+                html!(<Bullseye><p>{i18n::resident::NOBODY}</p></Bullseye>)
+            }
+            Some(Err(error)) => html! {
+                <>
+                    <LoginExpired/>
+                    <Bullseye>{error.to_html()}</Bullseye>
+                </>
+            },
+        }
+    }
+    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
+        if first_render {
+            let scope = ctx.link().clone();
+            spawn_local(async move {
+                let role = request_resident(scope.clone(), WhoAmI::build(()))
+                    .await
+                    .map(|data| data.me.role);
+                scope.send_message(role);
+            });
+        }
     }
 }
 
@@ -141,9 +201,11 @@ fn content(route: AppRoute) -> Html {
             view: SiteView::Device { id: device, .. },
         } => (Some(*id), Some(*device)),
         AppRoute::Site { id, .. } => (Some(*id), None),
-        AppRoute::Sites | AppRoute::NetworkMap | AppRoute::Rollout | AppRoute::NotFound => {
-            (None, None)
-        }
+        AppRoute::Sites
+        | AppRoute::NetworkMap
+        | AppRoute::Rollout
+        | AppRoute::Residents
+        | AppRoute::NotFound => (None, None),
     };
     let map = matches!(
         route,
@@ -154,10 +216,12 @@ fn content(route: AppRoute) -> Html {
             }
     );
     let rollout = route == AppRoute::Rollout;
+    let residents = route == AppRoute::Residents;
     let content = match route {
         AppRoute::Sites => html! {<Sites/>},
         AppRoute::NetworkMap => html! {<AllSitesMap/>},
         AppRoute::Rollout => html! {<Rollout/>},
+        AppRoute::Residents => html! {<ResidentsPage support=true/>},
         AppRoute::Site { id, view } => site_content(view, id),
         AppRoute::NotFound => html! {<h1>{i18n::pages::NOT_FOUND}</h1>},
     };
@@ -166,7 +230,9 @@ fn content(route: AppRoute) -> Html {
             <div class="pf-v6-c-page__main-container">
                 <main class="pf-v6-c-page__main" id="main-content" tabindex="-1">
                     <PageSection r#type={PageSectionType::Breadcrumbs}>
-                        <div class="breadcrumb-bar"><Navigation {site} {device} {map} {rollout}/></div>
+                        <div class="breadcrumb-bar">
+                            <Navigation {site} {device} {map} {rollout} {residents}/>
+                        </div>
                     </PageSection>
                     <PageSection>{content}</PageSection>
                 </main>

@@ -84,6 +84,9 @@ pub struct NavigationProps {
     /// the page is the rollout over several sites
     #[prop_or_default]
     pub rollout: bool,
+    /// the page is the support view of the residents
+    #[prop_or_default]
+    pub residents: bool,
 }
 
 /// The breadcrumb of a page: the site (or the map of every site), and on a site's pages its
@@ -164,7 +167,12 @@ impl Navigation {
             text: i18n::menu::ROLLOUT.into(),
             target: AppRoute::Rollout,
         };
-        let site_entries = [overview, all_map, rollout]
+        let residents = MenuEntry {
+            selected: props.residents,
+            text: i18n::menu::RESIDENTS.into(),
+            target: AppRoute::Residents,
+        };
+        let site_entries = [overview, all_map, rollout, residents]
             .into_iter()
             .chain(sites.iter().map(|entry| MenuEntry {
                 selected: site.is_some_and(|site| site.id == entry.id),
@@ -179,6 +187,8 @@ impl Navigation {
             i18n::menu::ALL_SITES_MAP.to_string()
         } else if props.rollout {
             i18n::menu::ROLLOUT.to_string()
+        } else if props.residents {
+            i18n::menu::RESIDENTS.to_string()
         } else {
             i18n::menu::site(site.map(|site| site.name.as_str()), props.site.is_some())
         };

@@ -30,9 +30,10 @@ Der Provisioner entscheidet bei jeder Abfrage, wer der angemeldete Benutzer ist 
 
 `/graphql/resident` ist ein eigenes, schmales Schema (`graphql::resident`). Die Objekte und
 Mutationen der Admins sind darüber nicht erreichbar. Der Endpunkt prüft das Token wie
-`/graphql` und lässt Admins und Anwohner herein; „Niemand“ bekommt `403` (`no role`).
+`/graphql`. „Niemand“ bekommt seine Rolle und sonst nichts, damit das UI sagen kann, woran es
+liegt.
 
-- `me { role }`: `ADMIN` oder `RESIDENT`.
+- `me { role }`: `ADMIN`, `RESIDENT` oder `NOBODY`.
 - `residents`: ein Anwohner bekommt sich selbst, ein Admin jeden Owner, den NetBox an einem
   Gerät, Port oder VLAN nennt (für die Support-Ansicht). Jeder mit:
   - **Ports**, nach Site, Gerät und Portname: die ihm gegebenen Ports fremder Geräte und die
@@ -50,5 +51,30 @@ Im Lab geprüft (2026-11-18, Keycloak und Lab-NetBox mit `local/netbox/seed-resi
 
 - `meier` und `huber` sehen nur ihr Eigenes.
 - `admin` sieht beide.
-- `reader` bekommt `403`.
+- `reader` bekommt die Rolle `NOBODY` und keinen Anwohner.
 - `meier` bekommt an `/graphql` ebenfalls `403`.
+
+## Anwohner-UI (lesend)
+
+Nach dem Login fragt das UI zuerst `me { role }` am Endpunkt der Anwohner (`app::RoleGate`):
+
+- Ein **Admin** bekommt die Seiten der Admins und dazu im Breadcrumb „Anwohner“ (`/residents`):
+  die Support-Ansicht mit der Wahl des Anwohners und der Ansicht, wie er sie sieht.
+- Ein **Anwohner** bekommt nur „Mein Netz“ (`pages::residents`), ohne Breadcrumb und ohne
+  Routen der Admins. Hat er mehrere Owner, steht jeder mit seinem Namen da.
+- **Niemand** bekommt den Hinweis, dass ein Admin ihn bei seinem Haushalt eintragen muss.
+
+Die Ansicht (`components::resident`) hat zwei Tabs nach dem Prototyp:
+
+- **Dosen und Geräte:** nach Site gruppiert. Jede Zeile zeigt links den Port: das Label, sonst
+  den Namen, darunter „Dose an …“ oder „Port … von …“. Dann folgt das Kabel, rechts das Gerät
+  am anderen Ende mit seinem Port. Ohne Kabel steht rechts das Netz des Ports, „Netz des
+  Betreibers“ oder gestrichelt „Kein Netz“. Auf dem Telefon stapeln sich die Karten, das Kabel
+  steht senkrecht.
+- **Netze:** eine Karte pro VLAN mit VID, Adressen und WLAN (SSID, Zahl der APs).
+
+Noch nicht gebaut sind Räume statt Sites, Front-Ports als Dosen, Geräte pro Port aus den Leases,
+Status-Labels und alles Schreibende (C21). Status-Labels kommen erst mit einer verlässlichen
+Quelle: Ein Label, das „ausgerollt“ behauptet, ohne es zu wissen, wäre falsch. Geprüft mit
+Playwright im Lab (2026-11-18) als `meier` (auch in Telefonbreite), `huber`, `reader` und
+`admin`.

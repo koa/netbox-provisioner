@@ -148,8 +148,13 @@ is decides `role::of` per request: admin, else a resident by the owners NetBox h
 `preferred_username` in (`netbox::owners`, kept 30 s), else nobody. Residents ask
 `/graphql/resident` (`graphql::resident`, `docs/self-service.md`), a schema of its own that
 shows only plain objects of what they have, never the admins' access types; `binary`'s
-`require_role` refuses nobody with `403` and hands the role to the request. An admin gets
-every resident there (support view). The lab has two residents (`meier`, `huber`: Keycloak
+`with_role` hands the role to the request (nobody gets `NOBODY` and nothing). An admin gets
+every resident there (support view). The frontend asks `me { role }` there first
+(`app::RoleGate`): an admin gets the router of the admins' pages (with `/residents`, the
+support view), a resident only `pages::residents` (`components::resident`, the prototype's
+tabs „Dosen und Geräte“ and „Netze“, read only so far), nobody a hint; its queries are in
+`graphql::resident`, a third cynic schema "resident" (`frontend/build.rs`), sent by
+`graphql::request_resident`. The lab has two residents (`meier`, `huber`: Keycloak
 and `local/netbox/seed-residents.py`). An export
 without owners gets them as `null` (`topology::test::example_response`), as do the objects a
 helper's preview creates.

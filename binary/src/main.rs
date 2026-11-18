@@ -423,14 +423,15 @@ fn authenticated_graphql(
 }
 
 /// The residents' API (`backend::graphql::resident`): a valid token as for
-/// [`authenticated_graphql`] of an admin or a resident (`require_role`), otherwise `403`.
+/// [`authenticated_graphql`], with the user's role (`with_role`); nobody gets the role and
+/// nothing else, so the UI can say why.
 fn resident_graphql(
     path: &'static str,
     biscuit_validator: OidcBiscuitValidator,
 ) -> impl HttpServiceFactory {
     resource(path)
         .guard(Post())
-        .wrap(from_fn(require_role))
+        .wrap(from_fn(with_role))
         .wrap(biscuit_validator)
         .wrap(from_fn(log_refused_token))
         .wrap(from_fn(with_issuer_keys))
@@ -438,8 +439,8 @@ fn resident_graphql(
 }
 
 /// Finds the user's role (`backend::role::of`) after the token is checked and hands it on to
-/// the request; `403` for nobody.
-async fn require_role(
+/// the request.
+async fn with_role(
     mut req: ServiceRequest,
     next: Next<impl MessageBody + 'static>,
 ) -> Result<ServiceResponse<BoxBody>, actix_web::Error> {
@@ -453,8 +454,7 @@ async fn require_role(
         .and_then(|info| serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok());
     let role = backend::role::of(subject.as_deref(), user.as_ref()).await;
     if role == Role::Nobody {
-        warn!("user refused, neither admin nor resident: {subject:?}");
-        return Ok(req.into_response(HttpResponse::Forbidden().body("no role")));
+        warn!("user neither admin nor resident: {subject:?}");
     }
     req.extensions_mut().insert(role);
     Ok(next.call(req).await?.map_into_boxed_body())

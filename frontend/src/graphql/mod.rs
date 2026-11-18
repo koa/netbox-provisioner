@@ -25,6 +25,7 @@ pub fn path_segment(segment: &cynic::GraphQlErrorPathSegment) -> String {
 pub mod anonymous;
 pub mod authenticated;
 pub mod live;
+pub mod resident;
 
 /// How often a view that doesn't subscribe asks again (a site's diff job).
 pub(crate) const POLL: Duration = Duration::from_secs(1);
@@ -38,6 +39,8 @@ pub(crate) const RETRY: [Duration; 4] = [
 
 static GRAPHQL_AUTHENTICATED_URL: LazyLock<String> =
     LazyLock::new(|| format!("{}/graphql", host()));
+static GRAPHQL_RESIDENT_URL: LazyLock<String> =
+    LazyLock::new(|| format!("{}/graphql/resident", host()));
 static GRAPHQL_ANONYMOUS_URL: LazyLock<String> =
     LazyLock::new(|| format!("{}/graphql_anonymous", host()));
 
@@ -80,6 +83,20 @@ pub async fn request_response<O: Sendable, S: Component>(
 ) -> Result<Response<O::Data>, FrontendError> {
     let client = authenticated_client(&scope)?;
     post(&client, GRAPHQL_AUTHENTICATED_URL.as_str(), &operation).await
+}
+
+/// Sends `operation` (cynic) to the residents' endpoint (`graphql::resident`): without data,
+/// the errors.
+pub async fn request_resident<O: Sendable, S: Component>(
+    scope: Scope<S>,
+    operation: O,
+) -> Result<O::Data, FrontendError> {
+    let client = authenticated_client(&scope)?;
+    let response: Response<O::Data> =
+        post(&client, GRAPHQL_RESIDENT_URL.as_str(), &operation).await?;
+    response
+        .data
+        .ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
 }
 
 /// A client sending the user's token.
