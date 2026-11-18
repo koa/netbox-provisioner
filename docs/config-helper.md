@@ -128,8 +128,11 @@ was davon gewollt ist (dann NetBox korrigieren, etwa mit „Adresse übernehmen�
 `device/site_diff.rs`, `components::site::site_diff`): Ein Job der Site liest ihre RouterOS-Geräte,
 vier zugleich, und meldet je Gerät, was ein Anwenden je Tabelle hinzufügt, ändert und entfernt (wie
 das Skript: Updates ohne Felder zählen nicht), oder warum es nicht lesbar war. Die Karte zeigt
-den Zwischenstand, die meisten Änderungen zuerst, hebt entfernte Adressen, statische Leases, OSPF
-und Bridge-Ports hervor und zählt, wer schon „entspricht NetBox“. Der Job sperrt kein Gerät, ein
+den Zwischenstand in der Reihenfolge von NetBox, jedes Gerät eine Zeile hoch (beim Lesen
+verschiebt sich nichts; was nicht Platz hat, endet in „…“ und steht im Tooltip): von jedem Gerät
+mit Änderungen die Übersicht des Diffs (hebt entfernte Adressen, statische Leases, OSPF und
+Bridge-Ports hervor) und „Details“: ein Popup mit den übrigen Tabs des Diffs der Geräteseite (Felder, Skript, Zurück);
+sie zählt, wer schon „entspricht NetBox“. Der Job sperrt kein Gerät, ein
 Anwenden daneben geht; ein zweiter Start gibt den laufenden zurück, und die Seite übernimmt beim
 Öffnen den letzten Job der Site.
 

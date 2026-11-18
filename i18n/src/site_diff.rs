@@ -6,6 +6,13 @@ pub const AGAIN: &str = "Nochmals prüfen";
 pub const IN_LINE: &str = "entspricht NetBox";
 pub const LOST: &str = "Der Provisioner wurde neu gestartet, die Prüfung ist verloren.";
 pub const CANCELLED: &str = "abgebrochen";
+/// opens a device's fields, script and script back
+pub const DETAILS: &str = "Details";
+pub const CLOSE: &str = "Schliessen";
+/// the title of a device's details
+pub fn details_title(device: &str) -> String {
+    format!("Abweichung von {device}")
+}
 /// a device whose config or NetBox changed after it was checked, not read since
 pub const CHANGED_SINCE: &str =
     "seit der Prüfung verändert (Anwenden oder NetBox), noch nicht neu gelesen";
@@ -18,41 +25,6 @@ pub fn progress(read: usize, all: usize) -> String {
 pub fn in_line_count(in_line: usize, all: usize) -> String {
     format!("{in_line} von {all} entsprechen NetBox")
 }
-pub fn changes(count: u32) -> String {
-    match count {
-        1 => "1 Änderung".into(),
-        count => format!("{count} Änderungen"),
-    }
-}
-/// the changes of one table: added, changed, removed
-pub fn table(table: &str, added: i64, changed: i64, removed: i64) -> String {
-    let mut parts = Vec::new();
-    if added > 0 {
-        parts.push(format!("+{added}"));
-    }
-    if changed > 0 {
-        parts.push(format!("~{changed}"));
-    }
-    if removed > 0 {
-        parts.push(format!("−{removed}"));
-    }
-    format!("/{table} {}", parts.join(" "))
-}
-/// the parts that need a closer look
-pub fn removes_addresses(count: i64) -> String {
-    match count {
-        1 => "entfernt 1 Adresse".into(),
-        count => format!("entfernt {count} Adressen"),
-    }
-}
-pub fn removes_leases(count: i64) -> String {
-    match count {
-        1 => "entfernt 1 statischen Lease".into(),
-        count => format!("entfernt {count} statische Leases"),
-    }
-}
-pub const TOUCHES_OSPF: &str = "ändert OSPF";
-pub const TOUCHES_BRIDGE_PORTS: &str = "ändert Bridge-Ports";
 pub fn unreadable(error: &str) -> String {
     format!("nicht gelesen: {error}")
 }

@@ -11,7 +11,7 @@ use crate::{
         Credentials,
         access::Reader,
         known_password,
-        ros::{cfg::in_script, graphql::generate},
+        ros::{cfg::in_script, diff_view::CfgDiff, graphql::generate},
     },
     error_info::ErrorInfo,
     facts::{self, FactKind, Freshness},
@@ -50,12 +50,12 @@ pub struct TableChanges {
     pub removed: u32,
 }
 
-/// One device read: its changes by table (none: it is as NetBox has it), or why it couldn't be
-/// read.
+/// One device read: what an apply would change (an empty script: it is as NetBox has it), or
+/// why it couldn't be read.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct DeviceDiffed {
     pub device: DiffedDevice,
-    pub tables: Box<[TableChanges]>,
+    pub diff: Option<CfgDiff>,
     pub error: Option<ErrorInfo>,
 }
 
@@ -76,20 +76,20 @@ pub async fn run(site: SiteAccess, log: Log) -> Result<(), Error> {
         let permits = permits.clone();
         reads.spawn(async move {
             let _permit = permits.acquire_owned().await;
-            let tables = job::run(changes_of(device.clone(), started)).await;
-            (device, tables)
+            let diff = job::run(changes_of(device.clone(), started)).await;
+            (device, diff)
         });
     }
     // cancelled: the reads still going end with `reads`
     while let Some(read) = log.unless_cancelled(reads.join_next()).await? {
-        let Ok((device, tables)) = read else { continue };
-        let (tables, error) = match tables {
-            Ok(tables) => (tables, None),
-            Err(error) => (Vec::new(), Some(ErrorInfo::from(&error))),
+        let Ok((device, diff)) = read else { continue };
+        let (diff, error) = match diff {
+            Ok(diff) => (Some(diff), None),
+            Err(error) => (None, Some(ErrorInfo::from(&error))),
         };
         log.emit(DeviceDiffed {
             device: diffed_device(&device),
-            tables: tables.into(),
+            diff,
             error,
         });
     }
@@ -104,17 +104,14 @@ fn diffed_device(device: &DeviceAccess) -> DiffedDevice {
 }
 
 /// Read anew for the job (the device page shares what it reads).
-async fn changes_of(
-    device: DeviceAccess,
-    started: tokio::time::Instant,
-) -> Result<Vec<TableChanges>, Error> {
+async fn changes_of(device: DeviceAccess, started: tokio::time::Instant) -> Result<CfgDiff, Error> {
     let generated = device
         .connect(DeviceTarget::default())
         .await?
         .ok_or(Error::MissingCredentials)?
         .generated_cfg(Freshness::Since(started))
         .await?;
-    Ok(generated.table_changes().to_vec())
+    Ok(generated.planned().clone())
 }
 
 /// What the provisioner knows of how far a device is from NetBox, without asking it: the
@@ -122,9 +119,9 @@ async fn changes_of(
 /// left), and since when what was read was dropped.
 #[derive(Debug, SimpleObject)]
 pub struct KnownDiff {
-    /// the changes by table (none: it is as NetBox has it); `null` when what they come from
-    /// isn't known (anymore)
-    pub tables: Option<Vec<TableChanges>>,
+    /// the planned changes (an empty script: it is as NetBox has it); `null` when what they
+    /// come from isn't known (anymore)
+    pub diff: Option<CfgDiff>,
     /// why the device couldn't be reached last, when it couldn't
     pub error: Option<ErrorInfo>,
     /// seconds since the oldest of what they come from was read
@@ -163,7 +160,7 @@ pub async fn known(device: &DeviceAccess) -> KnownDiff {
     let changed_age = facts::dropped(FactKind::Table, device.id()).map(|at| at.elapsed().as_secs());
     let Some(credentials) = device.credentials() else {
         return KnownDiff {
-            tables: None,
+            diff: None,
             error: None,
             age: None,
             changed_age,
@@ -173,13 +170,13 @@ pub async fn known(device: &DeviceAccess) -> KnownDiff {
     let reader = Reader::stored(device.id(), &scope);
     match generate(&reader, device, known_password(device.id())).await {
         Ok(generated) => KnownDiff {
-            tables: Some(generated.table_changes().to_vec()),
+            diff: Some(generated.planned().clone()),
             error: None,
             age: Some(reader.as_of().elapsed().as_secs()),
             changed_age,
         },
         Err(_) => KnownDiff {
-            tables: None,
+            diff: None,
             error: device.unreached().map(|error| ErrorInfo::from(&*error)),
             age: None,
             changed_age,
@@ -250,6 +247,7 @@ mod test {
             resource,
             operation,
             fields: Box::new([key()]),
+            before: Box::new([]),
             depends: Box::new([]),
             provides: Box::new([]),
             ordering: Default::default(),

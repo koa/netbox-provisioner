@@ -11,15 +11,13 @@ use crate::graphql::{
             FindingKinds, HelperJobs, HelperJobsVariables, NetboxPlanPreview,
             NetboxPlanPreviewVariables, NetboxPlanQuery, NetboxPlanVariables, PlanStep as Step,
         },
-        types::{InterfaceRef, IpVersion, JobKind, JobState, PoeMode, RadioRole, VlanRef},
+        types::{CfgDiff, InterfaceRef, IpVersion, JobKind, JobState, PoeMode, RadioRole, VlanRef},
     },
     request,
 };
-use crate::target::SelectedTarget;
+use crate::{components::diff_view::DiffView, target::SelectedTarget};
 use cynic::QueryBuilder;
-use patternfly_yew::prelude::{
-    Alert, AlertType, Button, ButtonVariant, CodeBlock, CodeBlockCode, Spinner, SpinnerSize,
-};
+use patternfly_yew::prelude::{Alert, AlertType, Button, ButtonVariant, Spinner, SpinnerSize};
 use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 
 /// What the preview shows: the device's finding kinds before and after the plan, and the
@@ -28,7 +26,7 @@ use yew::{Context, Html, html, html::Scope, platform::spawn_local};
 pub struct Preview {
     pub(super) before: Box<[String]>,
     pub(super) after: Box<[String]>,
-    pub(super) script: Option<String>,
+    pub(super) diff: Option<CfgDiff>,
 }
 
 impl NetboxHelper {
@@ -54,12 +52,14 @@ impl NetboxHelper {
                     if !gone.is_empty() {
                         <p>{t::findings_gone(&gone)}</p>
                     }
-                    { match &preview.script {
+                    { match &preview.diff {
                         None => html!(<p>{t::PREVIEW_UNREACHABLE}</p>),
-                        Some(script) if script.trim().is_empty() => html!(<p>{t::PREVIEW_NOTHING}</p>),
-                        Some(script) => html! {<>
+                        Some(diff) if diff.script.trim().is_empty() => {
+                            html!(<p>{t::PREVIEW_NOTHING}</p>)
+                        }
+                        Some(diff) => html! {<>
                             <p>{t::PREVIEW_TITLE}</p>
-                            <CodeBlock><CodeBlockCode>{script.clone()}</CodeBlockCode></CodeBlock>
+                            <DiffView diff={diff.clone()}/>
                         </>},
                     }}
                 </div>}
@@ -249,11 +249,11 @@ pub(super) fn fetch_preview(
             Preview {
                 before: data.topology.device_by_id.map(kinds).unwrap_or_default(),
                 after: kinds(data.netbox_plan.preview),
-                script: data
+                diff: data
                     .netbox_plan
                     .preview_access
                     .and_then(|access| access.generate_cfg)
-                    .map(|cfg| cfg.script),
+                    .map(|cfg| cfg.diff),
             }
         });
         scope.send_message(NetboxHelperMsg::Preview(preview));

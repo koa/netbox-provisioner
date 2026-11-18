@@ -262,12 +262,24 @@ end with another link, one after the other on the preview, then „Verbindung“
 its steps shifted behind (`PlanStep::shift`); a cable over a patch panel is refused
 (`PORT_PATCHED`), the new one would be direct.
 
+`device/ros/diff_view.rs` gives every diff a field view and a script back, kept with the
+script and the count by table in one `CfgDiff` (`GeneratedCfg.diff`, the site check's
+`DeviceDiffed.diff` and `KnownDiff.diff`), from the sorted mutations and what each says was there
+before (mikrotik-model's `ResourceMutation::before`): each change the other way, the last first
+(an add removed by all its fields, `Generator::append_remove_where`; a removal added with its
+old fields; an update set to its old values, found under a new name it gives itself; a move only
+a comment). Nothing runs the script back, the fallback loads the backup; CHR test
+`the_script_back_undoes_an_apply`. The frontend shows it wherever a diff is in PatternFly
+tabs: summary by table, fields (one table, each entry a `tbody` under its head, so the columns
+line up), script, way back (`components::diff_view`, the fragment `types::CfgDiff`); the site
+check shows the summary inline and the rest in a modal („Details“, `summary=false`).
+
 `device/site_diff.rs` is the site page's „Abweichung von NetBox“ (`Mutation.diffSite`,
 `components::site::site_diff`): a job of the site (`job::start_site`, `JobSubject::Site`; a site's
 job locks none of its devices, a second start gives back the running one) reads its RouterOS
 devices, four at a time, and emits `DeviceDiffed` per device with the changes of an apply by
-table (`AccessibleDevice::table_changes`: the sorted mutations counted like the script, which
-leaves out every update without fields) or the error. A job's `deviceId`/`deviceName` are
+table (`site_diff::table_changes`: the sorted mutations counted like the script, which
+leaves out every update without fields), with the rest of the diff (`CfgDiff`), or the error. A job's `deviceId`/`deviceName` are
 `null` for a site's job, `siteId`/`siteName` then say which.
 
 `device/neighbors.rs` compares what a device sees at its ports (`/ip/neighbor`) with NetBox's

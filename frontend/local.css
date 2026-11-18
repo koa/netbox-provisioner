@@ -464,7 +464,7 @@ div.pf-v6-c-card.interfaces {
 }
 
 /* a helper in a modal (`components::helper_flow`), above the page; on a phone full width */
-div.pf-v6-c-backdrop.helper-flow {
+div.pf-v6-c-backdrop:is(.helper-flow, .diff-details) {
     position: fixed;
     inset: 0;
 
@@ -507,7 +507,7 @@ div.pf-v6-c-backdrop.helper-flow {
 }
 
 @media (max-width: 576px) {
-    div.pf-v6-c-backdrop.helper-flow .pf-v6-c-modal-box {
+    div.pf-v6-c-backdrop:is(.helper-flow, .diff-details) .pf-v6-c-modal-box {
         width: 100vw;
         max-width: 100vw;
         max-height: 100vh;
@@ -704,4 +704,57 @@ div.rollout-error {
 div.rollout-offline {
     font-weight: bold;
     color: var(--pf-t--global--text--color--status--warning--default);
+}
+div.diff-view > .pf-v6-c-tabs {
+    margin-bottom: 0.5em;
+    /* all four tabs fit a phone's width */
+    --pf-v6-c-tabs__link--PaddingInlineStart: var(--pf-t--global--spacer--sm);
+    --pf-v6-c-tabs__link--PaddingInlineEnd: var(--pf-t--global--spacer--sm);
+    --pf-v6-c-tabs__item--PaddingInlineStart: 0;
+    --pf-v6-c-tabs__item--PaddingInlineEnd: 0;
+}
+p.diff-hint {
+    font-size: smaller;
+    color: var(--pf-t--global--text--color--subtle);
+}
+div.diff-fields {
+    overflow-x: auto;
+}
+div.diff-fields table {
+    margin-bottom: 1em;
+}
+/* an entry's head above its fields */
+div.diff-fields tr.diff-entry th {
+    font-weight: normal;
+    padding-top: var(--pf-t--global--spacer--md);
+}
+div.diff-fields td code {
+    overflow-wrap: anywhere;
+}
+div.diff-fields td.diff-before {
+    color: var(--pf-t--global--text--color--subtle);
+}
+/* a long label wraps on a phone rather than leaving the card */
+div.batch-apply-open .pf-v6-c-button {
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+}
+/* each device one line high, while read too (the spinner), so nothing moves as rows come in */
+dl.site-diff > dd {
+    display: flex;
+    align-items: center;
+    gap: var(--pf-t--global--spacer--sm);
+    min-width: 0;
+    min-height: calc(1em * var(--pf-t--global--font--line-height--body, 1.5));
+    margin: 0;
+}
+dl.site-diff span.diff-line {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+dl.site-diff > dd > .pf-v6-c-button {
+    flex: none;
 }

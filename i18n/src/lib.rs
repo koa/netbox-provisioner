@@ -30,6 +30,9 @@ pub mod saved_jobs;
 /// How far each device of a site is from NetBox (`components::site::site_diff`).
 pub mod site_diff;
 
+/// The views of a diff: script, the way back, the fields (`components::diff_view`).
+pub mod diff_view;
+
 /// A site's automatic rollout (`components::site::auto_rollout`).
 pub mod auto_rollout;
 

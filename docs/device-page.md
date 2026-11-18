@@ -38,6 +38,22 @@ Von oben nach unten:
      Bestätigung.
    - **Änderungen:** die Warnungen zum Anwenden, das Skript und „Anwenden“, daneben „Gemeinsam
      anwenden“ für die Geräte einer Funkstrecke. Ist das Skript leer: „Gerät entspricht NetBox“.
+     Der Diff steht in Tabs (`components::diff_view`, ebenso beim gemeinsamen Anwenden, in der
+     Vorschau der Helfer und im Popup „Details“ von „Abweichung von NetBox“ der Site, dort ohne
+     die Übersicht, die daneben steht): **Übersicht** zuerst, die
+     Änderungen gezählt, je Tabelle hinzugefügt, geändert, entfernt, und was genauer anzusehen
+     ist (entfernte Adressen und statische Leases, OSPF, Bridge-Ports); **Felder**; **Skript**;
+     **Zurück**, das Skript, das das Anwenden von
+     Hand rückgängig machte (jede Änderung umgekehrt, die letzte zuerst: ein Neues entfernt
+     über alle seine Felder, ein Entferntes mit seinen Feldern wieder angelegt, ein Geändertes
+     auf die alten Werte, ein umbenannter Eintrag unter dem neuen Namen gefunden; eine geänderte
+     Reihenfolge stellt es nicht wieder her, ein Kommentar sagt das). Ausgeführt wird es nie,
+     nach einem gescheiterten Anwenden lädt der Fallback die Sicherung. **Felder**: jeder
+     Eintrag mit Tabelle, Art (neu, geändert, entfernt, umgestellt) und wie das Skript ihn
+     findet, darunter jedes Feld mit Wert vorher und nachher, alle in einer Tabelle, damit die
+     Spalten untereinander stehen (`GeneratedCfg.diff`, ein
+     `CfgDiff` mit `tables`, `entries`, `script`, `revertScript`; `device::ros::diff_view` aus
+     `ResourceMutation::before` von mikrotik-model).
      Ging das Login nur mit dem vorherigen Passwort der Zugangsdaten (`previous_password`), steht
      darüber „Das Gerät hat noch das vorherige Passwort“, und „Anwenden“ geht auch ohne Skript:
      Es setzt am Schluss das aktuelle über die API (Event `PasswordSet`), nie im Skript, das

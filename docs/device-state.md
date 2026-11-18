@@ -276,7 +276,8 @@ Ereignisse ihres Prüf-Jobs noch jede Sekunde ab (`components/site/site_diff.rs`
 
 Die Karte „Abweichung von NetBox“ einer Site zeigt die Ereignisse ihres letzten Prüf-Jobs
 (`diffSite`). Der Job liest jedes Gerät über dieselben Tabellen-Fakten wie die Geräteseite (mit
-`Since` seinem Start) und rechnet die Änderungen pro Tabelle. Daneben abonniert die Karte
+`Since` seinem Start) und rechnet den ganzen Diff (`CfgDiff`: pro Tabelle, Felder, Skript,
+Skript zurück). Daneben abonniert die Karte
 `knownDiff` der Geräte: dieselbe Rechnung über die gespeicherten Tabellen, ohne zu fragen
 (`access::Reader::stored`; fehlt eines, zählt das Gerät als nicht gelesen), und seit wann sie
 verworfen sind (`facts::dropped`). Pro Gerät zeigt sie, was nach dem Start des Jobs gelesen

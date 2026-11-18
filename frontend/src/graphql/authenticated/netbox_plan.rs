@@ -286,7 +286,7 @@ pub struct PreviewAccess {
 #[derive(cynic::QueryFragment, Debug)]
 #[cynic(schema = "authenticated", graphql_type = "GeneratedCfg")]
 pub struct PreviewCfg {
-    pub script: String,
+    pub diff: super::types::CfgDiff,
 }
 
 #[derive(cynic::QueryVariables, Debug)]

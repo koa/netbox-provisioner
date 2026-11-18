@@ -15,6 +15,7 @@ mod chr_network {
     pub mod apply;
     pub mod default_route;
     pub mod device_mode;
+    pub mod diff_back;
     pub mod fallback;
     pub mod golden_image;
     pub mod leftovers;
@@ -497,6 +498,7 @@ async fn apply_via_entry_socks_proxy() {
             key: b"name",
             value: Cow::Borrowed(b"apply-via-entry-test"),
         }]),
+        before: Box::new([]),
         depends: Box::new([]),
         provides: Box::new([]),
         ordering: Default::default(),

@@ -524,6 +524,7 @@ fn an_empty_update_changes_no_radio() {
             value: std::borrow::Cow::Borrowed(b"capsman"),
         }),
         fields: Box::new([]),
+        before: Box::new([]),
         depends: Box::new([]),
         provides: Box::new([]),
         ordering: Default::default(),

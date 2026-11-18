@@ -607,3 +607,52 @@ mod tests {
         assert_eq!(problem, PoeProblem::Other);
     }
 }
+
+/// What an apply would change, in each view of `components::diff_view`.
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct CfgDiff {
+    pub tables: Vec<TableChanges>,
+    pub entries: Vec<EntryChange>,
+    pub script: String,
+    pub revert_script: String,
+}
+
+/// What an apply would do in one table (`ip/address`).
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct TableChanges {
+    pub table: String,
+    pub added: i32,
+    pub changed: i32,
+    pub removed: i32,
+}
+
+/// What an apply changes in one entry (`components::diff_view`).
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct EntryChange {
+    pub table: String,
+    pub kind: EntryChangeKind,
+    pub entry: Option<String>,
+    pub fields: Vec<DiffField>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct DiffField {
+    pub field: String,
+    pub before: Option<String>,
+    pub after: Option<String>,
+}
+
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum EntryChangeKind {
+    Add,
+    Set,
+    Remove,
+    Move,
+    #[cynic(fallback)]
+    Other(String),
+}

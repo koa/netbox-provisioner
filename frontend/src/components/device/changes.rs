@@ -1,14 +1,16 @@
 //! Scope: The card „Änderungen“ on the device page: what an apply would change, or why the
 //! device can't be reached, and the buttons to apply; not the setup it shows then (`setup`).
 use crate::{
-    components::device::batch_apply::{BatchApply, BatchJob},
-    graphql::authenticated::types::ApplyWarning as Warning,
+    components::{
+        device::batch_apply::{BatchApply, BatchJob},
+        diff_view::DiffView,
+    },
+    graphql::authenticated::types::{ApplyWarning as Warning, CfgDiff},
     i18n::{apply_warning, device as t},
     reading_time::local_time,
 };
 use patternfly_yew::prelude::{
-    Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
-    CodeBlockCode,
+    Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle,
 };
 use yew::{Callback, Children, Html, Properties, function_component, html};
 
@@ -16,7 +18,7 @@ use yew::{Callback, Children, Html, Properties, function_component, html};
 /// off).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GeneratedCfg {
-    pub script: Box<str>,
+    pub diff: CfgDiff,
     pub warnings: Box<[Warning]>,
     /// the login went with the previous password: applying sets the current one, also without a
     /// script
@@ -55,7 +57,7 @@ pub struct ChangesProps {
 #[function_component]
 pub fn Changes(props: &ChangesProps) -> Html {
     let cfg = props.cfg.as_ref();
-    let script = cfg.map(|cfg| cfg.script.as_ref()).unwrap_or_default();
+    let script = cfg.map(|cfg| cfg.diff.script.as_str()).unwrap_or_default();
     let outside_script = cfg.is_some_and(|cfg| cfg.previous_password || cfg.www_certificate_needed);
     let nothing_to_do = script.trim().is_empty() && !outside_script;
     let changes = match cfg {
@@ -90,7 +92,7 @@ pub fn Changes(props: &ChangesProps) -> Html {
                 <Alert inline=true title={apply_warning::describe(warning)} r#type={AlertType::Warning}/>
             ))}
             if !script.trim().is_empty() {
-                <CodeBlock><CodeBlockCode>{ script }</CodeBlockCode></CodeBlock>
+                <DiffView diff={cfg.diff.clone()}/>
             }
         </>},
     };

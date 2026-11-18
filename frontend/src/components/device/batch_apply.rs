@@ -4,7 +4,9 @@
 //! wireless links are picked, more devices of the sites can be added, and each picked device
 //! shows its planned changes before anything is applied.
 use crate::{
+    components::diff_view::DiffView,
     error::{FrontendError, ServerProblem},
+    graphql::authenticated::types::CfgDiff,
     graphql::{
         authenticated::batch_apply::{
             ApplyBatch, ApplyBatchVariables, BatchCandidate as Candidate, BatchCandidates,
@@ -17,8 +19,8 @@ use crate::{
 };
 use cynic::{MutationBuilder, QueryBuilder};
 use patternfly_yew::prelude::{
-    Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
-    CodeBlockCode, Spinner, SpinnerSize,
+    Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Spinner,
+    SpinnerSize,
 };
 use std::collections::{BTreeSet, HashMap};
 use yew::{
@@ -52,7 +54,7 @@ pub enum Planned {
     Loading,
     /// the planned changes (empty: in line) and the warnings
     Ready {
-        script: String,
+        diff: CfgDiff,
         warnings: Vec<String>,
         connected: Option<String>,
     },
@@ -241,15 +243,15 @@ impl BatchApply {
             Some(Planned::Problem(problem)) => html!(
                 <Alert inline=true r#type={AlertType::Danger} title={t::unreachable(problem)}/>
             ),
-            Some(Planned::Ready { script, warnings, connected }) => html! {<>
+            Some(Planned::Ready { diff, warnings, connected }) => html! {<>
                 if let Some(connected) = connected {
                     <p class="batch-connected">{connected.clone()}</p>
                 }
                 { for warnings.iter().map(|w| html!(<Alert inline=true r#type={AlertType::Warning} title={w.clone()}/>)) }
-                if script.trim().is_empty() {
+                if diff.script.trim().is_empty() {
                     <p>{t::IN_LINE}</p>
                 } else {
-                    <CodeBlock><CodeBlockCode>{script.clone()}</CodeBlockCode></CodeBlock>
+                    <DiffView diff={diff.clone()}/>
                 }
             </>},
         });
@@ -313,7 +315,7 @@ fn fetch_planned(scope: Scope<BatchApply>, id: i32) {
                             problem.unwrap_or_else(|| device::NOT_GENERATED.into()),
                         ),
                         Some(cfg) => Planned::Ready {
-                            script: cfg.script,
+                            diff: cfg.diff,
                             warnings: cfg.warnings.iter().map(apply_warning::describe).collect(),
                             connected: Some(device::connected(
                                 &access.connected.address,

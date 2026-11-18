@@ -351,10 +351,12 @@ pub(crate) async fn generate(
 ) -> Result<GeneratedCfg, Error> {
     let mut device_cfg = DeviceCfg::fetch(reader, device).await?;
     device_cfg.generate_live(device, reader).await?;
-    let (script, mut tables) = {
+    let (script, revert_script, entries, mut tables) = {
         let mutations = device_cfg.sorted_mutations()?;
         (
             render_script(&mutations)?,
+            super::diff_view::revert_script(&mutations)?,
+            super::diff_view::entry_changes(&mutations),
             crate::device::site_diff::table_changes(&mutations),
         )
     };
@@ -368,8 +370,12 @@ pub(crate) async fn generate(
     }
     let warnings = device_cfg.warnings(reader).await;
     Ok(GeneratedCfg {
-        script,
-        tables: tables.into(),
+        diff: super::diff_view::CfgDiff {
+            tables: tables.into(),
+            entries,
+            script,
+            revert_script,
+        },
         previous_password,
         www_certificate,
         warnings,

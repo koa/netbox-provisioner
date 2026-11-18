@@ -104,7 +104,7 @@ pub struct Connected {
 #[derive(cynic::QueryFragment, Debug)]
 #[cynic(schema = "authenticated", graphql_type = "GeneratedCfg")]
 pub struct PlannedCfg {
-    pub script: String,
+    pub diff: super::types::CfgDiff,
     pub warnings: Vec<ApplyWarning>,
 }
 

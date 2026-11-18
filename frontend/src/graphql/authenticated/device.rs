@@ -152,7 +152,7 @@ pub struct Routerboard {
 #[cynic(schema = "authenticated", graphql_type = "GeneratedCfg")]
 pub struct OverviewCfg {
     pub age: i32,
-    pub script: String,
+    pub diff: super::types::CfgDiff,
     pub warnings: Vec<ApplyWarning>,
     pub previous_password: bool,
     pub www_certificate: WwwCertificate,

@@ -5,7 +5,7 @@
 //! of each device since (`knownDiff`, subscribed).
 use super::{
     schema::schema,
-    types::{ErrorInfo, JobId, JobKind, JobState},
+    types::{CfgDiff, ErrorInfo, JobId, JobKind, JobState},
 };
 
 #[derive(cynic::QueryVariables, Debug)]
@@ -127,7 +127,7 @@ pub enum DiffEvent {
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "authenticated")]
 pub struct KnownDiff {
-    pub tables: Option<Vec<TableChanges>>,
+    pub diff: Option<CfgDiff>,
     pub error: Option<ErrorInfo>,
     pub age: Option<i32>,
     pub changed_age: Option<i32>,
@@ -143,17 +143,8 @@ pub struct SiteDiffStarted {
 #[cynic(schema = "authenticated")]
 pub struct DeviceDiffed {
     pub device: DiffedDevice,
-    pub tables: Vec<TableChanges>,
+    pub diff: Option<CfgDiff>,
     pub error: Option<ErrorInfo>,
-}
-
-#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
-pub struct TableChanges {
-    pub table: String,
-    pub added: i32,
-    pub changed: i32,
-    pub removed: i32,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

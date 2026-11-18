@@ -1,12 +1,15 @@
 //! Scope: How far each device of a site is from NetBox; nothing else.
 //!
 //! How far each device of a site is from NetBox (`Mutation.diffSite`, `device::site_diff`): a
-//! job of the site reads every device in the background, the card shows each as it comes, the
-//! most changes first, with what needs a closer look (addresses removed, OSPF, bridge ports).
+//! job of the site reads every device in the background, the card shows each as it comes, in
+//! NetBox' order and one line high each (no row moves or grows while it reads): the summary of
+//! its diff with what needs a closer look (addresses removed, OSPF, bridge ports), the rest of
+//! the diff in a modal.
 //! Opened again, it picks up the site's last job, running or not. What the provisioner learned
 //! of a device since (`knownDiff`, subscribed: the device page read it after an apply) goes
 //! before the job's reading; a device changed since and not read again says so.
 use crate::{
+    components::diff_view::{DiffView, summary_line, total},
     error::{FrontendError, ServerProblem},
     graphql::{
         POLL, RETRY,
@@ -14,9 +17,8 @@ use crate::{
             site_diff::{
                 DiffEvent as Event, DiffJob as Job, DiffSite, KnownDevice, SiteDiffEvents,
                 SiteDiffEventsVariables, SiteDiffJobs, SiteDiffKnown, SiteVariables,
-                TableChanges as Table,
             },
-            types::{JobKind, JobState},
+            types::{CfgDiff, JobKind, JobState},
         },
         live::{Subscription, watch},
         request,
@@ -27,11 +29,12 @@ use crate::{
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{
-    Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize,
+    Bullseye, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, Modal, ModalVariant,
+    Spinner, SpinnerSize,
 };
 use std::{cell::Cell, collections::HashMap, rc::Rc};
 use yew::{
-    Component, Context, Html, Properties, html, html::Scope, platform::spawn_local,
+    Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local,
     platform::time::sleep,
 };
 use yew_nested_router::components::Link;
@@ -44,7 +47,7 @@ pub struct SiteDiffProps {
 #[derive(Clone)]
 enum Read {
     Pending,
-    Done(Vec<Table>),
+    Done(CfgDiff),
     Failed(ServerProblem),
     /// changed since the check, not read again
     Changed,
@@ -78,6 +81,8 @@ pub struct SiteDiff {
     lost: bool,
     /// whether the poll of the current job goes on
     alive: Rc<Cell<bool>>,
+    /// the device whose diff is open in the details
+    details: Option<i32>,
 }
 
 pub enum SiteDiffMsg {
@@ -89,6 +94,8 @@ pub enum SiteDiffMsg {
     Known(HashMap<i32, Known>),
     Lost,
     Error(FrontendError),
+    /// opens a device's details, or closes them
+    Details(Option<i32>),
 }
 
 impl Component for SiteDiff {
@@ -135,6 +142,7 @@ impl Component for SiteDiff {
             error: None,
             lost: false,
             alive: Rc::new(Cell::new(false)),
+            details: None,
         }
     }
 
@@ -177,9 +185,12 @@ impl Component for SiteDiff {
                             if let Some(row) =
                                 self.rows.iter_mut().find(|row| row.id == diffed.device.id)
                             {
-                                row.read = match &diffed.error {
-                                    Some(problem) => Read::Failed(ServerProblem::from(problem)),
-                                    None => Read::Done(diffed.tables),
+                                row.read = match (diffed.diff, &diffed.error) {
+                                    (_, Some(problem)) => {
+                                        Read::Failed(ServerProblem::from(problem))
+                                    }
+                                    (Some(diff), None) => Read::Done(diff),
+                                    (None, None) => Read::Pending,
                                 };
                             }
                         }
@@ -196,6 +207,7 @@ impl Component for SiteDiff {
                 self.state = None;
             }
             SiteDiffMsg::Error(error) => self.error = Some(error),
+            SiteDiffMsg::Details(device) => self.details = device,
         }
         true
     }
@@ -219,7 +231,7 @@ impl Component for SiteDiff {
             .count();
         let in_line = reads
             .iter()
-            .filter(|(_, read)| matches!(read, Read::Done(tables) if total(tables) == 0))
+            .filter(|(_, read)| matches!(read, Read::Done(diff) if total(&diff.tables) == 0))
             .count();
         let progress = (!self.rows.is_empty()).then(|| {
             let text = if running {
@@ -229,15 +241,16 @@ impl Component for SiteDiff {
             };
             html!(<p>{text}</p>)
         });
-        let mut rows = reads;
-        // the most changes first, then the unread, then the ones in line
-        rows.sort_by_key(|(_, read)| match read {
-            Read::Done(tables) if total(tables) > 0 => (0, u32::MAX - total(tables)),
-            Read::Failed(_) | Read::Changed => (1, 0),
-            Read::Pending => (2, 0),
-            Read::Done(_) => (3, 0),
-        });
+        // in NetBox' order, so no row moves while the job reads
+        let rows = reads;
         let site = ctx.props().site;
+        let details = self.details.and_then(|id| {
+            rows.iter().find_map(|(row, read)| match read {
+                Read::Done(diff) if row.id == id => Some((row.name.clone(), diff.clone())),
+                _ => None,
+            })
+        });
+        let link = ctx.link();
         html! {
             <Card class="findings">
                 <CardHeader><CardTitle>{t::TITLE}</CardTitle></CardHeader>
@@ -249,14 +262,19 @@ impl Component for SiteDiff {
                     if self.state == Some(JobState::Cancelled) { <p>{t::CANCELLED}</p> }
                     {self.job_error.as_ref().map(|problem| html!(<p>{problem.text()}</p>))}
                     {progress}
-                    <dl class="neighbor-results">
-                        { for rows.into_iter().map(|(row, read)| html! {
-                            <>
+                    <dl class="neighbor-results site-diff">
+                        { for rows.into_iter().map(|(row, read)| {
+                            let id = row.id;
+                            let ondetails = link.callback(move |_| SiteDiffMsg::Details(Some(id)));
+                            html! {<>
                                 <dt><Link<AppRoute> to={AppRoute::device(site, row.id as u32)}>{&*row.name}</Link<AppRoute>></dt>
-                                <dd>{read_view(&read)}</dd>
-                            </>
+                                <dd>{read_view(&read, ondetails)}</dd>
+                            </>}
                         }) }
                     </dl>
+                    if let Some((name, diff)) = details {
+                        {details_view(&name, diff, link.callback(|_| SiteDiffMsg::Details(None)))}
+                    }
                 </CardBody>
             </Card>
         }
@@ -305,19 +323,12 @@ impl SiteDiff {
     }
 }
 
-fn total(tables: &[Table]) -> u32 {
-    tables
-        .iter()
-        .map(|table| (table.added + table.changed + table.removed) as u32)
-        .sum()
-}
-
 /// What is known of a device, in milliseconds since the epoch from the ages.
 fn known(device: KnownDevice) -> (i32, Known) {
     let diff = device.known_diff;
-    let read = match (diff.tables, &diff.error) {
+    let read = match (diff.diff, &diff.error) {
         (_, Some(problem)) => Some(Read::Failed(ServerProblem::from(problem))),
-        (Some(tables), None) => Some(Read::Done(tables)),
+        (Some(planned), None) => Some(Read::Done(planned)),
         (None, None) => None,
     };
     (
@@ -330,55 +341,44 @@ fn known(device: KnownDevice) -> (i32, Known) {
     )
 }
 
-fn read_view(read: &Read) -> Html {
+/// One device's fields, script and script back, over the page.
+fn details_view(name: &str, diff: CfgDiff, onclose: Callback<()>) -> Html {
+    let footer = html! {
+        <Button variant={ButtonVariant::Link} label={t::CLOSE} onclick={onclose.reform(|_| ())}/>
+    };
+    html! {
+        <div class="pf-v6-c-backdrop diff-details">
+            <Bullseye>
+                <Modal
+                    title={t::details_title(name)}
+                    variant={ModalVariant::Large}
+                    {onclose}
+                    {footer}
+                >
+                    <DiffView {diff} summary=false/>
+                </Modal>
+            </Bullseye>
+        </div>
+    }
+}
+
+/// A row's text in one line, the whole in the tooltip.
+fn line(text: String) -> Html {
+    html!(<span class="diff-line" title={text.clone()}>{text}</span>)
+}
+
+fn read_view(read: &Read, ondetails: Callback<yew::MouseEvent>) -> Html {
     match read {
         Read::Pending => html!(<Spinner size={SpinnerSize::Sm}/>),
-        Read::Changed => html!({ t::CHANGED_SINCE }),
-        Read::Failed(problem) => html!({ t::unreadable(&problem.text()) }),
-        Read::Done(tables) if total(tables) == 0 => html!({ t::IN_LINE }),
-        Read::Done(tables) => {
-            let addresses = tables
-                .iter()
-                .filter(|table| table.table == "ip/address" || table.table == "ipv6/address")
-                .map(|table| i64::from(table.removed))
-                .sum::<i64>();
-            let mut closer_look = Vec::new();
-            if addresses > 0 {
-                closer_look.push(t::removes_addresses(addresses));
-            }
-            let leases = tables
-                .iter()
-                .filter(|table| table.table == "ip/dhcp-server/lease")
-                .map(|table| i64::from(table.removed))
-                .sum::<i64>();
-            if leases > 0 {
-                closer_look.push(t::removes_leases(leases));
-            }
-            if tables
-                .iter()
-                .any(|table| table.table.starts_with("routing/ospf"))
-            {
-                closer_look.push(t::TOUCHES_OSPF.to_string());
-            }
-            if tables
-                .iter()
-                .any(|table| table.table == "interface/bridge/port")
-            {
-                closer_look.push(t::TOUCHES_BRIDGE_PORTS.to_string());
-            }
-            let list = tables
-                .iter()
-                .map(|m| t::table(&m.table, m.added.into(), m.changed.into(), m.removed.into()))
-                .collect::<Vec<_>>()
-                .join(", ");
-            html! {
-                <>
-                    <strong>{t::changes(total(tables))}</strong>
-                    { for closer_look.into_iter().map(|text| html!(<>{", "}<strong>{text}</strong></>)) }
-                    <div>{list}</div>
-                </>
-            }
-        }
+        Read::Changed => line(t::CHANGED_SINCE.into()),
+        Read::Failed(problem) => line(t::unreadable(&problem.text())),
+        Read::Done(diff) if total(&diff.tables) == 0 => line(t::IN_LINE.into()),
+        Read::Done(diff) => html! {<>
+            {summary_line(&diff.tables)}
+            <Button variant={ButtonVariant::InlineLink} onclick={ondetails}>
+                {t::DETAILS}
+            </Button>
+        </>},
     }
 }
 

@@ -761,7 +761,7 @@ fn overview_message(id: u32, response: Response<DeviceOverview>) -> ShowDeviceMe
                     netbox_device_type: a.device_stats.netbox_device_type.into_boxed_str(),
                     board_matches: a.device_stats.board_matches,
                     cfg: a.generate_cfg.map(|cfg| GeneratedCfg {
-                        script: cfg.script.into_boxed_str(),
+                        diff: cfg.diff,
                         warnings: cfg.warnings.into(),
                         previous_password: cfg.previous_password,
                         www_certificate_needed: cfg.www_certificate

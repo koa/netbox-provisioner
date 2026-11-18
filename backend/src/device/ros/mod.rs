@@ -32,6 +32,7 @@ mod addresses;
 pub mod apply;
 pub mod cfg;
 pub(crate) mod dhcp;
+pub mod diff_view;
 pub mod fallback;
 mod firewall;
 pub mod graphql;
