@@ -158,9 +158,14 @@ shows only plain objects of what they have, never the admins' access types; `bin
 every resident there (support view). The frontend asks `me { role }` there first
 (`app::RoleGate`): an admin gets the router of the admins' pages (with `/residents`, the
 support view), a resident only `pages::residents` (`components::resident`, the prototype's
-tabs „Dosen und Geräte“ and „Netze“, read only so far), nobody a hint; its queries are in
+tabs „Dosen und Geräte“ and „Netze“), nobody a hint; its queries are in
 `graphql::resident`, a third cynic schema "resident" (`frontend/build.rs`), sent by
-`graphql::request_resident`. The lab has two residents (`meier`, `huber`: Keycloak
+`graphql::request_resident`. What a resident changes is a helper's plan too
+(`graphql::resident::change`: `wlanPlan`, `saveWlan`, `savedChange`), allowed only on what
+`owned_by` gives its owner (an admin: any owner), written as the plan device's `NetboxWrite`
+job like the admins' helpers (`helper::wlan`, step `UpdateWirelessLan`, keys kept out of the
+fingerprint and the job's log); the frontend's „WLAN ändern“ is `components::resident::
+wlan_edit`. The lab has two residents (`meier`, `huber`: Keycloak
 and `local/netbox/seed-residents.py`). An export
 without owners gets them as `null` (`topology::test::example_response`), as do the objects a
 helper's preview creates.

@@ -335,6 +335,20 @@ pub fn server(problem: &impl Problem) -> String {
             p("parent")
         ),
         "NOT_ETHERNET" => format!("{} ist laut NetBox kein Ethernet-Port", p("port")),
+        "UNKNOWN_WLAN" => "Dieses WLAN gibt es nicht (mehr), oder seine WLAN-Gruppe hat keinen \
+            Controller"
+            .into(),
+        "WLAN_NOT_PERSONAL" => format!(
+            "{} hat kein WPA-Passwort; die Sicherheit eines WLANs ändert ein Admin",
+            p("ssid")
+        ),
+        "PSK_INVALID" => "Ein WLAN-Passwort hat 12 bis 63 Zeichen, ohne Umlaute".into(),
+        "SSID_INVALID" => {
+            "Ein WLAN-Name hat 1 bis 32 Bytes, ohne Leerzeichen am Anfang oder Ende".into()
+        }
+        "SSID_TAKEN" => format!("Den WLAN-Namen {} hat schon ein anderes WLAN", p("ssid")),
+        "NOTHING_TO_CHANGE" => "Es gibt nichts zu ändern".into(),
+        "NOT_OWNED" => format!("Das gehört nicht dir: {}", p("what")),
         "NO_SINGLE_RADIO" => format!(
             "{} hat in NetBox keinen oder mehrere Funk-Ports: eine Funkbrücke hat genau einen",
             p("device")

@@ -30,6 +30,8 @@ pub struct ResidentsPage {
 pub enum ResidentsMsg {
     Residents(Result<Vec<Resident>, FrontendError>),
     Pick(i32),
+    /// a change is saved: load the residents again
+    Reload,
 }
 
 /// A resident as an entry of the support view's select.
@@ -55,7 +57,7 @@ impl Component for ResidentsPage {
         }
     }
 
-    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             ResidentsMsg::Residents(residents) => {
                 if self.picked.is_none() {
@@ -68,6 +70,10 @@ impl Component for ResidentsPage {
                 self.residents = Some(residents);
             }
             ResidentsMsg::Pick(id) => self.picked = Some(id),
+            ResidentsMsg::Reload => {
+                load(ctx);
+                return false;
+            }
         }
         true
     }
@@ -81,21 +87,26 @@ impl Component for ResidentsPage {
         if ctx.props().support {
             self.support(ctx, residents)
         } else {
-            own(residents)
+            own(ctx, residents)
         }
     }
 
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
-            let scope = ctx.link().clone();
-            spawn_local(async move {
-                let residents = request_resident(scope.clone(), Residents::build(()))
-                    .await
-                    .map(|data| data.residents);
-                scope.send_message(ResidentsMsg::Residents(residents));
-            });
+            load(ctx);
         }
     }
+}
+
+/// Loads the residents the user sees.
+fn load(ctx: &Context<ResidentsPage>) {
+    let scope = ctx.link().clone();
+    spawn_local(async move {
+        let residents = request_resident(scope.clone(), Residents::build(()))
+            .await
+            .map(|data| data.residents);
+        scope.send_message(ResidentsMsg::Residents(residents));
+    });
 }
 
 impl ResidentsPage {
@@ -120,7 +131,10 @@ impl ResidentsPage {
         let view = residents
             .iter()
             .find(|resident| Some(resident.id) == self.picked)
-            .map(|resident| html!(<ResidentView key={resident.id} resident={resident.clone()}/>));
+            .map(|resident| {
+                let on_saved = ctx.link().callback(|()| ResidentsMsg::Reload);
+                html!(<ResidentView key={resident.id} resident={resident.clone()} {on_saved}/>)
+            });
         html! {
             <div class="resident-page">
                 <Title level={Level::H1}>{t::SUPPORT_TITLE}</Title>
@@ -134,14 +148,17 @@ impl ResidentsPage {
 }
 
 /// A resident's own page: each of its owners (a household mostly has one).
-fn own(residents: &[Resident]) -> Html {
+fn own(ctx: &Context<ResidentsPage>, residents: &[Resident]) -> Html {
     let several = residents.len() > 1;
     let views = residents.iter().map(|resident| {
         let name = several.then(|| html!(<Title level={Level::H2}>{resident.name.clone()}</Title>));
         html! {
             <section key={resident.id}>
                 {name}
-                <ResidentView resident={resident.clone()}/>
+                <ResidentView
+                    resident={resident.clone()}
+                    on_saved={ctx.link().callback(|()| ResidentsMsg::Reload)}
+                />
             </section>
         }
     });

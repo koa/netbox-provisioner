@@ -28,13 +28,14 @@ pub mod port_vlan;
 pub mod radio_bridge;
 pub mod radio_disconnect;
 pub mod routes;
+pub mod wlan;
 mod write;
 
 pub use plan::{
     CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreateIpRange,
     CreatePrefix, CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
     DeleteWirelessLink, PlanStep, SetPrimaryIp, Target, UpdateInterface, UpdatePort,
-    UpdatePortVlan, UpdateWirelessLink,
+    UpdatePortVlan, UpdateWirelessLan, UpdateWirelessLink,
 };
 pub use write::{FieldChange, NetboxUndone, NetboxWritten, undo, write};
 
@@ -90,6 +91,8 @@ pub enum Helper {
     AddressTakeover(address_takeover::AddressTakeoverInput),
     /// a static DHCP lease only the router has as a client device, for the router
     LeaseTakeover(lease_takeover::LeaseTakeoverInput),
+    /// a WLAN's SSID or key, for its group's controller
+    Wlan(wlan::WlanInput),
 }
 
 impl Helper {
@@ -111,6 +114,7 @@ impl Helper {
             Helper::NewDevice(input) => new_device::plan(topology, input).await,
             Helper::AddressTakeover(input) => address_takeover::plan(topology, input),
             Helper::LeaseTakeover(input) => lease_takeover::plan(topology, input).await,
+            Helper::Wlan(input) => wlan::plan(topology, input),
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -167,6 +171,10 @@ impl Helper {
             Helper::LeaseTakeover(input) => topology
                 .get_device_by_id(&DeviceId(input.device))
                 .ok_or(Error::UnknownDevice(input.device)),
+            Helper::Wlan(input) => wlan::wlan(topology, input.wlan)?
+                .wlan_group()
+                .and_then(|group| group.controller())
+                .ok_or(Error::UnknownWlan(input.wlan)),
         }
     }
 }
@@ -466,6 +474,25 @@ impl NetboxPlan {
                     for end in [&create.a, &create.b] {
                         if let Some(interface) = interface(json, &end.id.to_string()) {
                             interface["wireless_link"] = link.clone();
+                        }
+                    }
+                }
+                PlanStep::UpdateWirelessLan(update) => {
+                    let id = update.id.to_string();
+                    for group in json["wireless_lan_group_list"]
+                        .as_array_mut()
+                        .into_iter()
+                        .flatten()
+                    {
+                        for wlan in group["wireless_lans"].as_array_mut().into_iter().flatten() {
+                            if wlan["id"] == id.as_str() {
+                                if let Some(ssid) = &update.ssid {
+                                    wlan["ssid"] = json!(ssid);
+                                }
+                                if let Some(psk) = &update.psk {
+                                    wlan["auth_psk"] = json!(psk);
+                                }
+                            }
                         }
                     }
                 }

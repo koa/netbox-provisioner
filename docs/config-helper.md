@@ -586,6 +586,13 @@ der Port das VLAN schon (und kein tagged), lehnt der Plan ab (`PORT_HAS_VLAN`). 
 lab-wap `ether2` von VLAN 104 auf 105, Vorschau (`pvid=105` an seinem Bridge-Port), Schreiben und
 Rückgängig; die Gruppe `lab-wlan` war vorbelegt.
 
+### WLAN ändern
+
+Neuer Name oder neues WPA-Passwort eines WLANs (`helper::wlan`, ein Schritt `UpdateWirelessLan`),
+der Plan des Controllers der WLAN-Gruppe. Gerufen wird er vom Anwohner-UI
+([Self-Service](self-service.md#ändern)); im Admin-Schema ist er `Helper.wlan`, ein Formular
+der Admins gibt es dafür nicht. Die Passwörter stehen weder im Fingerprint noch im Job-Log.
+
 ### Brückengeräte mit fester Adresse
 
 Ohne feste Adresse holte sich ein Brückengerät seine per DHCP-Client von einem der beiden Router

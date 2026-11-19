@@ -29,6 +29,7 @@ pub enum PlanStep {
     DeleteWirelessLink(DeleteWirelessLink),
     UpdatePortVlan(UpdatePortVlan),
     DeleteInterface(DeleteInterface),
+    UpdateWirelessLan(UpdateWirelessLan),
 }
 
 /// An object of NetBox or one an earlier step of the plan creates.
@@ -340,6 +341,34 @@ impl std::fmt::Debug for UpdateWirelessLink {
             .field("id", &self.id)
             .field("a", &self.a)
             .field("b", &self.b)
+            .field("ssid", &self.ssid)
+            .field("ssid_before", &self.ssid_before)
+            .field("psk_set", &self.psk_set)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Changes of the WLAN `id` (a NetBox wireless LAN, `ssid_before` now): a new SSID, a new WPA
+/// personal key in place of `psk_before`. Shown is only that the key changes.
+#[derive(Clone, PartialEq, Eq, SimpleObject)]
+pub struct UpdateWirelessLan {
+    pub id: u32,
+    pub ssid: Option<Box<str>>,
+    pub ssid_before: Box<str>,
+    pub psk_set: bool,
+    #[graphql(skip)]
+    pub psk: Option<Box<str>>,
+    /// the key it has, checked before writing: NetBox changed in between otherwise
+    #[graphql(skip)]
+    pub psk_before: Box<str>,
+}
+
+// The keys are left out: the fingerprint is shown to the client, and the log must not have
+// them. A plan with another key is another plan all the same, its input differs.
+impl std::fmt::Debug for UpdateWirelessLan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpdateWirelessLan")
+            .field("id", &self.id)
             .field("ssid", &self.ssid)
             .field("ssid_before", &self.ssid_before)
             .field("psk_set", &self.psk_set)

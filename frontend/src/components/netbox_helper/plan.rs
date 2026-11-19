@@ -162,6 +162,9 @@ pub(super) fn describe(step: &Step) -> String {
         Step::DeleteWirelessLink(delete) => {
             t::delete_wireless_link(port(&delete.a), port(&delete.b))
         }
+        Step::UpdateWirelessLan(update) => {
+            t::update_wireless_lan(&update.ssid_before, update.ssid.as_deref(), update.psk_set)
+        }
         Step::UpdateWirelessLink(update) => t::update_wireless_link(
             port(&update.a),
             port(&update.b),

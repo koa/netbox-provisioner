@@ -323,6 +323,13 @@ impl From<&Error> for ErrorInfo {
                 ],
             ),
             Error::NotEthernet(port) => ("NOT_ETHERNET", vec![("port", port.to_string())]),
+            Error::UnknownWlan(id) => ("UNKNOWN_WLAN", vec![("wlan", id.to_string())]),
+            Error::WlanNotPersonal(ssid) => ("WLAN_NOT_PERSONAL", vec![("ssid", ssid.to_string())]),
+            Error::PskInvalid => ("PSK_INVALID", vec![]),
+            Error::SsidInvalid => ("SSID_INVALID", vec![]),
+            Error::SsidTaken(ssid) => ("SSID_TAKEN", vec![("ssid", ssid.to_string())]),
+            Error::NothingToChange => ("NOTHING_TO_CHANGE", vec![]),
+            Error::NotOwned(what) => ("NOT_OWNED", vec![("what", what.to_string())]),
             Error::NoSingleRadio(device) => {
                 ("NO_SINGLE_RADIO", vec![("device", device.to_string())])
             }

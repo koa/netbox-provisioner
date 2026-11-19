@@ -318,6 +318,27 @@ pub enum Error {
     /// NetBox has no IP range role with the slug `dhcp`
     #[error("NetBox has no IP range role dhcp")]
     NoDhcpRole,
+    /// a WLAN the topology doesn't have (none, or its group has no controller)
+    #[error("WLAN {0} is unknown")]
+    UnknownWlan(u32),
+    /// a WLAN (its SSID) whose security isn't a WPA personal key: that stays the admins'
+    #[error("{0} has no WPA personal key")]
+    WlanNotPersonal(Box<str>),
+    /// a WLAN key that isn't 12 to 63 printable ASCII characters
+    #[error("a WLAN key needs 12 to 63 printable ASCII characters")]
+    PskInvalid,
+    /// an SSID that isn't 1 to 32 bytes, or with spaces around it
+    #[error("an SSID needs 1 to 32 bytes, without spaces around")]
+    SsidInvalid,
+    /// an SSID another WLAN of the group has
+    #[error("SSID {0} is taken in the WLAN group")]
+    SsidTaken(Box<str>),
+    /// a change that changes nothing
+    #[error("nothing to change")]
+    NothingToChange,
+    /// an object of another resident, or an owner the user isn't
+    #[error("not yours: {0}")]
+    NotOwned(Box<str>),
     /// a port (`device port`) whose NetBox type is no Ethernet
     #[error("{0} is no Ethernet port")]
     NotEthernet(Box<str>),

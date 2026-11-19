@@ -7,7 +7,7 @@ use super::{
     CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreateIpRange,
     CreatePrefix, CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
     DeleteWirelessLink, Helper, PlanStep, SetPrimaryIp, Target, UpdateInterface, UpdatePort,
-    UpdatePortVlan, UpdateWirelessLink, flags,
+    UpdatePortVlan, UpdateWirelessLan, UpdateWirelessLink, flags,
 };
 use crate::{
     Error,
@@ -155,6 +155,10 @@ async fn write_step(
         }
         PlanStep::UpdatePortVlan(update) => {
             update_port_vlan(rest, update, log).await?;
+            None
+        }
+        PlanStep::UpdateWirelessLan(update) => {
+            update_wireless_lan(rest, update, log).await?;
             None
         }
         PlanStep::DeleteInterface(delete) => {
@@ -1079,6 +1083,52 @@ async fn update_wireless_link(
             field: "auth_psk".into(),
             value: Some("•••".into()),
             previous: None,
+        });
+    }
+    write_update(
+        rest,
+        log,
+        path,
+        Value::Object(change),
+        Value::Object(before),
+        changes,
+    )
+    .await
+}
+
+/// Writes `update` once the WLAN still has the SSID and key the plan found.
+async fn update_wireless_lan(
+    rest: &NetboxRest,
+    update: &UpdateWirelessLan,
+    log: &Log,
+) -> Result<(), Error> {
+    let path = format!("wireless/wireless-lans/{}/", update.id);
+    let current = rest.get(&path).await?;
+    let ssid = current["ssid"].as_str().unwrap_or_default();
+    let psk = current["auth_psk"].as_str().unwrap_or_default();
+    if ssid != &*update.ssid_before || psk != &*update.psk_before {
+        return Err(Error::NetboxChanged(format!("WLAN {ssid}").into()));
+    }
+    let mut change = serde_json::Map::new();
+    let mut before = serde_json::Map::new();
+    let mut changes = Vec::new();
+    if let Some(new) = &update.ssid {
+        change.insert("ssid".into(), json!(new));
+        before.insert("ssid".into(), json!(ssid));
+        changes.push(FieldChange {
+            field: "ssid".into(),
+            value: Some(new.clone()),
+            previous: Some(ssid.into()),
+        });
+    }
+    if let Some(new) = &update.psk {
+        change.insert("auth_psk".into(), json!(new));
+        // kept for `undo` only, in memory; the job's log shows neither key
+        before.insert("auth_psk".into(), json!(psk));
+        changes.push(FieldChange {
+            field: "auth_psk".into(),
+            value: Some("•••".into()),
+            previous: Some("•••".into()),
         });
     }
     write_update(

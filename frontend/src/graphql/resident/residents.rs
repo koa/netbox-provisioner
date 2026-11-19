@@ -97,5 +97,6 @@ pub struct ResidentNetwork {
 pub struct ResidentWlan {
     pub id: i32,
     pub ssid: String,
+    pub psk: Option<String>,
     pub access_points: i32,
 }

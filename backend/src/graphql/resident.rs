@@ -1,10 +1,10 @@
 //! Scope: The residents' GraphQL schema (`/graphql/resident`): what a resident sees of its
-//! ports and networks, and an admin of every resident's; not the admins' schema (`graphql`),
-//! nor who is which role (`role`).
+//! ports and networks, and an admin of every resident's; not what they change (`change`), the
+//! admins' schema (`graphql`), nor who is which role (`role`).
 use crate::{
     role::Role,
     topology::{
-        OwnerId, Topology, TopologyHolder,
+        OwnerId, Topology, TopologyHolder, WlanAuth,
         access::{
             AccessTopology, cable::CablePortAccess, device::DeviceAccess,
             front_port::FrontPortAccess, interface::InterfaceAccess, vlan::VlanAccess,
@@ -13,23 +13,38 @@ use crate::{
         ownership::Owned,
     },
 };
-use async_graphql::{
-    Context, EmptyMutation, EmptySubscription, Enum, Object, Schema, SimpleObject,
-};
+use async_graphql::{Context, EmptySubscription, Enum, MergedObject, Object, Schema, SimpleObject};
 use ipnet::IpNet;
 use std::{collections::BTreeSet, sync::Arc};
 
+pub mod change;
 #[cfg(test)]
 mod test;
 
-pub type ResidentGraphqlSchema = Schema<QueryResident, EmptyMutation, EmptySubscription>;
+pub type ResidentGraphqlSchema = Schema<QueryResident, change::MutationResident, EmptySubscription>;
 
-/// The schema the residents' endpoint serves; the request carries the user's [`Role`].
+/// The schema the residents' endpoint serves; the request carries the user's [`Role`] and
+/// `UserInfo`.
 pub fn create_resident_schema(topology: TopologyHolder) -> ResidentGraphqlSchema {
-    Schema::build(QueryResident { topology }, EmptyMutation, EmptySubscription).finish()
+    let query = QueryResident(
+        QueryView {
+            topology: topology.clone(),
+        },
+        change::QueryChange::new(topology.clone()),
+    );
+    Schema::build(
+        query,
+        change::MutationResident::new(topology),
+        EmptySubscription,
+    )
+    .finish()
 }
 
-pub struct QueryResident {
+/// What a resident sees (`QueryView`) and the plans of its changes (`change`).
+#[derive(MergedObject)]
+pub struct QueryResident(QueryView, change::QueryChange);
+
+pub struct QueryView {
     topology: TopologyHolder,
 }
 
@@ -125,12 +140,15 @@ pub struct ResidentNetwork {
 pub struct ResidentWlan {
     id: u32,
     ssid: Box<str>,
+    /// its WPA personal key, for showing it to its resident; none for an open WLAN (only an
+    /// admin changes the security)
+    psk: Option<Box<str>>,
     /// the access points of its WLAN group, which all send it
     access_points: u32,
 }
 
 #[Object]
-impl QueryResident {
+impl QueryView {
     async fn me(&self, context: &Context<'_>) -> Me {
         let role = match context.data_opt::<Role>() {
             Some(Role::Admin) => RoleKind::Admin,
@@ -389,6 +407,10 @@ fn network(owned: &Owned, vlan: &VlanAccess) -> Option<ResidentNetwork> {
         .map(|wlan| ResidentWlan {
             id: AccessTopology::id(&wlan).0,
             ssid: wlan.ssid().unwrap_or_default().into(),
+            psk: match wlan.auth() {
+                Some(WlanAuth::Wpa(wpa)) => Some(wpa.psk().into()),
+                _ => None,
+            },
             access_points: wlan
                 .wlan_group()
                 .map_or(0, |group| group.aps().len() as u32),

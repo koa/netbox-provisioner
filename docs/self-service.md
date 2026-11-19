@@ -42,10 +42,36 @@ liegt.
     - ob dort ein fremdes VLAN liegt, ohne dessen Namen;
     - die Enden des Kabels (Gerät, Port, ob eigen).
   - **Netze:** seine VLANs mit VID, den Netzen der Adressen, die NetBox auf dem VLAN hat, und
-    seinen WLANs (SSID, Zahl der APs der Gruppe). Ein WLAN einer Gruppe ohne `controller` fehlt,
-    wie in der Konfiguration.
+    seinen WLANs (SSID, Passwort bei WPA, Zahl der APs der Gruppe). Ein WLAN einer Gruppe ohne
+    `controller` fehlt, wie in der Konfiguration.
 
-Das Passwort eines WLANs gibt das Schema noch nicht heraus.
+### Ändern
+
+Jede Änderung ist der Plan eines Helfers (`graphql::resident::change`), erlaubt nur an
+eigenen Objekten: ein Anwohner für seine Owner, ein Admin für jeden (Support-Ansicht). Sonst
+lehnt der Server mit `NOT_OWNED` ab.
+
+- `wlanPlan(resident, change: { wlan, ssid, psk })`: was gespeichert würde, für die Vorschau:
+  die Änderung des WLANs (ohne die Passwörter, nur dass es ein neues gibt) und die Geräte, deren
+  Konfiguration sich ändert (Controller und APs der Gruppe).
+- `saveWlan(resident, change, fingerprint)`: schreibt den Plan, wenn er noch der gezeigte ist,
+  als `NetboxWrite`-Job des Controllers (wie die Helfer der Admins, mit Rückgängig dort). Im
+  NetBox-Changelog steht „WLAN lab-wlan (meier for Familie Meier)“.
+- `savedChange(job)`: wie das Speichern steht (`SAVING`, `SAVED`, `FAILED` mit dem Fehler), nur
+  für den Anwohner des Jobs oder einen Admin.
+
+Die Regeln des Helfers „WLAN ändern“ (`helper::wlan`, auch im Admin-Schema als `Helper.wlan`):
+
+- SSID: 1 bis 32 Bytes, ohne Leerzeichen am Rand, in der WLAN-Gruppe eindeutig (gegen alle
+  WLANs der Gruppe, auch fremde);
+- Passwort: 12 bis 63 druckbare ASCII-Zeichen, nur für ein WLAN mit WPA-Passwort (die
+  Sicherheit eines WLANs ändert ein Admin);
+- nichts geändert ist ein Fehler (`NOTHING_TO_CHANGE`).
+
+Die Passwörter stehen weder im Fingerprint noch im Job-Log (`•••`); das alte bleibt für
+Rückgängig nur im Speicher, NetBox-Jobs werden nicht auf die Platte geschrieben. Auf die Geräte
+kommt die Änderung über das automatische Rollout (C20); ein Gerät, das nicht selbst ausrollt,
+wartet auf die Freigabe eines Admins.
 
 Im Lab geprüft (2026-11-18, Keycloak und Lab-NetBox mit `local/netbox/seed-residents.py`):
 
@@ -54,7 +80,7 @@ Im Lab geprüft (2026-11-18, Keycloak und Lab-NetBox mit `local/netbox/seed-resi
 - `reader` bekommt die Rolle `NOBODY` und keinen Anwohner.
 - `meier` bekommt an `/graphql` ebenfalls `403`.
 
-## Anwohner-UI (lesend)
+## Anwohner-UI
 
 Nach dem Login fragt das UI zuerst `me { role }` am Endpunkt der Anwohner (`app::RoleGate`):
 
@@ -75,11 +101,22 @@ Die Ansicht (`components::resident`) hat zwei Tabs nach dem Prototyp:
   nennt ihr Netz in der eigenen Karte. Ein Port eines eigenen Geräts, der in einer eigenen Dose
   steckt, erscheint nur bei der Dose. Auf dem Telefon stapeln sich die Karten, das Kabel
   steht senkrecht.
-- **Netze:** eine Karte pro VLAN mit VID, Adressen und WLAN (SSID, Zahl der APs).
+- **Netze:** eine Karte pro VLAN mit VID, Adressen und WLAN (SSID, Zahl der APs). Am WLAN
+  „WLAN ändern“ (`wlan_edit`): Name und Passwort (zeigen, zufällig erzeugen: 16 Zeichen aus
+  der Zufallsquelle des Browsers, ohne 0, O, 1, l und I), „Vorschau“ erst nach einer Änderung.
+  Die Vorschau sagt in Worten, was sich ändert, welche Geräte eine neue Konfiguration bekommen
+  und dass verbundene Geräte kurz das WLAN verlieren; „Speichern“ wartet auf den Job und sagt
+  dann „In NetBox gespeichert“, ohne zu behaupten, dass es schon ausgerollt ist.
 
-Noch nicht gebaut sind Geräte pro Port aus den Leases, Status-Labels und alles
-Schreibende (C21), als Nächstes das Einstellen, was in einer Dose steckt. Status-Labels kommen erst mit einer verlässlichen
-Quelle: Ein Label, das „ausgerollt“ behauptet, ohne es zu wissen, wäre falsch. Geprüft mit
+Noch nicht gebaut sind Geräte pro Port aus den Leases, Status-Labels, das WLAN ein- und
+ausschalten, Ports ins VLAN, Geräte anschliessen und Entwürfe über mehrere Elemente (C21).
+Status-Labels kommen erst mit einer verlässlichen Quelle: Ein Label, das „ausgerollt“ behauptet, ohne es zu wissen, wäre falsch. Geprüft mit
 Playwright im Lab (2026-11-18) als `meier` (auch in Telefonbreite), `huber`, `reader` und
 `admin`; die Dosen (`wohnung-meier`, `wohnung-huber` hinter `lab-keller-switch`, Geräte ohne
 RouterOS, in den Locations „1. OG › Wohnung …“) am 2026-11-19 als `meier` und `huber`.
+
+„WLAN ändern“ im Lab geprüft (2026-11-19) als `meier`, auch in Telefonbreite: `lab-wlan` mit
+`lab-np2` als Controller (das Custom Field `controller` der Gruppe zeigte seit 2026-10-31 auf ein
+gelöschtes Gerät). Ein zufälliges Passwort und die SSID hin und zurück gespeichert; nach der
+Freigabe des Admins rollte das automatische Rollout lab-np2 aus, danach war sein Diff leer.
+lab-wap ist nicht in der Gruppe: ihm fehlt das Paket `wireless` für einen CAP.

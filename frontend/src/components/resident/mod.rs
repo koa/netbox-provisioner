@@ -4,14 +4,19 @@ use crate::graphql::resident::residents::{
     FarEnd, PortKind, Resident, ResidentNetwork, ResidentPort,
 };
 use i18n::resident as t;
+use wlan_edit::WlanEdit;
+
+mod wlan_edit;
 use patternfly_yew::prelude::{
     Card, CardBody, CardHeader, CardSize, CardTitle, Content, Level, Tab, Tabs, Title,
 };
-use yew::{Html, Properties, function_component, html, html_nested, use_state};
+use yew::{Callback, Html, Properties, function_component, html, html_nested, use_state};
 
 #[derive(Debug, Clone, PartialEq, Properties)]
 pub struct ResidentViewProps {
     pub resident: Resident,
+    /// a change is saved: the page loads the resident again
+    pub on_saved: Callback<()>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,7 +41,7 @@ pub fn ResidentView(props: &ResidentViewProps) -> Html {
                     {ports(&resident.ports)}
                 </Tab<View>>
                 <Tab<View> index={View::Networks} title={t::TAB_NETWORKS}>
-                    {networks(&resident.networks)}
+                    {networks(resident, &props.on_saved)}
                 </Tab<View>>
             </Tabs<View>>
         </div>
@@ -178,7 +183,8 @@ fn network_text(port: &ResidentPort) -> String {
 }
 
 /// The networks, each with its addresses and WLAN.
-fn networks(networks: &[ResidentNetwork]) -> Html {
+fn networks(resident: &Resident, on_saved: &Callback<()>) -> Html {
+    let networks: &[ResidentNetwork] = &resident.networks;
     if networks.is_empty() {
         return html!(<Content><p>{t::NO_NETWORKS}</p></Content>);
     }
@@ -198,7 +204,16 @@ fn networks(networks: &[ResidentNetwork]) -> Html {
                 .iter()
                 .map(|wlan| {
                     let text = t::wlan(&wlan.ssid, wlan.access_points);
-                    html!(<li key={wlan.id}>{text}</li>)
+                    html! {
+                        <li key={wlan.id}>
+                            {text}
+                            <WlanEdit
+                                resident={resident.id}
+                                wlan={wlan.clone()}
+                                on_saved={on_saved.clone()}
+                            />
+                        </li>
+                    }
                 })
                 .collect()
         };

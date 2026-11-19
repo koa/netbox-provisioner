@@ -223,6 +223,17 @@ pub fn update_wireless_link(a: Port, b: Port, ssid: Option<Change<&str>>, psk: b
     }
     format!("Wireless Link {a} – {b}: {}", changes.join(", "))
 }
+/// a WLAN (`ssid_before` now) getting a new SSID or key
+pub fn update_wireless_lan(ssid_before: &str, ssid: Option<&str>, psk: bool) -> String {
+    let mut changes = Vec::new();
+    if let Some(ssid) = ssid {
+        changes.push(format!("SSID {ssid}"));
+    }
+    if psk {
+        changes.push("neues Passwort".to_string());
+    }
+    format!("WLAN {ssid_before}: {}", changes.join(", "))
+}
 pub const FLAGS: &str = "Flags";
 pub const FLAGS_HINT: &str = "Die Tags der Interfaces: ospf (OSPF), dhcp (DHCP-Server), \
     dhcp-client (DHCP-Client, falls ohne Adresse), nat (Uplink, ausgehend maskieren). Bei \

@@ -65,6 +65,7 @@ pub enum PlanStep {
     DeleteWirelessLink(DeleteWirelessLink),
     UpdatePortVlan(UpdatePortVlan),
     DeleteInterface(DeleteInterface),
+    UpdateWirelessLan(UpdateWirelessLan),
     #[cynic(fallback)]
     Unknown,
 }
@@ -190,6 +191,14 @@ pub struct CreateWirelessLink {
 pub struct UpdateWirelessLink {
     pub a: InterfaceRef,
     pub b: InterfaceRef,
+    pub ssid: Option<String>,
+    pub ssid_before: String,
+    pub psk_set: bool,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct UpdateWirelessLan {
     pub ssid: Option<String>,
     pub ssid_before: String,
     pub psk_set: bool,

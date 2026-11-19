@@ -457,12 +457,16 @@ async fn with_role(
         warn!("user neither admin nor resident: {subject:?}");
     }
     req.extensions_mut().insert(role);
+    if let Some(user) = user {
+        req.extensions_mut().insert(user);
+    }
     Ok(next.call(req).await?.map_into_boxed_body())
 }
 
 async fn graphql_resident(
     context: Data<ApplicationContext>,
     role: actix_web::web::ReqData<Role>,
+    user: Option<actix_web::web::ReqData<UserInfo>>,
     request: GraphQLRequest,
 ) -> GraphQLResponse {
     let histogram = context.graphql_request_histogram.clone();
@@ -470,10 +474,11 @@ async fn graphql_resident(
     let timer = histogram
         .with_label_values(&[request.operation_name.as_deref().unwrap_or_default(), ""])
         .start_timer();
-    let response = context
-        .resident_schema
-        .execute(request.data(role.into_inner()))
-        .await;
+    let mut request = request.data(role.into_inner());
+    if let Some(user) = user {
+        request = request.data(user.into_inner());
+    }
+    let response = context.resident_schema.execute(request).await;
     timer.stop_and_record();
     response.into()
 }

@@ -22,6 +22,44 @@ pub fn own_port(port: &str, device: &str) -> String {
     format!("Port {port} von {device}")
 }
 
+pub const CHANGE_WLAN: &str = "WLAN ändern";
+pub const SSID: &str = "WLAN-Name";
+pub const PSK: &str = "Passwort";
+pub const SSID_PLACEHOLDER: &str = "Name des WLANs";
+pub const PSK_PLACEHOLDER: &str = "Neues Passwort";
+pub const PSK_HINT: &str = "12 bis 63 Zeichen, ohne Umlaute";
+pub const SHOW_PSK: &str = "Zeigen";
+pub const HIDE_PSK: &str = "Verbergen";
+pub const RANDOM_PSK: &str = "Zufällig erzeugen";
+pub const PREVIEW: &str = "Vorschau";
+pub const DISCARD: &str = "Verwerfen";
+pub const PLANNING: &str = "Vorschau wird berechnet …";
+pub const SAVE: &str = "Speichern";
+pub const BACK: &str = "Zurück";
+pub const CLOSE: &str = "Schliessen";
+pub const SAVING: &str = "Wird gespeichert …";
+pub const SAVED: &str = "In NetBox gespeichert";
+pub const SAVED_HINT: &str = "Auf die Geräte kommt die Änderung mit dem Ausrollen; wie weit das \
+    ist, zeigt diese Seite noch nicht.";
+pub const NOT_SAVED: &str = "Nicht gespeichert";
+pub const CLIENTS_RECONNECT: &str = "Verbundene Geräte verlieren kurz das WLAN und brauchen danach den neuen Namen oder das \
+     neue Passwort.";
+
+/// the preview: the WLAN gets another name
+pub fn ssid_change(before: &str, ssid: &str) -> String {
+    format!("WLAN {before} heisst neu {ssid}")
+}
+
+/// the preview: the WLAN gets another password
+pub fn psk_change(ssid: &str) -> String {
+    format!("WLAN {ssid} bekommt ein neues Passwort")
+}
+
+/// the preview: the devices whose configuration changes
+pub fn devices_change(devices: &[&str]) -> String {
+    format!("Das ändert die Konfiguration von {}", devices.join(", "))
+}
+
 /// a NetBox location with the ones it is in, the outermost first: „2. OG › Wohnung Meier“
 pub fn location_path(names: &[String]) -> String {
     names.join(" › ")
