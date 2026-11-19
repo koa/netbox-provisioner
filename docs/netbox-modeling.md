@@ -161,6 +161,10 @@ Owner Group (NetBox verlangt eine; der Provisioner beachtet sie nicht). Gelesen 
 - ein VLAN ist sein Netz; die WLANs auf seinen VLANs gehören ihm damit, und deren WLAN-Gruppe
   ist seine. `owner` am Wireless LAN wird nicht gelesen.
 
+Die Anwohneransicht gruppiert nach Site und darin nach der **Location** des Geräts mit den
+Locations, in denen sie liegt („1. OG › Wohnung Meier“). Die Wand einer Dose gehört also in
+die Location ihrer Wohnung oder ihres Raums.
+
 Was ihm gehört, berechnet `topology::ownership`. Auf die Konfiguration der Geräte hat der
 Besitz keinen Einfluss. Wer sich als welcher Anwohner anmeldet, steht im
 [Konzept](concepts/self-service.md#wer-ist-wer).

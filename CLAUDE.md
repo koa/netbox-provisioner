@@ -147,7 +147,9 @@ A resident (C7, `docs/concepts/self-service.md`) is a NetBox owner: `owner` is r
 devices, interfaces, front ports (sockets in the flat: the front side takes the resident's
 device, the rear port leads to the switch whose port's network the socket has) and VLANs
 (`Topology.owners`, what NetBox gives each directly), and `topology::ownership` derives the
-rest (`Topology::owned_by`: the ports of its devices, the WLANs on its VLANs, their groups). It changes nothing in the generated configs. Who a user
+rest (`Topology::owned_by`: the ports of its devices, the WLANs on its VLANs, their groups).
+Its view groups by site and then by the device's NetBox location path (`Device.location`,
+from `location_list`, outermost first). It changes nothing in the generated configs. Who a user
 is decides `role::of` per request: admin, else a resident by the owners NetBox has its
 `preferred_username` in (`netbox::owners`, kept 30 s), else nobody. Residents ask
 `/graphql/resident` (`graphql::resident`, `docs/self-service.md`), a schema of its own that

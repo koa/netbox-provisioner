@@ -142,6 +142,15 @@ pub(crate) fn example_response() -> serde_json::Value {
         data.entry("service_list")
             .or_insert_with(|| serde_json::json!([]));
     }
+    // and before the locations were: a device's location without its id is none
+    if let Some(data) = raw["data"].as_object_mut()
+        && !data.contains_key("location_list")
+    {
+        data.insert("location_list".into(), serde_json::json!([]));
+        for device in data["device_list"].as_array_mut().into_iter().flatten() {
+            device["location"] = serde_json::Value::Null;
+        }
+    }
     for cable in raw["data"]["cable_list"]
         .as_array_mut()
         .into_iter()
@@ -311,4 +320,33 @@ pub(crate) fn owned_example() -> OwnedExample {
         vlan,
         wlan,
     }
+}
+
+/// A device's location is the path of names from the outermost one; a loop in NetBox's
+/// parents ends it instead of running on.
+#[test]
+fn a_devices_location_is_its_path_of_locations() {
+    let mut raw = example_response();
+    let data = &mut raw["data"];
+    data["location_list"] = serde_json::json!([
+        { "id": "1", "name": "2. OG", "parent": null },
+        { "id": "2", "name": "Wohnung Meier", "parent": { "id": "1" } },
+        { "id": "3", "name": "a", "parent": { "id": "4" } },
+        { "id": "4", "name": "b", "parent": { "id": "3" } },
+    ]);
+    let devices = data["device_list"].as_array_mut().expect("devices");
+    devices[0]["location"] = serde_json::json!({ "id": "2", "tenant": null });
+    devices[1]["location"] = serde_json::json!({ "id": "3", "tenant": null });
+    let first = devices[0]["name"].as_str().expect("a name").to_owned();
+    let second = devices[1]["name"].as_str().expect("a name").to_owned();
+    let topology = topology_from(raw);
+    let location = |name: &str| {
+        let device = topology
+            .list_devices()
+            .find(|device| device.name() == name)
+            .expect("the device");
+        device.location().to_vec()
+    };
+    assert_eq!(location(&first), ["2. OG".into(), "Wohnung Meier".into()]);
+    assert!(location(&second).len() <= 4, "{:?}", location(&second));
 }

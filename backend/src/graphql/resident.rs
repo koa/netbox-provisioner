@@ -86,6 +86,9 @@ pub struct ResidentPort {
     label: Option<Box<str>>,
     device: Named,
     site: Option<Named>,
+    /// the NetBox location of its device and the ones that location is in, the outermost
+    /// first (a floor, a flat, a room); empty without one
+    location: Box<[Box<str>]>,
     /// the port is on a device of the resident
     on_own_device: bool,
     /// its untagged VLAN or its bridge's, if it is one of the resident's; of a socket that of
@@ -181,11 +184,12 @@ pub fn resident(topology: &Arc<Topology>, owner: OwnerId) -> Option<Resident> {
         .chain(sockets)
         .map(|port| SortedPort {
             key: format!(
-                "{}\0{}\0{}",
+                "{}\0{}\0{}\0{}",
                 port.site
                     .as_ref()
                     .map(|site| &*site.name)
                     .unwrap_or_default(),
+                port.location.join("\u{1}"),
                 port.device.name,
                 naturalize_interface(&port.name)
             ),
@@ -238,6 +242,7 @@ fn port(owned: &Owned, interface: &InterfaceAccess) -> Option<ResidentPort> {
             id: AccessTopology::id(&site).0,
             name: site.name().into(),
         }),
+        location: device.location().into(),
         on_own_device: owned.devices.contains(&device.id()),
         device: named_device(&device),
         network: network.own(owned),
@@ -270,6 +275,7 @@ fn socket_port(owned: &Owned, socket: &FrontPortAccess) -> Option<ResidentPort> 
             id: AccessTopology::id(&site).0,
             name: site.name().into(),
         }),
+        location: device.location().into(),
         on_own_device: false,
         device: named_device(&device),
         network: network.own(owned),

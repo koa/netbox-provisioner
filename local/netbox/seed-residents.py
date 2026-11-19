@@ -9,7 +9,7 @@ ether4 of lab-crs125 and the VLAN lab-gast. Ownership changes no device's config
 Each has a socket in its flat: a wall device (`wohnung-<user>`) with a front port, whose rear
 port is cabled to a port of `lab-keller-switch` with the resident's VLAN untagged; Meier's
 `meier-pc` is plugged in. None of them has RouterOS or a cable to a lab device, so no
-configuration changes.
+configuration changes. The walls are in locations „1. OG“ › „Wohnung <User>“.
 Idempotent, like seed-lab.py, whose NetBox client it takes.
 
     local/netbox/seed-residents.py [--url http://127.0.0.1:8001] [--token-file …]
@@ -62,7 +62,13 @@ def socket(nb, resident, owner, site, role, device_type):
     vlan = one(nb, "ipam/vlans", {"name": resident["vlans"][0]})["id"]
     switch_port = nb.ensure("dcim/interfaces", {"device_id": switch, "name": spec["switch_port"]},
                             {"type": "1000base-t", "mode": "access", "untagged_vlan": vlan})["id"]
-    wall = nb.ensure("dcim/devices", {"name": f"wohnung-{user}"}, common)["id"]
+    # the wall in its flat, in the house's first floor (locations: a floor, then the flat)
+    floor = nb.ensure("dcim/locations", {"slug": "lab-1-og"},
+                      {"name": "1. OG", "site": site})["id"]
+    flat = nb.ensure("dcim/locations", {"slug": f"lab-wohnung-{user}"},
+                     {"name": f"Wohnung {user.capitalize()}", "site": site, "parent": floor})["id"]
+    wall = nb.ensure("dcim/devices", {"name": f"wohnung-{user}"},
+                     {**common, "location": flat})["id"]
     rear = nb.ensure("dcim/rear-ports", {"device_id": wall, "name": "1"},
                      {"type": "8p8c", "positions": 1})["id"]
     front = nb.ensure("dcim/front-ports", {"device_id": wall, "name": "1"},

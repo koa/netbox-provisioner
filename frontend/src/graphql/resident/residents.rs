@@ -57,6 +57,7 @@ pub struct ResidentPort {
     pub label: Option<String>,
     pub device: Named,
     pub site: Option<Named>,
+    pub location: Vec<String>,
     pub on_own_device: bool,
     pub network: Option<Named>,
     pub foreign_network: bool,

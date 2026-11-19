@@ -22,6 +22,11 @@ pub fn own_port(port: &str, device: &str) -> String {
     format!("Port {port} von {device}")
 }
 
+/// a NetBox location with the ones it is in, the outermost first: „2. OG › Wohnung Meier“
+pub fn location_path(names: &[String]) -> String {
+    names.join(" › ")
+}
+
 /// a socket in the flat (a front port in NetBox)
 pub const SOCKET: &str = "Dose";
 

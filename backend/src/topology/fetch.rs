@@ -53,12 +53,13 @@ pub(crate) fn build_topology_from(
             credentials_by_tenants.insert(tenant.id.inner(), cred);
         }
     }
+    let locations = Locations::new(&data.location_list);
     let mut builder = Builder::default();
     for wlan_group in data.wireless_lan_group_list {
         builder.add_wlan_group(wlan_group);
     }
     for device in data.device_list {
-        builder.add_device(device, &credentials_by_tenants);
+        builder.add_device(device, &credentials_by_tenants, &locations);
     }
     builder.assign_aps();
     for vlan_group in data.vlan_group_list {
@@ -81,6 +82,36 @@ pub(crate) fn build_topology_from(
     }
     let services = forwards(data.service_list);
     builder.build(fetch_time, source, services, management_proxy)
+}
+
+/// NetBox's locations by id, for a device's path of them.
+struct Locations<'a> {
+    by_id: HashMap<&'a str, &'a fetch_topology::LocationEntry>,
+}
+
+impl<'a> Locations<'a> {
+    fn new(list: &'a [fetch_topology::LocationEntry]) -> Self {
+        let by_id = list
+            .iter()
+            .map(|location| (location.id.inner(), location))
+            .collect();
+        Locations { by_id }
+    }
+    /// The names from the outermost location down to `id`.
+    fn path(&self, id: &str) -> Box<[Box<str>]> {
+        let mut path = Vec::new();
+        let mut next = self.by_id.get(id);
+        // a location is in at most every other one: a loop in the data ends there
+        while let Some(location) = next.filter(|_| path.len() < self.by_id.len()) {
+            path.push(location.name.as_str().into());
+            next = location
+                .parent
+                .as_ref()
+                .and_then(|parent| self.by_id.get(parent.id.inner()));
+        }
+        path.reverse();
+        path.into()
+    }
 }
 
 /// A site while its devices are gathered.
@@ -204,7 +235,13 @@ impl Builder {
         &mut self,
         device: fetch_topology::Device,
         credentials_by_tenants: &HashMap<&str, &str>,
+        locations: &Locations,
     ) {
+        let location = device
+            .location
+            .as_ref()
+            .map(|location| locations.path(location.id.inner()))
+            .unwrap_or_default();
         let Some(device_id) = device.id.inner().parse().ok().map(DeviceId) else {
             return;
         };
@@ -326,6 +363,7 @@ impl Builder {
             Device {
                 name: device.name.map(String::into_boxed_str).unwrap_or_default(),
                 site,
+                location,
                 ports,
                 primary_ip,
                 primary_ip_v4,

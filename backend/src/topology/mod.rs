@@ -350,6 +350,9 @@ impl Topology {
 pub struct Device {
     pub name: Box<str>,
     pub site: Option<SiteId>,
+    /// the names of its NetBox location and the ones it is in, the outermost first (a
+    /// floor, a flat, a room); empty without one
+    pub location: Box<[Box<str>]>,
     pub ports: HashSet<CablePort>,
     pub primary_ip: Option<IpAddressId>,
     pub primary_ip_v4: Option<IpAddressId>,

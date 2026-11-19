@@ -72,6 +72,10 @@ impl DeviceAccess {
     pub fn name(&self) -> &str {
         self.data().map(|d| d.name()).unwrap_or_default()
     }
+    /// the names of its NetBox location and the ones it is in, the outermost first
+    pub fn location(&self) -> &[Box<str>] {
+        self.data().map(|d| &*d.location).unwrap_or_default()
+    }
     /// the `model` of its NetBox device type
     pub fn device_type(&self) -> &str {
         self.data().map(|d| &*d.device_type).unwrap_or_default()

@@ -43,27 +43,53 @@ pub fn ResidentView(props: &ResidentViewProps) -> Html {
     }
 }
 
-/// The ports by site, as the backend sorts them (site, device, port).
+/// The ports of one site and location, as the backend sorts them (site, location, device,
+/// port).
+struct Group<'a> {
+    site: Option<&'a str>,
+    location: &'a [String],
+    ports: Vec<&'a ResidentPort>,
+}
+
+/// The ports by site, and in it by location (a floor, a flat, a room).
 fn ports(ports: &[ResidentPort]) -> Html {
     if ports.is_empty() {
         return html!(<Content><p>{t::NO_PORTS}</p></Content>);
     }
-    let mut groups: Vec<(Option<&str>, Vec<&ResidentPort>)> = Vec::new();
+    let mut groups: Vec<Group> = Vec::new();
     for port in ports {
         let site = port.site.as_ref().map(|site| site.name.as_str());
         match groups.last_mut() {
-            Some((last, members)) if *last == site => members.push(port),
-            _ => groups.push((site, vec![port])),
+            Some(last) if last.site == site && last.location == port.location.as_slice() => {
+                last.ports.push(port)
+            }
+            _ => groups.push(Group {
+                site,
+                location: &port.location,
+                ports: vec![port],
+            }),
         }
     }
+    let mut shown_site = None;
     groups
         .into_iter()
-        .map(|(site, members)| {
-            let title = site.map(|site| html!(<Title level={Level::H3}>{site}</Title>));
+        .map(|group| {
+            // the site once, above its first location
+            let site = (shown_site != Some(group.site)).then(|| {
+                shown_site = Some(group.site);
+                group
+                    .site
+                    .map(|site| html!(<Title level={Level::H3}>{site}</Title>))
+            });
+            let location = (!group.location.is_empty()).then(|| {
+                let path = t::location_path(group.location);
+                html!(<Title level={Level::H4}>{path}</Title>)
+            });
             html! {
                 <section class="resident-site">
-                    {title}
-                    { for members.into_iter().map(port_row) }
+                    {site.flatten()}
+                    {location}
+                    { for group.ports.into_iter().map(port_row) }
                 </section>
             }
         })

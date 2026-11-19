@@ -21,6 +21,8 @@ cynic::impl_scalar!(JSON, schema::JSON);
 pub struct FetchTopology {
     pub device_list: Vec<Device>,
     pub tenant_list: Vec<Tenant>,
+    /// the rooms, flats and floors within the sites, with their parents (`Device.location`)
+    pub location_list: Vec<LocationEntry>,
     pub cable_list: Vec<Cable>,
     /// a cable path goes on from one end of a circuit (a leased line, a fiber between
     /// buildings) at its other end
@@ -158,7 +160,22 @@ pub struct Platform {
 #[derive(cynic::QueryFragment, Serialize, Debug, Clone)]
 #[cynic(graphql_type = "LocationType", rename_all = "None")]
 pub struct Location {
+    pub id: Id,
     pub tenant: Option<TenantRef>,
+}
+
+#[derive(cynic::QueryFragment, Serialize, Debug, Clone)]
+#[cynic(graphql_type = "LocationType", rename_all = "None")]
+pub struct LocationEntry {
+    pub id: Id,
+    pub name: String,
+    pub parent: Option<LocationRef>,
+}
+
+#[derive(cynic::QueryFragment, Serialize, Debug, Clone)]
+#[cynic(graphql_type = "LocationType", rename_all = "None")]
+pub struct LocationRef {
+    pub id: Id,
 }
 
 #[derive(cynic::QueryFragment, Serialize, Debug, Clone)]
