@@ -389,6 +389,7 @@ fn a_wlan_without_vlan_is_an_error() {
         builder.wlans.insert(
             id,
             WlanData {
+                enabled: true,
                 ssid: ssid.into(),
                 vlan,
                 wlan_auth: WlanAuth::Open(WlanOpenSettings { use_owe: false }),

@@ -164,7 +164,9 @@ tabs „Dosen und Geräte“ and „Netze“), nobody a hint; its queries are in
 (`graphql::resident::change`: `wlanPlan`, `saveWlan`, `savedChange`), allowed only on what
 `owned_by` gives its owner (an admin: any owner), written as the plan device's `NetboxWrite`
 job like the admins' helpers (`helper::wlan`, step `UpdateWirelessLan`, keys kept out of the
-fingerprint and the job's log); the frontend's „WLAN ändern“ is `components::resident::
+fingerprint and the job's log; also on/off, NetBox `status` `disabled`: `wlan()` of a group or
+VLAN gives only the WLANs on, which the generator uses, `all_wlans()` also those off, for the
+resident's view and unique SSIDs); the frontend's „WLAN ändern“ is `components::resident::
 wlan_edit`. The lab has two residents (`meier`, `huber`: Keycloak
 and `local/netbox/seed-residents.py`). An export
 without owners gets them as `null` (`topology::test::example_response`), as do the objects a

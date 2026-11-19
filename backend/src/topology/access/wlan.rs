@@ -46,6 +46,10 @@ impl WlanAccess {
     pub fn auth(&self) -> Option<&WlanAuth> {
         self.data().map(|d| &d.wlan_auth)
     }
+    /// not switched off in NetBox: its APs send it
+    pub fn enabled(&self) -> bool {
+        self.data().is_some_and(|d| d.enabled)
+    }
 }
 impl Debug for WlanAccess {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

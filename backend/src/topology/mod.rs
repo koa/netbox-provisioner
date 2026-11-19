@@ -479,6 +479,8 @@ pub struct VlanGroupData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WlanData {
     pub ssid: Box<str>,
+    /// not switched off (NetBox `status` other than `disabled`): the APs send it
+    pub enabled: bool,
     pub vlan: Option<VlanId>,
     pub wlan_auth: WlanAuth,
     pub wlan_group: WlanGroupId,

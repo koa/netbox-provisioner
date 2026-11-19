@@ -1,7 +1,9 @@
-//! Scope: The helper „WLAN ändern“: SSID and key of a WLAN; not who may (`graphql::resident`).
+//! Scope: The helper „WLAN ändern“: SSID, key and on/off of a WLAN; not who may
+//! (`graphql::resident`).
 //!
-//! Helper „WLAN ändern“: a new SSID or WPA personal key for a WLAN, the resident's
-//! `setWlanSsid` and `setWlanPsk` (`docs/concepts/self-service.md`). The plan is the WLAN
+//! Helper „WLAN ändern“: a new SSID or WPA personal key for a WLAN, or switching it on or off
+//! (NetBox `status` `active` or `disabled`), the resident's `setWlanSsid`, `setWlanPsk` and
+//! `setWlanEnabled` (`docs/concepts/self-service.md`). The plan is the WLAN
 //! group's controller's: it and all APs of the group get the change. Security type and VLAN
 //! stay the admins', so only a WLAN with a WPA personal key gets a new one.
 use super::{NetboxPlan, PlanStep, UpdateWirelessLan};
@@ -22,6 +24,8 @@ pub struct WlanInput {
     pub ssid: Option<String>,
     /// the new key, none to keep it
     pub psk: Option<String>,
+    /// switch it on or off, none to keep it
+    pub enabled: Option<bool>,
 }
 
 /// The shortest key a WLAN gets (the concept's rule, WPA allows 8).
@@ -58,7 +62,7 @@ pub fn check_ssid(wlan: &WlanAccess, ssid: &str) -> Result<(), Error> {
         return Err(Error::SsidInvalid);
     }
     let taken = wlan.wlan_group().is_some_and(|group| {
-        group.wlan().any(|other| {
+        group.all_wlans().any(|other| {
             AccessTopology::id(&other) != AccessTopology::id(wlan) && other.ssid() == Some(ssid)
         })
     });
@@ -90,7 +94,8 @@ pub fn plan(topology: &Arc<Topology>, input: &WlanInput) -> Result<NetboxPlan, E
         }
         (Some(_), None) => return Err(Error::WlanNotPersonal(ssid_before)),
     };
-    if ssid.is_none() && psk.is_none() {
+    let enabled = input.enabled.filter(|enabled| *enabled != wlan.enabled());
+    if ssid.is_none() && psk.is_none() && enabled.is_none() {
         return Err(Error::NothingToChange);
     }
     let controller = wlan
@@ -105,6 +110,7 @@ pub fn plan(topology: &Arc<Topology>, input: &WlanInput) -> Result<NetboxPlan, E
             ssid_before,
             psk_set: psk.is_some(),
             psk,
+            enabled,
             psk_before: psk_before.unwrap_or_default().into(),
         }));
     Ok(plan)

@@ -492,6 +492,9 @@ impl NetboxPlan {
                                 if let Some(psk) = &update.psk {
                                     wlan["auth_psk"] = json!(psk);
                                 }
+                                if let Some(enabled) = update.enabled {
+                                    wlan["status"] = json!(wlan_status(enabled));
+                                }
                             }
                         }
                     }
@@ -588,6 +591,11 @@ pub(crate) fn port_name(interface: &InterfaceAccess) -> Box<str> {
 /// The device, as `DeviceRef`, for a plan step.
 pub(crate) fn device_ref(device: &DeviceAccess) -> DeviceRef {
     crate::topology::findings::device_ref(device)
+}
+
+/// NetBox' `status` of a WLAN switched on or off.
+pub(crate) fn wlan_status(enabled: bool) -> &'static str {
+    if enabled { "active" } else { "disabled" }
 }
 
 #[cfg(test)]

@@ -224,13 +224,23 @@ pub fn update_wireless_link(a: Port, b: Port, ssid: Option<Change<&str>>, psk: b
     format!("Wireless Link {a} – {b}: {}", changes.join(", "))
 }
 /// a WLAN (`ssid_before` now) getting a new SSID or key
-pub fn update_wireless_lan(ssid_before: &str, ssid: Option<&str>, psk: bool) -> String {
+pub fn update_wireless_lan(
+    ssid_before: &str,
+    ssid: Option<&str>,
+    psk: bool,
+    enabled: Option<bool>,
+) -> String {
     let mut changes = Vec::new();
     if let Some(ssid) = ssid {
         changes.push(format!("SSID {ssid}"));
     }
     if psk {
         changes.push("neues Passwort".to_string());
+    }
+    match enabled {
+        Some(true) => changes.push("eingeschaltet".to_string()),
+        Some(false) => changes.push("ausgeschaltet".to_string()),
+        None => {}
     }
     format!("WLAN {ssid_before}: {}", changes.join(", "))
 }

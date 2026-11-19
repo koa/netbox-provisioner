@@ -34,15 +34,16 @@ use std::net::{IpAddr, Ipv4Addr};
 /// `[controller, ax CAP, wAP ac on wifi-qcom-ac, wAP ac on wireless]`, with a WLAN per VLAN
 /// id given (SSID `wlan<vid>`), all in one VLAN group with a VXLAN.
 async fn wlan_group(vlan_ids: &[u16]) -> [DeviceAccess; 4] {
-    wlan_group_with(vlan_ids, false, &[]).await
+    wlan_group_with(vlan_ids, false, &[], &[]).await
 }
 
 /// Like `wlan_group`, with the controller also an AP of its group if `controller_is_ap`, with
-/// the radios `controller_radios`.
+/// the radios `controller_radios`, and the WLANs of the VLANs `off` switched off.
 async fn wlan_group_with(
     vlan_ids: &[u16],
     controller_is_ap: bool,
     controller_radios: &[PhysicalPortId],
+    off: &[u16],
 ) -> [DeviceAccess; 4] {
     let mut builder = TopologyBuilder::default();
     let devices = [(); 4].map(|_| builder.devices.next_id());
@@ -82,6 +83,7 @@ async fn wlan_group_with(
         builder.wlans.insert(
             wlan,
             WlanData {
+                enabled: !off.contains(vlan_id),
                 ssid: ssid.into(),
                 vlan: Some(vlan),
                 wlan_auth: WlanAuth::Wpa(WlanWpaSettings::new("preshared-key")),
@@ -218,6 +220,31 @@ async fn controller_sets_the_vlan_of_each_wlan() {
         let configuration = &target.configuration[&AsciiString::from(format!("wlan{vid}"))].0;
         assert_eq!(configuration.datapath_vlan_id, Some(HasNone::Value(vid)));
     }
+}
+
+/// A WLAN switched off (NetBox `disabled`) is left out: the controller has no configuration
+/// for it, and its VLAN goes to the CAPs no more where no other WLAN has it.
+#[tokio::test]
+async fn a_wlan_switched_off_is_left_out() {
+    let [controller, cap, ..] = wlan_group_with(&[104, 105], false, &[], &[105]).await;
+    let target = wifi(&controller, b"CCR2004-1G-12S+2XS", RadioPackage::WifiQcom).unwrap();
+    assert!(
+        target
+            .configuration
+            .contains_key(&AsciiString::from("wlan104"))
+    );
+    assert!(
+        !target
+            .configuration
+            .contains_key(&AsciiString::from("wlan105"))
+    );
+    let setup = L2Setup::new(&cap, KeepNameGenerator).unwrap();
+    let group = cap.wlan_ap_of().unwrap();
+    for wlan in group.all_wlans() {
+        let bridged = setup.bridge_of_wlan(&wlan).is_some();
+        assert_eq!(bridged, wlan.enabled(), "{:?}", wlan.ssid());
+    }
+    assert_eq!(group.all_wlans().count(), 2);
 }
 
 /// The controller names a CAP's interfaces after the CAP and its radio, to see where they
@@ -390,7 +417,7 @@ async fn ac_cap_without_tagging_is_refused() {
 /// to tag: it runs `wireless` for the legacy CAPsMAN, which isn't refused.
 #[tokio::test]
 async fn controller_without_radios_as_ap_is_not_refused() {
-    let [controller, ..] = wlan_group_with(&[104, 105], true, &[]).await;
+    let [controller, ..] = wlan_group_with(&[104, 105], true, &[], &[]).await;
     assert!(controller.wifi_cap_of().is_some());
     let package = needed_radio_package(&controller, b"CCR2004-1G-12S+2XS");
     assert_eq!(package, Some(RadioPackage::Wireless));
@@ -704,7 +731,7 @@ async fn controller_running_its_own_radios_bridges_them() {
         (&[104, 105][..], &[("wlan104", 104), ("wlan105", 105)][..]),
         (&[104][..], &[("wlan104", 104)][..]),
     ] {
-        let [controller, ..] = wlan_group_with(vlans, true, &[PhysicalPortId::Wifi(1)]).await;
+        let [controller, ..] = wlan_group_with(vlans, true, &[PhysicalPortId::Wifi(1)], &[]).await;
         let target = wifi(&controller, b"C52iG-5HaxD2HaxD", RadioPackage::WifiQcom).unwrap();
         assert!(
             !matches!(target.cap.enabled, YesNo::Yes),
@@ -738,7 +765,7 @@ async fn controller_running_its_own_radios_bridges_them() {
 /// without bridge, the CAPs forward by their own datapath.
 #[tokio::test]
 async fn controller_without_radios_leaves_the_bridge_to_the_caps() {
-    let [controller, ..] = wlan_group_with(&[104, 105], true, &[]).await;
+    let [controller, ..] = wlan_group_with(&[104, 105], true, &[], &[]).await;
     let target = wifi(&controller, b"CCR2004-1G-12S+2XS", RadioPackage::WifiQcom).unwrap();
     let configuration = &target.configuration[&AsciiString::from("wlan104")].0;
     assert_eq!(configuration.datapath_bridge, None);

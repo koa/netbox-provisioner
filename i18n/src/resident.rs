@@ -27,6 +27,7 @@ pub const SSID: &str = "WLAN-Name";
 pub const PSK: &str = "Passwort";
 pub const SSID_PLACEHOLDER: &str = "Name des WLANs";
 pub const PSK_PLACEHOLDER: &str = "Neues Passwort";
+pub const ENABLED: &str = "Eingeschaltet";
 pub const PSK_HINT: &str = "12 bis 63 Zeichen, ohne Umlaute";
 pub const SHOW_PSK: &str = "Zeigen";
 pub const HIDE_PSK: &str = "Verbergen";
@@ -42,12 +43,24 @@ pub const SAVED: &str = "In NetBox gespeichert";
 pub const SAVED_HINT: &str = "Auf die Geräte kommt die Änderung mit dem Ausrollen; wie weit das \
     ist, zeigt diese Seite noch nicht.";
 pub const NOT_SAVED: &str = "Nicht gespeichert";
+pub const CLIENTS_DISCONNECT: &str =
+    "Verbundene Geräte verlieren das WLAN, bis es wieder eingeschaltet ist.";
 pub const CLIENTS_RECONNECT: &str = "Verbundene Geräte verlieren kurz das WLAN und brauchen danach den neuen Namen oder das \
      neue Passwort.";
 
 /// the preview: the WLAN gets another name
 pub fn ssid_change(before: &str, ssid: &str) -> String {
     format!("WLAN {before} heisst neu {ssid}")
+}
+
+/// the preview: no access point sends the WLAN any more
+pub fn wlan_off(ssid: &str) -> String {
+    format!("WLAN {ssid} wird ausgeschaltet")
+}
+
+/// the preview: the access points send the WLAN again
+pub fn wlan_on(ssid: &str) -> String {
+    format!("WLAN {ssid} wird eingeschaltet")
 }
 
 /// the preview: the WLAN gets another password
@@ -101,7 +114,10 @@ pub fn network_title(name: &str, ssid: Option<&str>) -> String {
 }
 
 /// a WLAN and how many access points send it
-pub fn wlan(ssid: &str, access_points: i32) -> String {
+pub fn wlan(ssid: &str, access_points: i32, enabled: bool) -> String {
+    if !enabled {
+        return format!("WLAN {ssid}: ausgeschaltet");
+    }
     match access_points {
         1 => format!("WLAN {ssid}: 1 Access Point"),
         count => format!("WLAN {ssid}: {count} Access Points"),

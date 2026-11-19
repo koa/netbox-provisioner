@@ -224,7 +224,7 @@ pub fn options(device: &DeviceAccess) -> PortVlanOptions {
     own.sort_by_key(|vlan| (vlan.vlan_id(), vlan.id.0));
     let group = own
         .iter()
-        .filter(|vlan| vlan.wlan().next().is_some())
+        .filter(|vlan| vlan.all_wlans().next().is_some())
         .chain(&own)
         .filter_map(|vlan| vlan.group().map(|group| group.id.0))
         .find(|id| groups.iter().any(|group| group.id == *id));

@@ -1,4 +1,4 @@
-//! Scope: Changing a resident's WLAN: its name and password, the preview in words, saving and
+//! Scope: Changing a resident's WLAN: its name and password, on or off, the preview in words, saving and
 //! how saving went; not the network card it sits in (`components::resident`).
 use crate::{
     error::{FrontendError, ServerProblem},
@@ -18,7 +18,7 @@ use cynic::{MutationBuilder, QueryBuilder};
 use gloo::timers::future::TimeoutFuture;
 use i18n::resident as t;
 use patternfly_yew::prelude::{
-    Alert, AlertType, Button, ButtonVariant, Form, FormGroup, FormHelperText, TextInput,
+    Alert, AlertType, Button, ButtonVariant, Form, FormGroup, FormHelperText, Switch, TextInput,
     TextInputType,
 };
 use yew::{Callback, Component, Context, Html, Properties, html, platform::spawn_local};
@@ -56,6 +56,7 @@ pub enum WlanEdit {
 pub struct Draft {
     ssid: String,
     psk: String,
+    enabled: bool,
     show_psk: bool,
 }
 
@@ -64,6 +65,7 @@ pub enum WlanEditMsg {
     Close,
     Ssid(String),
     Psk(String),
+    Enabled(bool),
     ShowPsk,
     RandomPsk,
     Preview,
@@ -89,6 +91,7 @@ impl Component for WlanEdit {
             (_, WlanEditMsg::Open) => WlanEdit::Editing(Draft {
                 ssid: wlan.ssid.clone(),
                 psk: wlan.psk.clone().unwrap_or_default(),
+                enabled: wlan.enabled,
                 show_psk: false,
             }),
             (_, WlanEditMsg::Close) => WlanEdit::Closed,
@@ -99,6 +102,10 @@ impl Component for WlanEdit {
                 }
                 WlanEditMsg::Psk(psk) => {
                     draft.psk = psk;
+                    WlanEdit::Editing(draft)
+                }
+                WlanEditMsg::Enabled(enabled) => {
+                    draft.enabled = enabled;
                     WlanEdit::Editing(draft)
                 }
                 WlanEditMsg::ShowPsk => {
@@ -226,7 +233,7 @@ impl WlanEdit {
             }
         });
         let input = Self::input(ctx, draft);
-        let unchanged = input.ssid.is_none() && input.psk.is_none();
+        let unchanged = input.ssid.is_none() && input.psk.is_none() && input.enabled.is_none();
         html! {
             <div class="wlan-edit">
                 <Form>
@@ -238,6 +245,11 @@ impl WlanEdit {
                         />
                     </FormGroup>
                     {psk}
+                    <Switch
+                        label={t::ENABLED}
+                        checked={draft.enabled}
+                        onchange={link.callback(WlanEditMsg::Enabled)}
+                    />
                 </Form>
                 <div class="wlan-edit-actions">
                     <Button
@@ -264,6 +276,7 @@ impl WlanEdit {
             ssid: (draft.ssid != wlan.ssid).then(|| draft.ssid.clone()),
             psk: (wlan.psk.as_ref() != Some(&draft.psk) && wlan.psk.is_some())
                 .then(|| draft.psk.clone()),
+            enabled: (draft.enabled != wlan.enabled).then_some(draft.enabled),
         }
     }
 
@@ -321,8 +334,24 @@ fn preview(ctx: &Context<WlanEdit>, plan: &ResidentPlan) -> Html {
             .as_deref()
             .map(|ssid| t::ssid_change(&wlan.ssid_before, ssid));
         let psk = wlan.psk_set.then(|| t::psk_change(&wlan.ssid_before));
-        ssid.into_iter().chain(psk)
+        let enabled = wlan.enabled.map(|enabled| match enabled {
+            true => t::wlan_on(&wlan.ssid_before),
+            false => t::wlan_off(&wlan.ssid_before),
+        });
+        ssid.into_iter().chain(psk).chain(enabled)
     });
+    // what the connected devices notice: switched on, none are connected yet
+    let clients = if plan.wlans.iter().any(|wlan| wlan.enabled == Some(false)) {
+        Some(t::CLIENTS_DISCONNECT)
+    } else if plan
+        .wlans
+        .iter()
+        .any(|wlan| wlan.ssid.is_some() || wlan.psk_set)
+    {
+        Some(t::CLIENTS_RECONNECT)
+    } else {
+        None
+    };
     let devices = plan
         .devices
         .iter()
@@ -334,7 +363,7 @@ fn preview(ctx: &Context<WlanEdit>, plan: &ResidentPlan) -> Html {
                 { for changes.map(|change| html!(<li>{change}</li>)) }
             </ul>
             <Alert inline=true r#type={AlertType::Info} title={t::devices_change(&devices)}>
-                <p>{t::CLIENTS_RECONNECT}</p>
+                { for clients.map(|text| html!(<p>{text}</p>)) }
             </Alert>
             <div class="wlan-edit-actions">
                 <Button

@@ -94,6 +94,7 @@ async fn wlan_group_with(radios: u16) -> (DeviceAccess, DeviceAccess, DeviceAcce
     builder.wlans.insert(
         wlan,
         WlanData {
+            enabled: true,
             ssid: "lab wlan".into(),
             vlan: Some(vlan),
             wlan_auth: WlanAuth::Wpa(WlanWpaSettings::new("lab-wlan-preshared-key")),

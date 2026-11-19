@@ -956,7 +956,8 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
             && !interface.ips().is_empty()
             && let Some(vlan) = interface.untagged_vlan()
             && let Some(vlan_ref) = vlan_ref(&vlan)
-            && vlan.wlan().next().is_none()
+            // a switched off WLAN is the resident's choice: its VLAN isn't forgotten
+            && vlan.all_wlans().next().is_none()
             && !interfaces.iter().any(|other| {
                 other.id() != interface.id()
                     && other.carried_vlans().iter().any(|v| v.id == vlan.id)

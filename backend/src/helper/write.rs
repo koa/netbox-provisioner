@@ -1106,6 +1106,7 @@ async fn update_wireless_lan(
     let current = rest.get(&path).await?;
     let ssid = current["ssid"].as_str().unwrap_or_default();
     let psk = current["auth_psk"].as_str().unwrap_or_default();
+    let status = current["status"]["value"].as_str().unwrap_or_default();
     if ssid != &*update.ssid_before || psk != &*update.psk_before {
         return Err(Error::NetboxChanged(format!("WLAN {ssid}").into()));
     }
@@ -1119,6 +1120,16 @@ async fn update_wireless_lan(
             field: "ssid".into(),
             value: Some(new.clone()),
             previous: Some(ssid.into()),
+        });
+    }
+    if let Some(enabled) = update.enabled {
+        let new = super::wlan_status(enabled);
+        change.insert("status".into(), json!(new));
+        before.insert("status".into(), json!(status));
+        changes.push(FieldChange {
+            field: "status".into(),
+            value: Some(new.into()),
+            previous: Some(status.into()),
         });
     }
     if let Some(new) = &update.psk {

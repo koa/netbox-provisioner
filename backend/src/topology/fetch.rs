@@ -206,6 +206,7 @@ impl Builder {
                     self.wlans.insert(
                         id,
                         WlanData {
+                            enabled: wlan.status != "disabled",
                             ssid: wlan.ssid.into_boxed_str(),
                             vlan,
                             wlan_auth,

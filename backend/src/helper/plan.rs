@@ -358,6 +358,8 @@ pub struct UpdateWirelessLan {
     pub psk_set: bool,
     #[graphql(skip)]
     pub psk: Option<Box<str>>,
+    /// switched on (`true`) or off; none: as it is
+    pub enabled: Option<bool>,
     /// the key it has, checked before writing: NetBox changed in between otherwise
     #[graphql(skip)]
     pub psk_before: Box<str>,
@@ -372,6 +374,7 @@ impl std::fmt::Debug for UpdateWirelessLan {
             .field("ssid", &self.ssid)
             .field("ssid_before", &self.ssid_before)
             .field("psk_set", &self.psk_set)
+            .field("enabled", &self.enabled)
             .finish_non_exhaustive()
     }
 }

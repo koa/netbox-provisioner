@@ -140,6 +140,8 @@ pub struct ResidentNetwork {
 pub struct ResidentWlan {
     id: u32,
     ssid: Box<str>,
+    /// switched on: its APs send it
+    enabled: bool,
     /// its WPA personal key, for showing it to its resident; none for an open WLAN (only an
     /// admin changes the security)
     psk: Option<Box<str>>,
@@ -402,11 +404,12 @@ fn network(owned: &Owned, vlan: &VlanAccess) -> Option<ResidentNetwork> {
         .map(|net| net.trunc())
         .collect();
     let wlans = vlan
-        .wlan()
+        .all_wlans()
         .filter(|wlan| owned.wlans.contains(&AccessTopology::id(wlan)))
         .map(|wlan| ResidentWlan {
             id: AccessTopology::id(&wlan).0,
             ssid: wlan.ssid().unwrap_or_default().into(),
+            enabled: wlan.enabled(),
             psk: match wlan.auth() {
                 Some(WlanAuth::Wpa(wpa)) => Some(wpa.psk().into()),
                 _ => None,

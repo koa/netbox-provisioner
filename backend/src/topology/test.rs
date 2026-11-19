@@ -130,6 +130,9 @@ pub(crate) fn example_response() -> serde_json::Value {
             if let Some(wlan) = wlan.as_object_mut() {
                 wlan.entry("auth_psk")
                     .or_insert_with(|| serde_json::json!("removed-from-export"));
+                // exports from before the status was queried: on
+                wlan.entry("status")
+                    .or_insert_with(|| serde_json::json!("active"));
             }
         }
     }

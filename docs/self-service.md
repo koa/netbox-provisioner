@@ -66,6 +66,8 @@ Die Regeln des Helfers „WLAN ändern“ (`helper::wlan`, auch im Admin-Schema 
   WLANs der Gruppe, auch fremde);
 - Passwort: 12 bis 63 druckbare ASCII-Zeichen, nur für ein WLAN mit WPA-Passwort (die
   Sicherheit eines WLANs ändert ein Admin);
+- ein- oder ausschalten: der Status `active` oder `disabled` am Wireless LAN; ausgeschaltet
+  bleibt es in der Ansicht des Anwohners und zählt für eindeutige SSIDs mit;
 - nichts geändert ist ein Fehler (`NOTHING_TO_CHANGE`).
 
 Die Passwörter stehen weder im Fingerprint noch im Job-Log (`•••`); das alte bleibt für
@@ -103,13 +105,13 @@ Die Ansicht (`components::resident`) hat zwei Tabs nach dem Prototyp:
   steht senkrecht.
 - **Netze:** eine Karte pro VLAN mit VID, Adressen und WLAN (SSID, Zahl der APs). Am WLAN
   „WLAN ändern“ (`wlan_edit`): Name und Passwort (zeigen, zufällig erzeugen: 16 Zeichen aus
-  der Zufallsquelle des Browsers, ohne 0, O, 1, l und I), „Vorschau“ erst nach einer Änderung.
+  der Zufallsquelle des Browsers, ohne 0, O, 1, l und I) und der Schalter „Eingeschaltet“,
+  „Vorschau“ erst nach einer Änderung. Ein ausgeschaltetes WLAN steht als „ausgeschaltet“ da.
   Die Vorschau sagt in Worten, was sich ändert, welche Geräte eine neue Konfiguration bekommen
-  und dass verbundene Geräte kurz das WLAN verlieren; „Speichern“ wartet auf den Job und sagt
+  und dass verbundene Geräte kurz das WLAN verlieren (ausgeschaltet: bis es wieder an ist); „Speichern“ wartet auf den Job und sagt
   dann „In NetBox gespeichert“, ohne zu behaupten, dass es schon ausgerollt ist.
 
-Noch nicht gebaut sind Geräte pro Port aus den Leases, Status-Labels, das WLAN ein- und
-ausschalten, Ports ins VLAN, Geräte anschliessen und Entwürfe über mehrere Elemente (C21).
+Noch nicht gebaut sind Geräte pro Port aus den Leases, Status-Labels, Ports ins VLAN, Geräte anschliessen und Entwürfe über mehrere Elemente (C21).
 Status-Labels kommen erst mit einer verlässlichen Quelle: Ein Label, das „ausgerollt“ behauptet, ohne es zu wissen, wäre falsch. Geprüft mit
 Playwright im Lab (2026-11-18) als `meier` (auch in Telefonbreite), `huber`, `reader` und
 `admin`; die Dosen (`wohnung-meier`, `wohnung-huber` hinter `lab-keller-switch`, Geräte ohne
@@ -119,4 +121,7 @@ RouterOS, in den Locations „1. OG › Wohnung …“) am 2026-11-19 als `meier
 `lab-np2` als Controller (das Custom Field `controller` der Gruppe zeigte seit 2026-10-31 auf ein
 gelöschtes Gerät). Ein zufälliges Passwort und die SSID hin und zurück gespeichert; nach der
 Freigabe des Admins rollte das automatische Rollout lab-np2 aus, danach war sein Diff leer.
-lab-wap ist nicht in der Gruppe: ihm fehlt das Paket `wireless` für einen CAP.
+lab-wap ist nicht in der Gruppe: ihm fehlt das Paket `wireless` für einen CAP. Ebenso
+`lab-wlan` aus- und wieder eingeschaltet: ausgeschaltet nahm das Rollout die Konfiguration
+`lab-wlan` und VLAN 104 von der Bridge von lab-np2, `lab-gast` blieb allein mit seiner VLAN im
+Datapath der CAPs; eingeschaltet kam alles zurück, beide Male danach ein leerer Diff.

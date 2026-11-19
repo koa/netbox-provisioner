@@ -647,7 +647,9 @@ gibt es zwei Varianten:
    nur **eine** Gruppe; ist ein Gerät Controller mehrerer Gruppen, gewinnt eine davon.
 2. **Wireless LANs** in der Gruppe anlegen: SSID, VLAN und Authentifizierung. Ausgewertet werden
    nur **WPA Personal** (mit PSK) und **Open** (wird als OWE umgesetzt). WLANs mit anderer
-   Authentifizierung werden übersprungen.
+   Authentifizierung werden übersprungen. Ein WLAN mit Status `Disabled` ist ausgeschaltet: der
+   Generator lässt es weg (keine Konfiguration am Controller, seine VLAN kommt nicht mehr wegen
+   ihm auf die APs); jeder andere Status gilt als eingeschaltet.
 3. Jeden **Access Point**: Custom Field `wlan_group` = die Gruppe. Nur echte APs: ein Gerät mit
    `wlan_group` bekommt die CAP-Konfiguration. Ein Switch, der nur Ports im WLAN-Netz hat, braucht
    das Feld nicht, ihm reicht das VLAN an den Ports. Ein alter AP mit dem `wireless`-Paket (z.B.

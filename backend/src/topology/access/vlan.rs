@@ -93,7 +93,7 @@ impl VlanAccess {
                     topology
                         .wlans
                         .get(wlan)
-                        .is_some_and(|wlan| wlan.vlan == Some(self.id))
+                        .is_some_and(|wlan| wlan.enabled && wlan.vlan == Some(self.id))
                 });
             if in_group {
                 devices.insert(group.controller);
@@ -102,7 +102,12 @@ impl VlanAccess {
         }
         devices.into_iter().map(self.create_access()).collect()
     }
+    /// its WLANs the APs send: the switched off ones aren't in the configuration
     pub fn wlan<'s>(&'s self) -> impl Iterator<Item = WlanAccess> + use<'s> {
+        self.all_wlans().filter(WlanAccess::enabled)
+    }
+    /// its WLANs, the switched off ones too (what a resident switches on again)
+    pub fn all_wlans<'s>(&'s self) -> impl Iterator<Item = WlanAccess> + use<'s> {
         self.data()
             .into_iter()
             .flat_map(|d| d.wlans.iter().cloned())

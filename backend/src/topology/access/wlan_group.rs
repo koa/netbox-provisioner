@@ -58,7 +58,12 @@ impl WlanGroupAccess {
             .and_then(|d| d.mgmt_vlan)
             .map(self.create_access())
     }
+    /// its WLANs the APs send: the switched off ones aren't in the configuration
     pub fn wlan(&self) -> impl Iterator<Item = WlanAccess> {
+        self.all_wlans().filter(WlanAccess::enabled)
+    }
+    /// its WLANs, the switched off ones too (an SSID stays taken by them)
+    pub fn all_wlans(&self) -> impl Iterator<Item = WlanAccess> {
         self.data()
             .into_iter()
             .flat_map(|d| d.wlans.iter().cloned())

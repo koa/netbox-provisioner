@@ -286,6 +286,8 @@ pub struct WirelessLan {
     pub auth_type: Option<String>,
     pub auth_psk: String,
     pub vlan: Option<VlanRef>,
+    /// `disabled`: switched off, the generator leaves it out
+    pub status: String,
 }
 
 #[derive(cynic::QueryFragment, Serialize, Debug, Clone)]

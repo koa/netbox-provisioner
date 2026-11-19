@@ -588,7 +588,8 @@ Rückgängig; die Gruppe `lab-wlan` war vorbelegt.
 
 ### WLAN ändern
 
-Neuer Name oder neues WPA-Passwort eines WLANs (`helper::wlan`, ein Schritt `UpdateWirelessLan`),
+Neuer Name, neues WPA-Passwort oder ein- und ausschalten (Status `active`/`disabled`) eines
+WLANs (`helper::wlan`, ein Schritt `UpdateWirelessLan`),
 der Plan des Controllers der WLAN-Gruppe. Gerufen wird er vom Anwohner-UI
 ([Self-Service](self-service.md#ändern)); im Admin-Schema ist er `Helper.wlan`, ein Formular
 der Admins gibt es dafür nicht. Die Passwörter stehen weder im Fingerprint noch im Job-Log.

@@ -1407,6 +1407,7 @@ async fn create_default_bridge_device(explicit_bridge: bool) -> DeviceAccess {
     builder.wlans.insert(
         wlan,
         WlanData {
+            enabled: true,
             ssid: "mimi".into(),
             vlan: Some(vlan),
             wlan_auth: WlanAuth::Open(WlanOpenSettings { use_owe: true }),

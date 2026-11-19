@@ -202,6 +202,7 @@ pub struct UpdateWirelessLan {
     pub ssid: Option<String>,
     pub ssid_before: String,
     pub psk_set: bool,
+    pub enabled: Option<bool>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

@@ -9,6 +9,7 @@ pub struct WlanInput {
     pub wlan: i32,
     pub ssid: Option<String>,
     pub psk: Option<String>,
+    pub enabled: Option<bool>,
 }
 
 #[derive(cynic::QueryVariables, Debug)]
@@ -43,6 +44,7 @@ pub struct UpdateWirelessLan {
     pub ssid: Option<String>,
     pub ssid_before: String,
     pub psk_set: bool,
+    pub enabled: Option<bool>,
 }
 
 #[derive(cynic::QueryVariables, Debug)]

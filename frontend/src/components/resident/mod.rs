@@ -203,7 +203,7 @@ fn networks(resident: &Resident, on_saved: &Callback<()>) -> Html {
                 .wlans
                 .iter()
                 .map(|wlan| {
-                    let text = t::wlan(&wlan.ssid, wlan.access_points);
+                    let text = t::wlan(&wlan.ssid, wlan.access_points, wlan.enabled);
                     html! {
                         <li key={wlan.id}>
                             {text}
