@@ -9,7 +9,7 @@ use crate::{
             AccessTopology, cable::CablePortAccess, device::DeviceAccess,
             front_port::FrontPortAccess, interface::InterfaceAccess, vlan::VlanAccess,
         },
-        natural::naturalize_interface,
+        natural::{naturalize, naturalize_interface},
         ownership::Owned,
     },
 };
@@ -189,7 +189,7 @@ pub fn resident(topology: &Arc<Topology>, owner: OwnerId) -> Option<Resident> {
                     .as_ref()
                     .map(|site| &*site.name)
                     .unwrap_or_default(),
-                port.location.join("\u{1}"),
+                location_key(&port.location),
                 port.device.name,
                 naturalize_interface(&port.name)
             ),
@@ -213,6 +213,16 @@ pub fn resident(topology: &Arc<Topology>, owner: OwnerId) -> Option<Resident> {
 }
 
 /// A port with what it is sorted by.
+/// The order of locations: by name, numbers by value („2. OG“ before „10. OG“), case
+/// ignored; a location before the ones in it.
+fn location_key(location: &[Box<str>]) -> String {
+    location
+        .iter()
+        .map(|name| naturalize(&name.to_lowercase()))
+        .collect::<Vec<_>>()
+        .join("\u{1}")
+}
+
 struct SortedPort {
     key: String,
     port: ResidentPort,

@@ -261,3 +261,27 @@ fn residents_of_netbox_example() {
     std::fs::create_dir_all(dir).expect("target/netbox-example");
     std::fs::write(format!("{dir}/residents.txt"), text).expect("residents.txt");
 }
+
+/// Locations go by name, numbers by value and case ignored, a location before the ones in it.
+#[test]
+fn locations_go_by_name() {
+    let names = |path: &[&str]| -> Box<[Box<str>]> { path.iter().map(|&n| n.into()).collect() };
+    let mut locations = [
+        names(&["EG"]),
+        names(&["10. OG"]),
+        names(&["2. OG", "Wohnung b"]),
+        names(&["2. OG", "Wohnung A"]),
+        names(&["2. OG"]),
+    ];
+    locations.sort_by_key(|location| super::location_key(location));
+    assert_eq!(
+        locations,
+        [
+            names(&["2. OG"]),
+            names(&["2. OG", "Wohnung A"]),
+            names(&["2. OG", "Wohnung b"]),
+            names(&["10. OG"]),
+            names(&["EG"]),
+        ]
+    );
+}
