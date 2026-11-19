@@ -244,7 +244,8 @@ fn residents_of_netbox_example() {
                 (None, false) => "-".into(),
             };
             text.push_str(&format!(
-                "  {:?} {} / {} [{}] -> {} | {}\n",
+                "  {} | {:?} {} / {} [{}] -> {} | {}\n",
+                port.location.join(" › "),
                 port.kind,
                 port.device.name,
                 port.name,
@@ -260,6 +261,33 @@ fn residents_of_netbox_example() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../target/netbox-example");
     std::fs::create_dir_all(dir).expect("target/netbox-example");
     std::fs::write(format!("{dir}/residents.txt"), text).expect("residents.txt");
+}
+
+/// A socket behind which a switch port sits in a bridge with a VLAN has that network: the
+/// export's „Badezimmer“ ends at a port of 1og-sw1's `switch-lan`, whose VLAN `wlan-koa` is
+/// the resident's, and „Eingang …“ ends nowhere behind the wall.
+#[test]
+fn a_sockets_network_is_the_one_of_the_bridge_behind_it() {
+    let topology = crate::topology::test::example_topology();
+    let (owner, _) = topology
+        .owners()
+        .next()
+        .expect("the export has an owner of sockets");
+    let resident = resident(&topology, owner).expect("its view");
+    let socket = |device: &str, name: &str| {
+        resident
+            .ports
+            .iter()
+            .find(|p| &*p.device.name == device && &*p.name == name)
+            .unwrap_or_else(|| panic!("{device} {name}"))
+    };
+    let bath = socket("Badezimmer", "links");
+    assert_eq!(bath.kind, super::PortKind::Socket);
+    let network = bath.network.as_ref().map(|network| &*network.name);
+    assert_eq!(network, Some("wlan-koa"));
+    assert!(!bath.foreign_network);
+    let entrance = socket("Eingang Steckdose neben Eingang", "links");
+    assert!(entrance.network.is_none() && !entrance.foreign_network);
 }
 
 /// Locations go by name, numbers by value and case ignored, a location before the ones in it.

@@ -612,7 +612,7 @@ mod test {
         let mut plan = NetboxPlan::new(&ap, "test");
         for (device, other, router_port) in [
             (&ap, &station, "switch-schmidrueti ether1"),
-            (&station, &ap, "1og-sw2 ether13"),
+            (&station, &ap, "1og-sw2 ether14"),
         ] {
             let cable = radio_bridge::router_cable(&topology, &mut plan, device, other, None)
                 .expect("a router port");
@@ -627,14 +627,14 @@ mod test {
             station_address: None,
             ssid: None,
         };
-        // 1og-sw2 ether13 in its client bridge, whichever the export has (a plan that gets as
+        // 1og-sw2 ether14 in its client bridge, whichever the export has (a plan that gets as
         // far as the networks asks NetBox for free ones)
         let in_bridge = Arc::new(
             topology
                 .rebuilt_with(|json| {
                     for device in json["device_list"].as_array_mut().into_iter().flatten() {
                         for interface in device["interfaces"].as_array_mut().into_iter().flatten() {
-                            if interface["id"] == "24" {
+                            if interface["id"] == "25" {
                                 interface["bridge"] = serde_json::json!({ "id": "415" });
                             }
                         }
@@ -645,11 +645,11 @@ mod test {
         );
         let mut routes = Some(Routes::none("test"));
         let Err(error) = radio_bridge::plan_with(&in_bridge, &input, &mut routes).await else {
-            panic!("1og-sw2 ether13 is in its client bridge")
+            panic!("1og-sw2 ether14 is in its client bridge")
         };
         assert!(
             matches!(&error, Error::PortInBridge { port, bridge }
-                if &**port == "1og-sw2 ether13" && &**bridge == "switch-clients"),
+                if &**port == "1og-sw2 ether14" && &**bridge == "switch-clients"),
             "{error:?}"
         );
         let pairs = pairs(&ap, &station)
@@ -685,7 +685,7 @@ mod test {
         );
         assert_eq!(
             name(&path.peer_router_port).as_deref(),
-            Some("1og-sw2 ether13")
+            Some("1og-sw2 ether14")
         );
         // the helper until the link has its networks, then the removal
         let planned = router
