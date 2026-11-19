@@ -2,7 +2,8 @@
 //! (`docs/concepts/self-service.md`); not who logs in as which resident, nor what they may
 //! change.
 use crate::topology::{
-    CablePort, DeviceId, InterfaceId, OwnerData, OwnerId, Topology, VlanId, WlanGroupId, WlanId,
+    CablePort, DeviceId, FrontPortId, InterfaceId, OwnerData, OwnerId, Topology, VlanId,
+    WlanGroupId, WlanId,
 };
 use std::collections::BTreeSet;
 
@@ -17,6 +18,8 @@ pub struct Owned {
     /// the ports of its devices and the ports of other devices it has (`owner` at the
     /// interface)
     pub ports: BTreeSet<InterfaceId>,
+    /// the sockets in its flat (`owner` at the front port)
+    pub sockets: BTreeSet<FrontPortId>,
     /// its networks (`owner` at the VLAN)
     pub vlans: BTreeSet<VlanId>,
     /// the WLANs on its VLANs
@@ -52,6 +55,12 @@ impl Topology {
             .chain(data.interfaces.iter().copied())
             .filter(|interface| self.interfaces.contains_key(interface))
             .collect();
+        let sockets = data
+            .front_ports
+            .iter()
+            .copied()
+            .filter(|port| self.front_ports.contains_key(port))
+            .collect();
         let vlans: BTreeSet<VlanId> = data
             .vlans
             .iter()
@@ -72,6 +81,7 @@ impl Topology {
         Owned {
             devices,
             ports,
+            sockets,
             vlans,
             wlans,
             wlan_groups,

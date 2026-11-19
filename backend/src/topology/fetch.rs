@@ -128,6 +128,7 @@ struct OwnerGathered {
     name: Box<str>,
     devices: Vec<DeviceId>,
     interfaces: Vec<InterfaceId>,
+    front_ports: Vec<FrontPortId>,
     vlans: Vec<VlanId>,
 }
 
@@ -281,6 +282,9 @@ impl Builder {
         }
         for front_port in device.frontports {
             if let Ok(port_id) = front_port.id.inner().parse().map(FrontPortId) {
+                if let Some(owner) = self.owner(front_port.owner.as_ref()) {
+                    owner.front_ports.push(port_id);
+                }
                 // NetBox maps a front port to rear port positions via a list;
                 // the topology model only knows a single rear port per front port.
                 let rear_port = front_port
@@ -292,6 +296,7 @@ impl Builder {
                     port_id,
                     FrontPort {
                         name: front_port.name.into_boxed_str(),
+                        label: front_port.label.into_boxed_str(),
                         device: device_id,
                         rear_port,
                         cable: None,
@@ -810,6 +815,7 @@ impl Builder {
                         name: owner.name,
                         devices: owner.devices.into_boxed_slice(),
                         interfaces: owner.interfaces.into_boxed_slice(),
+                        front_ports: owner.front_ports.into_boxed_slice(),
                         vlans: owner.vlans.into_boxed_slice(),
                     };
                     (id, data)

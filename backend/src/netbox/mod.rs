@@ -212,7 +212,19 @@ fn netbox_client() -> Result<reqwest::Client, NetboxError> {
 
 #[cfg(test)]
 mod test {
-    use super::web_url_of;
+    use super::{fetch_topology::FetchTopology, web_url_of};
+    use cynic::QueryBuilder;
+
+    /// Writes the query the provisioner sends to `target/netbox-example/fetch-topology.graphql`,
+    /// for the user to export `docs/netbox-response-example.json` with from the live NetBox
+    /// (generated, never committed).
+    #[test]
+    fn write_the_query_sent() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../target/netbox-example");
+        std::fs::create_dir_all(dir).expect("target/netbox-example");
+        let query = FetchTopology::build(()).query;
+        std::fs::write(format!("{dir}/fetch-topology.graphql"), query).expect("write the query");
+    }
 
     #[test]
     fn web_url_is_the_graphql_url_without_graphql() {

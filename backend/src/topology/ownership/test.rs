@@ -1,6 +1,8 @@
 //! Scope: Tests of `topology::ownership`; nothing else.
-use crate::topology::test::{OwnedExample, example_response, owned_example, topology_from};
-use crate::topology::{CablePort, DeviceId, InterfaceId, OwnerId, VlanId, WlanId};
+use crate::topology::test::{
+    HUBER, MEIER, OwnedExample, example_response, owned_example, topology_from,
+};
+use crate::topology::{CablePort, DeviceId, FrontPortId, InterfaceId, OwnerId, VlanId, WlanId};
 use std::collections::BTreeSet;
 
 /// An owner has its devices with all their ports, the ports of other devices NetBox gives
@@ -15,7 +17,7 @@ fn an_owner_has_its_devices_ports_vlans_and_their_wlans() {
         wlan,
     } = owned_example();
     let topology = topology_from(raw);
-    let owned = topology.owned_by(OwnerId(1));
+    let owned = topology.owned_by(MEIER);
     assert_eq!(owned.devices, BTreeSet::from([DeviceId(device)]));
     let device_ports =
         topology.devices[&DeviceId(device)]
@@ -45,35 +47,49 @@ fn owners_have_nothing_of_each_other() {
         ..
     } = owned_example();
     let topology = topology_from(raw);
-    let other = topology.owned_by(OwnerId(2));
+    let other = topology.owned_by(HUBER);
     assert!(other.devices.is_empty());
     assert!(other.ports.is_empty());
     assert_eq!(other.vlans.len(), 1);
     assert!(!other.vlans.contains(&VlanId(vlan)));
     assert!(!other.ports.contains(&InterfaceId(port)));
-    assert!(
-        topology
-            .owned_by(OwnerId(1))
-            .devices
-            .contains(&DeviceId(device))
-    );
+    assert!(topology.owned_by(MEIER).devices.contains(&DeviceId(device)));
     let names = topology
         .owners()
         .map(|(id, owner)| (id, owner.name.to_string()))
         .collect::<BTreeSet<_>>();
-    assert_eq!(
-        names,
-        BTreeSet::from([
-            (OwnerId(1), "Familie Meier".into()),
-            (OwnerId(2), "Huber AG".into())
-        ])
+    assert!(
+        names.contains(&(MEIER, "Familie Meier".into())),
+        "{names:?}"
     );
+    assert!(names.contains(&(HUBER, "Huber AG".into())), "{names:?}");
 }
 
-/// An owner no object names has nothing; the export as stored has no owners.
+/// An owner no object names has nothing.
 #[test]
-fn without_owners_nothing_is_owned() {
+fn an_unknown_owner_has_nothing() {
     let topology = topology_from(example_response());
-    assert_eq!(topology.owners().count(), 0);
-    assert_eq!(topology.owned_by(OwnerId(1)), Default::default());
+    assert_eq!(topology.owned_by(OwnerId(9003)), Default::default());
+}
+
+/// The export's sockets: front ports NetBox gives an owner (rooms in a flat).
+#[test]
+fn the_exports_owned_front_ports_are_sockets() {
+    let raw = example_response();
+    let owned: BTreeSet<(u32, u32)> = raw["data"]["device_list"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|device| device["frontports"].as_array().into_iter().flatten())
+        .filter_map(|port| {
+            let owner = port["owner"]["id"].as_str()?.parse().ok()?;
+            let id = port["id"].as_str()?.parse().ok()?;
+            Some((owner, id))
+        })
+        .collect();
+    let topology = topology_from(raw);
+    for (owner, port) in &owned {
+        let sockets = topology.owned_by(OwnerId(*owner)).sockets;
+        assert!(sockets.contains(&FrontPortId(*port)), "{owner} {port}");
+    }
 }

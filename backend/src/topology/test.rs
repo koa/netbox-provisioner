@@ -113,6 +113,24 @@ pub(crate) fn example_response() -> serde_json::Value {
             if encrypted && link["auth_psk"].as_str().is_none_or(str::is_empty) {
                 link["auth_psk"] = serde_json::json!("removed-from-export");
             }
+            // the PSK left out of the query when exporting: an open link has none
+            if let Some(link) = link.as_object_mut() {
+                link.entry("auth_psk")
+                    .or_insert_with(|| serde_json::json!(""));
+            }
+        }
+    }
+    // and the WLANs' PSKs are left out of the query when exporting: a placeholder too
+    for group in raw["data"]["wireless_lan_group_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        for wlan in group["wireless_lans"].as_array_mut().into_iter().flatten() {
+            if let Some(wlan) = wlan.as_object_mut() {
+                wlan.entry("auth_psk")
+                    .or_insert_with(|| serde_json::json!("removed-from-export"));
+            }
         }
     }
     // Exports from before circuits were queried lack them, and the ends of the circuits on
@@ -196,6 +214,13 @@ pub(crate) fn example_response() -> serde_json::Value {
                 interface.entry("owner").or_insert(serde_json::Value::Null);
             }
         }
+        // and the front ports' labels
+        for front_port in device["frontports"].as_array_mut().into_iter().flatten() {
+            if let Some(front_port) = front_port.as_object_mut() {
+                front_port.entry("owner").or_insert(serde_json::Value::Null);
+                front_port.entry("label").or_insert(serde_json::json!(""));
+            }
+        }
         if let Some(device) = device.as_object_mut() {
             device.entry("owner").or_insert(serde_json::Value::Null);
         }
@@ -214,15 +239,20 @@ pub(crate) fn example_response() -> serde_json::Value {
     raw
 }
 
-/// The stored export with owners: owner 1 („Familie Meier“) at a device, at a port of another
-/// device and at a VLAN with a WLAN, owner 2 („Huber AG“) at another VLAN.
+/// The owners [`owned_example`] adds, with ids NetBox doesn't give (the export has owners of
+/// its own).
+pub(crate) const MEIER: crate::topology::OwnerId = crate::topology::OwnerId(9001);
+pub(crate) const HUBER: crate::topology::OwnerId = crate::topology::OwnerId(9002);
+
+/// The stored export with owners: [`MEIER`] („Familie Meier“) at a device, at a port of another
+/// device and at a VLAN with a WLAN, [`HUBER`] („Huber AG“) at another VLAN.
 pub(crate) struct OwnedExample {
     pub raw: serde_json::Value,
-    /// owner 1's device
+    /// Meier's device
     pub device: u32,
-    /// owner 1's port of another device
+    /// Meier's port of another device
     pub port: u32,
-    /// owner 1's VLAN, with `wlan` on it
+    /// Meier's VLAN, with `wlan` on it
     pub vlan: u32,
     pub wlan: u32,
 }
@@ -234,8 +264,8 @@ pub(crate) fn owned_example() -> OwnedExample {
             .and_then(|id| id.parse().ok())
             .expect("id")
     }
-    fn set_owner(object: &mut serde_json::Value, owner: u32, name: &str) {
-        object["owner"] = serde_json::json!({ "id": owner.to_string(), "name": name });
+    fn set_owner(object: &mut serde_json::Value, owner: crate::topology::OwnerId, name: &str) {
+        object["owner"] = serde_json::json!({ "id": owner.0.to_string(), "name": name });
     }
     let mut raw = example_response();
     let (vlan, wlan) = raw["data"]["wireless_lan_group_list"]
@@ -253,11 +283,11 @@ pub(crate) fn owned_example() -> OwnedExample {
             .is_some_and(|interfaces| interfaces.len() >= 2)
     });
     let device = with_ports.next().expect("a device");
-    set_owner(device, 1, "Familie Meier");
+    set_owner(device, MEIER, "Familie Meier");
     let device_id = id(device);
     let other = with_ports.next().expect("another device");
     let port = &mut other["interfaces"][0];
-    set_owner(port, 1, "Familie Meier");
+    set_owner(port, MEIER, "Familie Meier");
     let port_id = id(port);
     let mut other_vlan_owned = false;
     for group in raw["data"]["vlan_group_list"]
@@ -266,9 +296,9 @@ pub(crate) fn owned_example() -> OwnedExample {
     {
         for candidate in group["vlans"].as_array_mut().into_iter().flatten() {
             if id(candidate) == vlan {
-                set_owner(candidate, 1, "Familie Meier");
+                set_owner(candidate, MEIER, "Familie Meier");
             } else if !other_vlan_owned {
-                set_owner(candidate, 2, "Huber AG");
+                set_owner(candidate, HUBER, "Huber AG");
                 other_vlan_owned = true;
             }
         }

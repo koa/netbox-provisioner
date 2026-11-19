@@ -6,7 +6,8 @@ use crate::{
     topology::{
         OwnerId, Topology, TopologyHolder,
         access::{
-            AccessTopology, device::DeviceAccess, interface::InterfaceAccess, vlan::VlanAccess,
+            AccessTopology, cable::CablePortAccess, device::DeviceAccess,
+            front_port::FrontPortAccess, interface::InterfaceAccess, vlan::VlanAccess,
         },
         natural::naturalize_interface,
         ownership::Owned,
@@ -65,21 +66,35 @@ pub struct Named {
     name: Box<str>,
 }
 
-/// A port of the resident: of its device, or one NetBox gives it at another device (a socket).
+/// What a row of the resident's ports is in NetBox.
+#[derive(Enum, Copy, Clone, Debug, PartialEq, Eq)]
+pub enum PortKind {
+    /// an interface: a port of its device, or of another device given to it
+    Interface,
+    /// a front port: a socket in its flat
+    Socket,
+}
+
+/// A port of the resident: a socket in its flat, a port of its device, or one NetBox gives it
+/// at another device.
 #[derive(SimpleObject, Debug, Clone, PartialEq, Eq)]
 pub struct ResidentPort {
+    /// the NetBox id of the interface or front port (`kind`)
     id: u32,
+    kind: PortKind,
     name: Box<str>,
     label: Option<Box<str>>,
     device: Named,
     site: Option<Named>,
     /// the port is on a device of the resident
     on_own_device: bool,
-    /// its untagged VLAN, if it is one of the resident's
+    /// its untagged VLAN or its bridge's, if it is one of the resident's; of a socket that of
+    /// the switch port its rear port leads to
     network: Option<Named>,
-    /// it has an untagged VLAN of somebody else (the operator's), named nowhere here
+    /// it has a network of somebody else (the operator's VLAN, or addresses without the
+    /// resident's VLAN), named nowhere here
     foreign_network: bool,
-    /// the ports at the other end of its cable
+    /// the ports at the other end of its cable; of a socket the device plugged in
     far_ends: Box<[FarEnd]>,
 }
 
@@ -145,18 +160,25 @@ impl QueryResident {
 pub fn resident(topology: &Arc<Topology>, owner: OwnerId) -> Option<Resident> {
     let (_, data) = topology.owners().find(|(id, _)| *id == owner)?;
     let owned = topology.owned_by(owner);
+    let sockets = owned
+        .sockets
+        .iter()
+        .map(|id| FrontPortAccess::create(topology.clone(), *id))
+        .filter_map(|socket| socket_port(&owned, &socket));
     let mut ports: Vec<SortedPort> = owned
         .ports
         .iter()
         .filter_map(|id| topology.get_interface_by_id(*id))
-        // of its devices the sockets only: not `lo`, a radio or a bridge
+        // of its devices the Ethernet ports only (not `lo`, a radio or a bridge), and not the
+        // one in a socket of its own: that one is shown at the socket
         .filter(|interface| {
-            interface.is_any_ethernet_port()
-                || interface
-                    .device()
-                    .is_none_or(|device| !owned.devices.contains(&device.id()))
+            let own_device = interface
+                .device()
+                .is_some_and(|device| owned.devices.contains(&device.id()));
+            !own_device || (interface.is_any_ethernet_port() && !in_own_socket(&owned, interface))
         })
         .filter_map(|interface| port(&owned, &interface))
+        .chain(sockets)
         .map(|port| SortedPort {
             key: format!(
                 "{}\0{}\0{}",
@@ -194,7 +216,7 @@ struct SortedPort {
 
 fn port(owned: &Owned, interface: &InterfaceAccess) -> Option<ResidentPort> {
     let device = interface.device()?;
-    let vlan = interface.untagged_vlan();
+    let network = PortNetwork::of(interface);
     let far_ends = interface
         .connected_interfaces()
         .iter()
@@ -207,11 +229,9 @@ fn port(owned: &Owned, interface: &InterfaceAccess) -> Option<ResidentPort> {
             })
         })
         .collect();
-    let own_vlan = vlan
-        .as_ref()
-        .filter(|vlan| owned.vlans.contains(&AccessTopology::id(*vlan)));
     Some(ResidentPort {
         id: interface.id().0,
+        kind: PortKind::Interface,
         name: interface.name().into(),
         label: interface.label().map(Box::from),
         site: device.site().map(|site| Named {
@@ -220,12 +240,109 @@ fn port(owned: &Owned, interface: &InterfaceAccess) -> Option<ResidentPort> {
         }),
         on_own_device: owned.devices.contains(&device.id()),
         device: named_device(&device),
-        network: own_vlan.map(|vlan| Named {
-            id: AccessTopology::id(vlan).0,
-            name: vlan.name().unwrap_or_default().into(),
-        }),
-        foreign_network: vlan.is_some() && own_vlan.is_none(),
+        network: network.own(owned),
+        foreign_network: network.foreign(owned),
         far_ends,
+    })
+}
+
+/// A socket: the device plugged in at its front, the network of the switch port its rear port
+/// leads to.
+fn socket_port(owned: &Owned, socket: &FrontPortAccess) -> Option<ResidentPort> {
+    let data = socket.data()?;
+    let device = socket.device()?;
+    let far_ends = interfaces_at(CablePortAccess::FrontPort(socket.clone()))
+        .iter()
+        .filter_map(|far| far_end(owned, far))
+        .collect();
+    // the switch port behind the wall: the first interface the rear port's cables reach
+    let behind = socket
+        .rear_port()
+        .map(|rear| interfaces_at(CablePortAccess::RearPort(rear)))
+        .unwrap_or_default();
+    let network = behind.first().map(PortNetwork::of).unwrap_or_default();
+    Some(ResidentPort {
+        id: AccessTopology::id(socket).0,
+        kind: PortKind::Socket,
+        name: data.name.clone(),
+        label: Some(data.label.clone()).filter(|label| !label.is_empty()),
+        site: device.site().map(|site| Named {
+            id: AccessTopology::id(&site).0,
+            name: site.name().into(),
+        }),
+        on_own_device: false,
+        device: named_device(&device),
+        network: network.own(owned),
+        foreign_network: network.foreign(owned),
+        far_ends,
+    })
+}
+
+/// The network on a port: its untagged VLAN, else its bridge's; a port or bridge with
+/// addresses but no VLAN is a network too, though nobody's VLAN.
+#[derive(Default)]
+struct PortNetwork {
+    vlan: Option<VlanAccess>,
+    addressed: bool,
+}
+
+impl PortNetwork {
+    fn of(port: &InterfaceAccess) -> Self {
+        let bridge = port.bridge();
+        let vlan = port
+            .untagged_vlan()
+            .or_else(|| bridge.as_ref().and_then(|bridge| bridge.untagged_vlan()));
+        let addressed = !port.ips().is_empty()
+            || bridge
+                .as_ref()
+                .is_some_and(|bridge| !bridge.ips().is_empty());
+        PortNetwork { vlan, addressed }
+    }
+    /// the VLAN, if it is the resident's
+    fn own(&self, owned: &Owned) -> Option<Named> {
+        let vlan = self.vlan.as_ref()?;
+        let id = AccessTopology::id(vlan);
+        owned.vlans.contains(&id).then(|| Named {
+            id: id.0,
+            name: vlan.name().unwrap_or_default().into(),
+        })
+    }
+    /// a network there, but not the resident's
+    fn foreign(&self, owned: &Owned) -> bool {
+        self.own(owned).is_none() && (self.vlan.is_some() || self.addressed)
+    }
+}
+
+/// The interfaces the cables from `start` end at, through patch panels.
+fn interfaces_at(start: CablePortAccess) -> Box<[InterfaceAccess]> {
+    let mut found = Vec::new();
+    start.walk_cable(&mut |path| {
+        if let CablePortAccess::Interface(interface) = path.far_port() {
+            found.push(interface.clone());
+        }
+    });
+    found.into()
+}
+
+/// Whether the cable of `interface` (a port of the resident's device) goes into one of its
+/// sockets: then it is the device's connection, shown at the socket.
+fn in_own_socket(owned: &Owned, interface: &InterfaceAccess) -> bool {
+    interface
+        .cable_port()
+        .attached_cable_segments()
+        .iter()
+        .any(|segment| match &segment.far {
+            CablePortAccess::FrontPort(front) => owned.sockets.contains(&AccessTopology::id(front)),
+            _ => false,
+        })
+}
+
+fn far_end(owned: &Owned, far: &InterfaceAccess) -> Option<FarEnd> {
+    let far_device = far.device()?;
+    Some(FarEnd {
+        device: named_device(&far_device),
+        port: far.name().into(),
+        own_device: owned.devices.contains(&far_device.id()),
     })
 }
 

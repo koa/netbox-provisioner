@@ -148,11 +148,16 @@ Die Namen müssen exakt stimmen. Anlegen, Werte und Wirkung im Einzelnen:
 
 Ein Anwohner (Haushalt, Firma) ist ein **Owner** in NetBox (Feld `owner`, NetBox 4.7), in einer
 Owner Group (NetBox verlangt eine; der Provisioner beachtet sie nicht). Gelesen wird `owner` an
-**Gerät**, **Interface** und **VLAN**, gesetzt nur von Admins:
+**Gerät**, **Interface**, **Front-Port** und **VLAN**, gesetzt nur von Admins:
 
 - ein Gerät gehört ihm mit allen seinen Ports;
-- ein Port eines fremden Geräts (die Wohnungsdose an einem Switch des Betreibers) über `owner`
-  am Interface;
+- eine **Dose in der Wohnung** ist ein Front-Port mit `owner`: Das Gerät ist die Wand (nach dem
+  Raum benannt, z. B. „Büro Ecke“), der Front-Port die Buchse („links“), sein Label ein
+  Name für den Anwohner (optional). An die Vorderseite kommt das Kabel seines Geräts, der
+  Rear-Port ist hinter der Wand zum Panel oder Switch gekabelt. Das Netz der Dose ist das des
+  Switch-Ports, bei dem der Weg über den Rear-Port ankommt: sein untagged VLAN, sonst das seiner
+  Bridge;
+- ein Port eines fremden Geräts (ein Port am Switch des Betreibers) über `owner` am Interface;
 - ein VLAN ist sein Netz; die WLANs auf seinen VLANs gehören ihm damit, und deren WLAN-Gruppe
   ist seine. `owner` am Wireless LAN wird nicht gelesen.
 

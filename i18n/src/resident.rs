@@ -22,9 +22,22 @@ pub fn own_port(port: &str, device: &str) -> String {
     format!("Port {port} von {device}")
 }
 
-/// a socket: a port of another device given to the resident
-pub fn socket_of(device: &str) -> String {
-    format!("Dose an {device}")
+/// a socket in the flat (a front port in NetBox)
+pub const SOCKET: &str = "Dose";
+
+/// a socket by the wall it is in (a NetBox device, named after the room) and its place there
+pub fn socket_name(device: &str, name: &str) -> String {
+    format!("{device} {name}")
+}
+
+/// a socket with a label of its own: which one it is
+pub fn socket_at(device: &str, name: &str) -> String {
+    format!("Dose {device} {name}")
+}
+
+/// a port of another device given to the resident (a switch of the operator)
+pub fn port_of(port: &str, device: &str) -> String {
+    format!("Port {port} an {device}")
 }
 
 /// the device at the far end of the cable and its port

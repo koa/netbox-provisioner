@@ -182,6 +182,7 @@ fn panel_to_circuit(builder: &mut TopologyBuilder, port: InterfaceId, end: Cable
         front,
         FrontPort {
             name: "1".into(),
+            label: "".into(),
             device: panel,
             rear_port: Some(rear),
             cable: None,

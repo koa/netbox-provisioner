@@ -66,15 +66,19 @@ Nach dem Login fragt das UI zuerst `me { role }` am Endpunkt der Anwohner (`app:
 
 Die Ansicht (`components::resident`) hat zwei Tabs nach dem Prototyp:
 
-- **Dosen und Geräte:** nach Site gruppiert. Jede Zeile zeigt links den Port: das Label, sonst
-  den Namen, darunter „Dose an …“ oder „Port … von …“. Dann folgt das Kabel, rechts das Gerät
-  am anderen Ende mit seinem Port. Ohne Kabel steht rechts das Netz des Ports, „Netz des
-  Betreibers“ oder gestrichelt „Kein Netz“. Auf dem Telefon stapeln sich die Karten, das Kabel
+- **Dosen und Geräte:** nach Site gruppiert. Jede Zeile zeigt links die Dose oder den Port:
+  das Label, sonst Wand und Buchse („Büro Ecke links“) oder den Port-Namen, darunter „Dose …“,
+  „Port … von …“ oder „Port … an …“. Dann folgt das Kabel, rechts das Gerät am anderen Ende mit
+  seinem Port (bei einer Dose: was eingesteckt ist). Ohne Kabel steht rechts das Netz des
+  Ports, „Netz des Betreibers“ oder gestrichelt „Kein Netz“; eine Dose mit eingestecktem Gerät
+  nennt ihr Netz in der eigenen Karte. Ein Port eines eigenen Geräts, der in einer eigenen Dose
+  steckt, erscheint nur bei der Dose. Auf dem Telefon stapeln sich die Karten, das Kabel
   steht senkrecht.
 - **Netze:** eine Karte pro VLAN mit VID, Adressen und WLAN (SSID, Zahl der APs).
 
-Noch nicht gebaut sind Räume statt Sites, Front-Ports als Dosen, Geräte pro Port aus den Leases,
-Status-Labels und alles Schreibende (C21). Status-Labels kommen erst mit einer verlässlichen
+Noch nicht gebaut sind Räume statt Sites, Geräte pro Port aus den Leases, Status-Labels und alles
+Schreibende (C21), als Nächstes das Einstellen, was in einer Dose steckt. Status-Labels kommen erst mit einer verlässlichen
 Quelle: Ein Label, das „ausgerollt“ behauptet, ohne es zu wissen, wäre falsch. Geprüft mit
 Playwright im Lab (2026-11-18) als `meier` (auch in Telefonbreite), `huber`, `reader` und
-`admin`.
+`admin`; die Dosen (`wohnung-meier`, `wohnung-huber` hinter `lab-keller-switch`, Geräte ohne
+RouterOS) am 2026-11-19 als `meier` und `huber`.

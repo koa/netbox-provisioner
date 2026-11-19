@@ -126,7 +126,10 @@ another's, one was set onto an interface another port still held and the script 
 
 `device/ros/test/netbox_example.rs` runs every RouterOS device of the stored production
 response `docs/netbox-response-example.json` (maintained by the user from the live NetBox; never
-edit or commit it yourself) through the whole generator, with each device given exactly the ports
+edit or commit it yourself; the query for it is written to
+`target/netbox-example/fetch-topology.graphql` by `cargo test -p backend --lib
+write_the_query_sent`, generated and never committed; the user removes the `auth_psk` fields
+before running it, and `topology::test` fills placeholders) through the whole generator, with each device given exactly the ports
 it declares in NetBox since the response carries no board model. Devices that don't generate yet
 are listed in `KNOWN_FAILURES` with the expected error; the test also fails when a listed device
 starts working, so fixing a generator gap means dropping its entry. Scripts land in
@@ -141,9 +144,10 @@ exports lack `circuit_list` and the ids of the circuit ends; `example_topology` 
 ends, so their cables end there as before.
 
 A resident (C7, `docs/concepts/self-service.md`) is a NetBox owner: `owner` is read at
-devices, interfaces and VLANs (`Topology.owners`, what NetBox gives each directly), and
-`topology::ownership` derives the rest (`Topology::owned_by`: the ports of its devices, the
-WLANs on its VLANs, their groups). It changes nothing in the generated configs. Who a user
+devices, interfaces, front ports (sockets in the flat: the front side takes the resident's
+device, the rear port leads to the switch whose port's network the socket has) and VLANs
+(`Topology.owners`, what NetBox gives each directly), and `topology::ownership` derives the
+rest (`Topology::owned_by`: the ports of its devices, the WLANs on its VLANs, their groups). It changes nothing in the generated configs. Who a user
 is decides `role::of` per request: admin, else a resident by the owners NetBox has its
 `preferred_username` in (`netbox::owners`, kept 30 s), else nobody. Residents ask
 `/graphql/resident` (`graphql::resident`, `docs/self-service.md`), a schema of its own that

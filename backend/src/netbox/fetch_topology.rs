@@ -130,7 +130,10 @@ pub struct WirelessLink {
 pub struct FrontPort {
     pub id: Id,
     pub name: String,
+    pub label: String,
     pub mappings: Vec<PortMapping>,
+    /// a socket in a resident's flat (`topology::ownership`)
+    pub owner: Option<OwnerRef>,
 }
 
 #[derive(cynic::QueryFragment, Serialize, Debug, Clone)]

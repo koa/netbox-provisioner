@@ -767,6 +767,8 @@ pub enum PhysicalPortId {
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
 pub struct FrontPort {
     pub name: Box<str>,
+    /// NetBox's label, what the socket says on the wall
+    pub label: Box<str>,
     pub device: DeviceId,
     pub rear_port: Option<RearPortId>,
     pub cable: Option<CableId>,
@@ -991,8 +993,11 @@ impl From<u32> for OwnerId {
 pub struct OwnerData {
     pub name: Box<str>,
     pub devices: Box<[DeviceId]>,
-    /// ports of other devices (a socket on a switch of the operator)
+    /// ports of other devices (a port on a switch of the operator)
     pub interfaces: Box<[InterfaceId]>,
+    /// sockets in its flat: front ports, whose front side takes its device and whose rear
+    /// port leads to the network
+    pub front_ports: Box<[FrontPortId]>,
     pub vlans: Box<[VlanId]>,
 }
 

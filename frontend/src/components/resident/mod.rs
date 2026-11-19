@@ -1,6 +1,8 @@
 //! Scope: What a resident sees of its network, in tabs: its sockets and devices, its networks;
 //! not loading it (`pages::residents`, `app`), nor the admins' choice of a resident.
-use crate::graphql::resident::residents::{FarEnd, Resident, ResidentNetwork, ResidentPort};
+use crate::graphql::resident::residents::{
+    FarEnd, PortKind, Resident, ResidentNetwork, ResidentPort,
+};
 use i18n::resident as t;
 use patternfly_yew::prelude::{
     Card, CardBody, CardHeader, CardSize, CardTitle, Content, Level, Tab, Tabs, Title,
@@ -70,16 +72,26 @@ fn ports(ports: &[ResidentPort]) -> Html {
 
 /// A socket: left the port, a cable, right what is at the cable's other end, or its network.
 fn port_row(port: &ResidentPort) -> Html {
-    let title = port.label.clone().unwrap_or_else(|| port.name.clone());
-    let sub = if port.on_own_device {
-        t::own_port(&port.name, &port.device.name)
-    } else {
-        t::socket_of(&port.device.name)
+    let socket = port.kind == PortKind::Socket;
+    let title = match &port.label {
+        Some(label) => label.clone(),
+        // a socket's device is the wall it is in, named after the room
+        None if socket => t::socket_name(&port.device.name, &port.name),
+        None => port.name.clone(),
     };
+    let sub = match port.kind {
+        PortKind::Socket if port.label.is_none() => t::SOCKET.to_string(),
+        PortKind::Socket => t::socket_at(&port.device.name, &port.name),
+        _ if port.on_own_device => t::own_port(&port.name, &port.device.name),
+        _ => t::port_of(&port.name, &port.device.name),
+    };
+    // a socket's network is behind the wall, whatever is plugged in: shown with the socket
+    let network = (socket && !port.far_ends.is_empty())
+        .then(|| html!(<><br/><small>{network_text(port)}</small></>));
     let left = html! {
         <Card size={CardSize::Compact} class="sock-card">
             <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
-            <CardBody><small>{sub}</small></CardBody>
+            <CardBody><small>{sub}</small>{network}</CardBody>
         </Card>
     };
     let right = if port.far_ends.is_empty() {
@@ -100,7 +112,7 @@ fn port_row(port: &ResidentPort) -> Html {
         .is_empty()
         .then(|| html!(<div class="sock-conn"></div>));
     html! {
-        <div class="sock-row" key={port.id}>
+        <div class="sock-row" key={format!("{:?}-{}", port.kind, port.id)}>
             <div class="sock-side">{left}</div>
             {cable}{gap}
             <div class="sock-side">{right}</div>
@@ -122,12 +134,21 @@ fn far_end_card(end: &FarEnd) -> Html {
 
 /// A port without cable: its network, the operator's, or none (dashed).
 fn network_card(port: &ResidentPort) -> Html {
-    let (text, class) = match (&port.network, port.foreign_network) {
-        (Some(network), _) => (network.name.clone(), "sock-net"),
-        (None, true) => (t::FOREIGN_NETWORK.to_string(), "sock-net"),
-        (None, false) => (t::NO_NETWORK.to_string(), "sock-net sock-none"),
+    let class = if port.network.is_none() && !port.foreign_network {
+        "sock-net sock-none"
+    } else {
+        "sock-net"
     };
-    html!(<div class={class}>{text}</div>)
+    html!(<div class={class}>{network_text(port)}</div>)
+}
+
+/// The port's network: the resident's by name, the operator's, or none.
+fn network_text(port: &ResidentPort) -> String {
+    match (&port.network, port.foreign_network) {
+        (Some(network), _) => network.name.clone(),
+        (None, true) => t::FOREIGN_NETWORK.to_string(),
+        (None, false) => t::NO_NETWORK.to_string(),
+    }
 }
 
 /// The networks, each with its addresses and WLAN.

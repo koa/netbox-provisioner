@@ -52,6 +52,7 @@ pub struct Named {
 #[cynic(schema = "resident")]
 pub struct ResidentPort {
     pub id: i32,
+    pub kind: PortKind,
     pub name: String,
     pub label: Option<String>,
     pub device: Named,
@@ -60,6 +61,16 @@ pub struct ResidentPort {
     pub network: Option<Named>,
     pub foreign_network: bool,
     pub far_ends: Vec<FarEnd>,
+}
+
+#[derive(cynic::Enum, Debug, Clone, PartialEq, Eq)]
+#[cynic(schema = "resident")]
+pub enum PortKind {
+    Interface,
+    Socket,
+    /// a kind of a newer server
+    #[cynic(fallback)]
+    Other(String),
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
