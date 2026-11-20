@@ -774,6 +774,11 @@ dl.site-diff > dd > .pf-v6-c-button {
     gap: var(--pf-t--global--spacer--sm);
     margin-block: var(--pf-t--global--spacer--md);
 }
+.sock-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-t--global--spacer--sm);
+}
 .sock-row {
     display: flex;
     flex-wrap: wrap;

@@ -4,8 +4,11 @@ use crate::graphql::resident::residents::{
     FarEnd, PortKind, Resident, ResidentNetwork, ResidentPort,
 };
 use i18n::resident as t;
+use port_vlan_edit::PortVlanEdit;
 use wlan_edit::WlanEdit;
 
+mod change_flow;
+mod port_vlan_edit;
 mod wlan_edit;
 use patternfly_yew::prelude::{
     Card, CardBody, CardHeader, CardSize, CardTitle, Content, Level, Tab, Tabs, Title,
@@ -38,7 +41,7 @@ pub fn ResidentView(props: &ResidentViewProps) -> Html {
         <div class="resident-view">
             <Tabs<View> selected={*view} {onselect}>
                 <Tab<View> index={View::Ports} title={t::TAB_PORTS}>
-                    {ports(&resident.ports)}
+                    {ports(resident, &props.on_saved)}
                 </Tab<View>>
                 <Tab<View> index={View::Networks} title={t::TAB_NETWORKS}>
                     {networks(resident, &props.on_saved)}
@@ -57,7 +60,8 @@ struct Group<'a> {
 }
 
 /// The ports by site, and in it by location (a floor, a flat, a room).
-fn ports(ports: &[ResidentPort]) -> Html {
+fn ports(resident: &Resident, on_saved: &Callback<()>) -> Html {
+    let ports: &[ResidentPort] = &resident.ports;
     if ports.is_empty() {
         return html!(<Content><p>{t::NO_PORTS}</p></Content>);
     }
@@ -94,7 +98,7 @@ fn ports(ports: &[ResidentPort]) -> Html {
                 <section class="resident-site">
                     {site.flatten()}
                     {location}
-                    { for group.ports.into_iter().map(port_row) }
+                    { for group.ports.into_iter().map(|port| port_row(resident, port, on_saved)) }
                 </section>
             }
         })
@@ -102,7 +106,8 @@ fn ports(ports: &[ResidentPort]) -> Html {
 }
 
 /// A socket: left the port, a cable, right what is at the cable's other end, or its network.
-fn port_row(port: &ResidentPort) -> Html {
+/// Its network can change where nothing but the resident's devices hangs at it.
+fn port_row(resident: &Resident, port: &ResidentPort, on_saved: &Callback<()>) -> Html {
     let socket = port.kind == PortKind::Socket;
     let title = match &port.label {
         Some(label) => label.clone(),
@@ -119,6 +124,16 @@ fn port_row(port: &ResidentPort) -> Html {
     // a socket's network is behind the wall, whatever is plugged in: shown with the socket
     let network = (socket && !port.far_ends.is_empty())
         .then(|| html!(<><br/><small>{network_text(port)}</small></>));
+    let edit = port.far_ends.iter().all(|end| end.own_device).then(|| {
+        html! {
+            <PortVlanEdit
+                resident={resident.id}
+                port={port.clone()}
+                networks={resident.networks.clone()}
+                on_saved={on_saved.clone()}
+            />
+        }
+    });
     let left = html! {
         <Card size={CardSize::Compact} class="sock-card">
             <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
@@ -143,10 +158,13 @@ fn port_row(port: &ResidentPort) -> Html {
         .is_empty()
         .then(|| html!(<div class="sock-conn"></div>));
     html! {
-        <div class="sock-row" key={format!("{:?}-{}", port.kind, port.id)}>
-            <div class="sock-side">{left}</div>
-            {cable}{gap}
-            <div class="sock-side">{right}</div>
+        <div class="sock-item" key={format!("{:?}-{}", port.kind, port.id)}>
+            <div class="sock-row">
+                <div class="sock-side">{left}</div>
+                {cable}{gap}
+                <div class="sock-side">{right}</div>
+            </div>
+            {edit}
         </div>
     }
 }

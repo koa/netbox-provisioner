@@ -348,6 +348,10 @@ pub fn server(problem: &impl Problem) -> String {
         }
         "SSID_TAKEN" => format!("Den WLAN-Namen {} hat schon ein anderes WLAN", p("ssid")),
         "NOTHING_TO_CHANGE" => "Es gibt nichts zu ändern".into(),
+        "SOCKET_WITHOUT_PORT" => format!(
+            "Die Dose {} führt in NetBox zu keinem Switch-Port",
+            p("socket")
+        ),
         "NOT_OWNED" => format!("Das gehört nicht dir: {}", p("what")),
         "NO_SINGLE_RADIO" => format!(
             "{} hat in NetBox keinen oder mehrere Funk-Ports: eine Funkbrücke hat genau einen",

@@ -76,7 +76,9 @@ def socket(nb, resident, owner, site, role, device_type):
                        "rear_ports": [{"position": 1, "rear_port": rear, "rear_port_position": 1}]})
     cable(nb, ("dcim.rearport", rear), ("dcim.interface", switch_port))
     if spec["plugged"]:
-        pc = nb.ensure("dcim/devices", {"name": spec["plugged"]}, common)["id"]
+        pc = nb.ensure("dcim/devices", {"name": spec["plugged"]}, common)
+        set_owner(nb, "dcim/devices", pc, owner)
+        pc = pc["id"]
         pc_port = nb.ensure("dcim/interfaces", {"device_id": pc, "name": "eth0"},
                             {"type": "1000base-t"})["id"]
         cable(nb, ("dcim.interface", pc_port), ("dcim.frontport", front["id"]))

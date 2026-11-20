@@ -3,6 +3,31 @@
 use super::{residents::Named, schema::schema};
 use crate::error::ServerProblem;
 
+/// A change of a resident (`@oneOf`).
+#[derive(cynic::InputObject, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub enum ResidentChange {
+    Wlan(WlanInput),
+    PortVlan(PortVlanChange),
+}
+
+#[derive(cynic::InputObject, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct PortVlanChange {
+    pub port: i32,
+    pub kind: PortKindInput,
+    /// none: no network there
+    pub vlan: Option<i32>,
+}
+
+/// The kind of a port row, as input (the output's has a fallback).
+#[derive(cynic::Enum, Debug, Clone, Copy, PartialEq, Eq)]
+#[cynic(schema = "resident", graphql_type = "PortKind")]
+pub enum PortKindInput {
+    Interface,
+    Socket,
+}
+
 #[derive(cynic::InputObject, Debug, Clone, PartialEq)]
 #[cynic(schema = "resident")]
 pub struct WlanInput {
@@ -13,21 +38,21 @@ pub struct WlanInput {
 }
 
 #[derive(cynic::QueryVariables, Debug)]
-pub struct WlanPlanVariables {
+pub struct ChangePlanVariables {
     pub resident: i32,
-    pub change: WlanInput,
+    pub change: ResidentChange,
 }
 
-/// What changing a WLAN would write, for the preview.
+/// What a change would write, for the preview.
 #[derive(cynic::QueryFragment, Debug)]
 #[cynic(
     schema = "resident",
     graphql_type = "QueryResident",
-    variables = "WlanPlanVariables"
+    variables = "ChangePlanVariables"
 )]
-pub struct WlanPlanQuery {
+pub struct ChangePlanQuery {
     #[arguments(resident: $resident, change: $change)]
-    pub wlan_plan: ResidentPlan,
+    pub change_plan: ResidentPlan,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -35,7 +60,22 @@ pub struct WlanPlanQuery {
 pub struct ResidentPlan {
     pub fingerprint: String,
     pub wlans: Vec<UpdateWirelessLan>,
+    pub ports: Vec<UpdatePortVlan>,
     pub devices: Vec<Named>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct UpdatePortVlan {
+    pub vlan: Option<VlanRef>,
+    pub vlan_before: Option<VlanRef>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct VlanRef {
+    pub vid: i32,
+    pub name: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -48,22 +88,22 @@ pub struct UpdateWirelessLan {
 }
 
 #[derive(cynic::QueryVariables, Debug)]
-pub struct SaveWlanVariables {
+pub struct SaveChangeVariables {
     pub resident: i32,
-    pub change: WlanInput,
+    pub change: ResidentChange,
     pub fingerprint: String,
 }
 
-/// Saves the WLAN's change, if its plan is still the one previewed.
+/// Saves a change, if its plan is still the one previewed.
 #[derive(cynic::QueryFragment, Debug)]
 #[cynic(
     schema = "resident",
     graphql_type = "MutationResident",
-    variables = "SaveWlanVariables"
+    variables = "SaveChangeVariables"
 )]
-pub struct SaveWlan {
+pub struct SaveChange {
     #[arguments(resident: $resident, change: $change, fingerprint: $fingerprint)]
-    pub save_wlan: SavedChange,
+    pub save_change: SavedChange,
 }
 
 #[derive(cynic::QueryVariables, Debug)]

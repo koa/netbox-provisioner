@@ -562,6 +562,7 @@ liegt und über das VXLAN der VLAN-Gruppe kommt (aus „Rolle zuweisen“ einer 
 dem Port vorbelegt, auch einer freien).
 
 Plan (`helper::port_vlan`): ein Schritt `UpdatePortVlan`, tagged VLANs am Port fallen weg (Z26).
+Ohne VLAN (`vlan: null`, nur über die API, für die Anwohner) nimmt er Mode und VLANs vom Port.
 Zur Wahl stehen (`portVlanOptions`) die Ethernet-Ports ohne Bridge, Adresse, Uplink
 (`dhcp-client`, `nat`, `internet`) und Kabel zu einem RouterOS-Gerät, auch einer mit einem VLAN (das dann
 ersetzt wird), und die VLANs, die das Gerät schon hat, oder aus einer Gruppe mit `vxlan_vni`: ein

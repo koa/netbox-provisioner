@@ -1,6 +1,7 @@
 //! Scope: The helper „VLAN am Port“; nothing else.
 //!
-//! Helper „VLAN am Port“: a VLAN untagged on a port of the device (802.1Q mode access,
+//! Helper „VLAN am Port“: a VLAN untagged on a port of the device (802.1Q mode access), or
+//! none (no mode, the resident's `setPortVlan` taking its network off a port;
 //! `docs/interface-view.md`): the port of a customer network on a VLAN that reaches no
 //! port yet (`VlanWithoutPort`), or a customer's port whose network is on another device, over
 //! the VLAN group's VXLAN. Tagged VLANs on the port go (Z26).
@@ -30,7 +31,8 @@ use std::sync::Arc;
 pub struct PortVlanInput {
     pub device: u32,
     pub port: u32,
-    pub vlan: u32,
+    /// none: no VLAN on the port
+    pub vlan: Option<u32>,
 }
 
 /// What „VLAN am Port“ can choose from for a device.
@@ -252,13 +254,26 @@ pub fn plan(topology: &Arc<Topology>, input: &PortVlanInput) -> Result<NetboxPla
         .filter(|port| port.device().is_some_and(|d| d.id() == device.id()))
         .ok_or(Error::UnknownInterface(input.port))?;
     check_port(&port)?;
-    let vlan = reachable(&device)
-        .into_iter()
-        .find(|vlan| vlan.id == VlanId(input.vlan))
-        .ok_or(Error::UnknownVlan(input.vlan))?;
-    let chosen = vlan_ref(&vlan).ok_or(Error::UnknownVlan(input.vlan))?;
     let before = port.untagged_vlan();
     let tagged = port.tagged_vlans().collect::<Vec<_>>();
+    let Some(id) = input.vlan else {
+        if before.is_none() && tagged.is_empty() {
+            return Err(Error::NothingToChange);
+        }
+        let mut plan = NetboxPlan::new(&device, format!("kein VLAN an {}", port_name(&port)));
+        plan.steps.push(PlanStep::UpdatePortVlan(UpdatePortVlan {
+            interface: interface_ref(&port),
+            vlan: None,
+            vlan_before: before.as_ref().and_then(vlan_ref),
+            tagged_before: tagged.iter().filter_map(vlan_ref).collect(),
+        }));
+        return Ok(plan);
+    };
+    let vlan = reachable(&device)
+        .into_iter()
+        .find(|vlan| vlan.id == VlanId(id))
+        .ok_or(Error::UnknownVlan(id))?;
+    let chosen = vlan_ref(&vlan).ok_or(Error::UnknownVlan(id))?;
     if before.as_ref().is_some_and(|b| b.id == vlan.id) && tagged.is_empty() {
         return Err(Error::PortHasVlan {
             port: port_name(&port),

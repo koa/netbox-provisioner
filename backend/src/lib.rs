@@ -336,6 +336,9 @@ pub enum Error {
     /// a change that changes nothing
     #[error("nothing to change")]
     NothingToChange,
+    /// a socket whose rear port leads to no switch port (`device port`)
+    #[error("socket {0} leads to no switch port")]
+    SocketWithoutPort(Box<str>),
     /// an object of another resident, or an owner the user isn't
     #[error("not yours: {0}")]
     NotOwned(Box<str>),

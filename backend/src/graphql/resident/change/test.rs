@@ -29,7 +29,7 @@ async fn ask(role: Role, query: &str) -> Result<Value, String> {
 
 fn plan_query(resident: u32, wlan: u32, ssid: &str) -> String {
     format!(
-        r#"{{ wlanPlan(resident: {resident}, change: {{ wlan: {wlan}, ssid: "{ssid}" }}) {{
+        r#"{{ changePlan(resident: {resident}, change: {{ wlan: {{ wlan: {wlan}, ssid: "{ssid}" }} }}) {{
             fingerprint wlans {{ id ssid ssidBefore pskSet }} devices {{ id name }}
         }} }}"#
     )
@@ -46,7 +46,7 @@ async fn a_resident_plans_a_change_of_its_wlan() {
     let data = ask(meier, &plan_query(MEIER.0, wlan, "meier-neu"))
         .await
         .expect("a plan");
-    let plan = &data["wlanPlan"];
+    let plan = &data["changePlan"];
     assert_eq!(
         plan["wlans"],
         json!([{ "id": wlan, "ssid": "meier-neu", "ssidBefore": plan["wlans"][0]["ssidBefore"], "pskSet": false }])
@@ -98,5 +98,43 @@ async fn an_unknown_job_is_no_saved_change() {
     assert_eq!(
         ask(meier, "{ savedChange(job: 4711) { state } }").await,
         Ok(json!({ "savedChange": null }))
+    );
+}
+
+fn port_query(resident: u32, port: u32, kind: &str, vlan: &str) -> String {
+    format!(
+        r#"{{ changePlan(resident: {resident}, change: {{ portVlan: {{ port: {port}, kind: {kind}, vlan: {vlan} }} }}) {{
+            fingerprint ports {{ vlan {{ vid }} }} devices {{ name }}
+        }} }}"#
+    )
+}
+
+/// A port, socket or VLAN not the resident's is refused before any plan.
+#[tokio::test]
+async fn others_ports_and_vlans_are_refused() {
+    let OwnedExample { port, vlan, .. } = owned_example();
+    let meier = Role::Resident {
+        owners: Box::new([MEIER]),
+    };
+    let huber = Role::Resident {
+        owners: Box::new([HUBER]),
+    };
+    let not_owned = Err("\"NOT_OWNED\"".to_string());
+    let vlan = vlan.to_string();
+    assert_eq!(
+        ask(huber, &port_query(HUBER.0, port, "INTERFACE", &vlan)).await,
+        not_owned
+    );
+    assert_eq!(
+        ask(
+            meier.clone(),
+            &port_query(MEIER.0, port, "INTERFACE", "4711")
+        )
+        .await,
+        not_owned
+    );
+    assert_eq!(
+        ask(meier, &port_query(MEIER.0, port, "SOCKET", &vlan)).await,
+        not_owned
     );
 }

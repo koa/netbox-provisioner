@@ -43,6 +43,17 @@ pub const SAVED: &str = "In NetBox gespeichert";
 pub const SAVED_HINT: &str = "Auf die Geräte kommt die Änderung mit dem Ausrollen; wie weit das \
     ist, zeigt diese Seite noch nicht.";
 pub const NOT_SAVED: &str = "Nicht gespeichert";
+pub const CHANGE_NETWORK: &str = "Netz ändern";
+pub const CHOOSE_NETWORK: &str = "Netz wählen";
+pub const PORT_CLIENTS_MOVE: &str =
+    "Geräte daran verlieren kurz die Verbindung und bekommen danach eine Adresse im neuen Netz.";
+pub const PORT_CLIENTS_CUT: &str = "Geräte daran haben danach kein Netz mehr.";
+
+/// the preview: a port or socket gets another network
+pub fn port_network_change(port: &str, before: &str, network: &str) -> String {
+    format!("{port}: {network} statt {before}")
+}
+
 pub const CLIENTS_DISCONNECT: &str =
     "Verbundene Geräte verlieren das WLAN, bis es wieder eingeschaltet ist.";
 pub const CLIENTS_RECONNECT: &str = "Verbundene Geräte verlieren kurz das WLAN und brauchen danach den neuen Namen oder das \
@@ -67,6 +78,9 @@ pub fn wlan_on(ssid: &str) -> String {
 pub fn psk_change(ssid: &str) -> String {
     format!("WLAN {ssid} bekommt ein neues Passwort")
 }
+
+/// the preview of a change no device's configuration follows (a switch without RouterOS)
+pub const NETBOX_ONLY: &str = "Das ändert nur NetBox, an keinem Gerät die Konfiguration";
 
 /// the preview: the devices whose configuration changes
 pub fn devices_change(devices: &[&str]) -> String {

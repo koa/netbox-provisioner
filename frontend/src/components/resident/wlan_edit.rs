@@ -1,27 +1,19 @@
-//! Scope: Changing a resident's WLAN: its name and password, on or off, the preview in words, saving and
-//! how saving went; not the network card it sits in (`components::resident`).
+//! Scope: Changing a resident's WLAN: its name and password, on or off, and the preview in
+//! words; not planning and saving (`change_flow`), nor the network card it sits in
+//! (`components::resident`).
+use super::change_flow::{ask_plan, devices_alert, save, saving};
 use crate::{
-    error::{FrontendError, ServerProblem},
-    graphql::{
-        request_resident,
-        resident::{
-            change::{
-                ResidentPlan, SaveState, SaveWlan, SaveWlanVariables, SavedChange,
-                SavedChangeQuery, SavedChangeVariables, WlanInput, WlanPlanQuery,
-                WlanPlanVariables,
-            },
-            residents::ResidentWlan,
-        },
+    error::FrontendError,
+    graphql::resident::{
+        change::{ResidentChange, ResidentPlan, SaveState, SavedChange, WlanInput},
+        residents::ResidentWlan,
     },
 };
-use cynic::{MutationBuilder, QueryBuilder};
-use gloo::timers::future::TimeoutFuture;
 use i18n::resident as t;
 use patternfly_yew::prelude::{
-    Alert, AlertType, Button, ButtonVariant, Form, FormGroup, FormHelperText, Switch, TextInput,
-    TextInputType,
+    Button, ButtonVariant, Form, FormGroup, FormHelperText, Switch, TextInput, TextInputType,
 };
-use yew::{Callback, Component, Context, Html, Properties, html, platform::spawn_local};
+use yew::{Callback, Component, Context, Html, Properties, html};
 
 #[derive(Debug, Clone, PartialEq, Properties)]
 pub struct WlanEditProps {
@@ -178,7 +170,9 @@ impl Component for WlanEdit {
             WlanEdit::Preview {
                 plan: Some(plan), ..
             } => preview(ctx, plan),
-            WlanEdit::Saving { saved, .. } => saving(ctx, saved.as_ref()),
+            WlanEdit::Saving { saved, .. } => {
+                saving(saved.as_ref(), link.callback(|_| WlanEditMsg::Close))
+            }
             WlanEdit::Failed { error, .. } => html! {
                 <div class="wlan-edit">
                     {error.to_html()}
@@ -281,47 +275,19 @@ impl WlanEdit {
     }
 
     fn ask_plan(&self, ctx: &Context<Self>, draft: &Draft) {
-        let scope = ctx.link().clone();
-        let variables = WlanPlanVariables {
-            resident: ctx.props().resident,
-            change: Self::input(ctx, draft),
-        };
-        spawn_local(async move {
-            let plan = request_resident(scope.clone(), WlanPlanQuery::build(variables))
-                .await
-                .map(|data| data.wlan_plan);
-            scope.send_message(WlanEditMsg::Plan(plan));
-        });
+        let change = ResidentChange::Wlan(Self::input(ctx, draft));
+        ask_plan(ctx.link(), ctx.props().resident, change, WlanEditMsg::Plan);
     }
 
-    /// Saves and then asks how saving goes until it is through.
     fn save(&self, ctx: &Context<Self>, draft: &Draft, fingerprint: String) {
-        let scope = ctx.link().clone();
-        let variables = SaveWlanVariables {
-            resident: ctx.props().resident,
-            change: Self::input(ctx, draft),
+        let change = ResidentChange::Wlan(Self::input(ctx, draft));
+        save(
+            ctx.link(),
+            ctx.props().resident,
+            change,
             fingerprint,
-        };
-        spawn_local(async move {
-            let mut saved = request_resident(scope.clone(), SaveWlan::build(variables))
-                .await
-                .map(|data| data.save_wlan);
-            while let Ok(change) = &saved
-                && change.state == SaveState::Saving
-            {
-                scope.send_message(WlanEditMsg::Saved(Ok(change.clone())));
-                TimeoutFuture::new(1_000).await;
-                let job = change.job;
-                saved = request_resident(
-                    scope.clone(),
-                    SavedChangeQuery::build(SavedChangeVariables { job }),
-                )
-                .await
-                // none once the provisioner forgot the job (restarted)
-                .and_then(|data| data.saved_change.ok_or(FrontendError::MissingData));
-            }
-            scope.send_message(WlanEditMsg::Saved(saved));
-        });
+            WlanEditMsg::Saved,
+        );
     }
 }
 
@@ -352,19 +318,12 @@ fn preview(ctx: &Context<WlanEdit>, plan: &ResidentPlan) -> Html {
     } else {
         None
     };
-    let devices = plan
-        .devices
-        .iter()
-        .map(|device| device.name.as_str())
-        .collect::<Vec<_>>();
     html! {
         <div class="wlan-edit">
             <ul class="resident-facts">
                 { for changes.map(|change| html!(<li>{change}</li>)) }
             </ul>
-            <Alert inline=true r#type={AlertType::Info} title={t::devices_change(&devices)}>
-                { for clients.map(|text| html!(<p>{text}</p>)) }
-            </Alert>
+            {devices_alert(plan, clients)}
             <div class="wlan-edit-actions">
                 <Button
                     variant={ButtonVariant::Primary}
@@ -378,31 +337,6 @@ fn preview(ctx: &Context<WlanEdit>, plan: &ResidentPlan) -> Html {
                 />
             </div>
         </div>
-    }
-}
-
-/// How saving goes: saving, saved (the devices get it from the rollout) or why it failed.
-fn saving(ctx: &Context<WlanEdit>, saved: Option<&SavedChange>) -> Html {
-    let close = ctx.link().callback(|_| WlanEditMsg::Close);
-    match saved.map(|saved| (&saved.state, saved.error.as_ref())) {
-        None | Some((SaveState::Saving, _)) => html!(<p>{t::SAVING}</p>),
-        Some((SaveState::Saved, _)) => html! {
-            <Alert inline=true r#type={AlertType::Success} title={t::SAVED}>
-                <p>{t::SAVED_HINT}</p>
-                <Button variant={ButtonVariant::Link} label={t::CLOSE} onclick={close}/>
-            </Alert>
-        },
-        Some((_, error)) => {
-            let text = error
-                .map(|error| i18n::error::server(&ServerProblem::from(error)))
-                .unwrap_or_default();
-            html! {
-                <Alert inline=true r#type={AlertType::Danger} title={t::NOT_SAVED}>
-                    <p>{text}</p>
-                    <Button variant={ButtonVariant::Link} label={t::CLOSE} onclick={close}/>
-                </Alert>
-            }
-        }
     }
 }
 

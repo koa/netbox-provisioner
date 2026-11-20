@@ -73,7 +73,7 @@ for (const step of args) {
       break;
     case 'clickrow': {
       const [row, ...label] = value.split('=');
-      await page.locator('tr', { hasText: row })
+      await page.locator('tr, .sock-item', { hasText: row })
         .getByRole('button', { name: label.join('='), exact: true }).first().click();
       break;
     }

@@ -290,12 +290,10 @@ fn socket_port(owned: &Owned, socket: &FrontPortAccess) -> Option<ResidentPort> 
         .iter()
         .filter_map(|far| far_end(owned, far))
         .collect();
-    // the switch port behind the wall: the first interface the rear port's cables reach
-    let behind = socket
-        .rear_port()
-        .map(|rear| interfaces_at(CablePortAccess::RearPort(rear)))
+    let network = switch_port(socket)
+        .as_ref()
+        .map(PortNetwork::of)
         .unwrap_or_default();
-    let network = behind.first().map(PortNetwork::of).unwrap_or_default();
     Some(ResidentPort {
         id: AccessTopology::id(socket).0,
         kind: PortKind::Socket,
@@ -350,6 +348,16 @@ impl PortNetwork {
 }
 
 /// The interfaces the cables from `start` end at, through patch panels.
+/// The switch port behind the wall of `socket`: the first interface the rear port's cables
+/// reach. It carries the socket's network.
+fn switch_port(socket: &FrontPortAccess) -> Option<InterfaceAccess> {
+    let rear = socket.rear_port()?;
+    interfaces_at(CablePortAccess::RearPort(rear))
+        .into_vec()
+        .into_iter()
+        .next()
+}
+
 fn interfaces_at(start: CablePortAccess) -> Box<[InterfaceAccess]> {
     let mut found = Vec::new();
     start.walk_cable(&mut |path| {

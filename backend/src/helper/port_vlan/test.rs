@@ -85,7 +85,7 @@ fn puts_the_vlan_on_a_free_port() {
     let input = PortVlanInput {
         device: r1.0,
         port: ether5.0,
-        vlan: vlan.0,
+        vlan: Some(vlan.0),
     };
     assert_eq!(
         steps(&plan(&topology, &input).expect("plan")),
@@ -156,7 +156,7 @@ fn a_vid_the_device_has_is_refused() {
     let input = PortVlanInput {
         device: r1.0,
         port: ether5.0,
-        vlan: other.0,
+        vlan: Some(other.0),
     };
     match plan(&topology, &input) {
         Err(Error::VlanIdTaken {
@@ -183,7 +183,7 @@ fn the_ports_own_vid_doesnt_count() {
     let input = PortVlanInput {
         device: r1.0,
         port: ether5.0,
-        vlan: other.0,
+        vlan: Some(other.0),
     };
     assert_eq!(
         steps(&plan(&topology, &input).expect("plan")),
@@ -221,7 +221,7 @@ fn a_vxlan_stays_in_its_bridge() {
     let input = |vlan: VlanId| PortVlanInput {
         device: r1.0,
         port: ether5.0,
-        vlan: vlan.0,
+        vlan: Some(vlan.0),
     };
     match plan(&topology, &input(eleven)) {
         Err(Error::VxlanInBridge { group, bridge }) => {
@@ -250,7 +250,7 @@ fn refuses_what_wouldnt_work() {
     let input = |port: InterfaceId, vlan: u32| PortVlanInput {
         device: r1.0,
         port: port.0,
-        vlan,
+        vlan: Some(vlan),
     };
     assert!(matches!(
         plan(&topology, &input(ether4, vlan.0)),
@@ -268,4 +268,32 @@ fn refuses_what_wouldnt_work() {
         plan(&topology, &input(ether5, 99)),
         Err(Error::UnknownVlan(99))
     ));
+}
+
+/// No VLAN takes the port's off, and a port without one has nothing to change.
+#[test]
+fn no_vlan_takes_it_off() {
+    let without = Net::new();
+    let r1 = without.r1;
+    let ether5 = without.interface(r1, "ether5");
+    let input = PortVlanInput {
+        device: r1.0,
+        port: ether5.0,
+        vlan: None,
+    };
+    let topology = Arc::new(without.builder.build());
+    assert!(matches!(
+        plan(&topology, &input),
+        Err(Error::NothingToChange)
+    ));
+    let mut net = Net::new();
+    let (_, vlan) = net.guests();
+    net.builder.interfaces.get_mut(&ether5).unwrap().vlan = Some(vlan);
+    let topology = Arc::new(net.builder.build());
+    let plan_off = plan(&topology, &input).expect("a plan");
+    let [PlanStep::UpdatePortVlan(step)] = &plan_off.steps[..] else {
+        panic!("{:?}", plan_off.steps);
+    };
+    assert_eq!(step.vlan, None);
+    assert_eq!(step.vlan_before.as_ref().map(|vlan| vlan.vid), Some(20));
 }

@@ -51,12 +51,23 @@ Jede Änderung ist der Plan eines Helfers (`graphql::resident::change`), erlaubt
 eigenen Objekten: ein Anwohner für seine Owner, ein Admin für jeden (Support-Ansicht). Sonst
 lehnt der Server mit `NOT_OWNED` ab.
 
-- `wlanPlan(resident, change: { wlan, ssid, psk })`: was gespeichert würde, für die Vorschau:
-  die Änderung des WLANs (ohne die Passwörter, nur dass es ein neues gibt) und die Geräte, deren
-  Konfiguration sich ändert (Controller und APs der Gruppe).
-- `saveWlan(resident, change, fingerprint)`: schreibt den Plan, wenn er noch der gezeigte ist,
-  als `NetboxWrite`-Job des Controllers (wie die Helfer der Admins, mit Rückgängig dort). Im
-  NetBox-Changelog steht „WLAN lab-wlan (meier for Familie Meier)“.
+Die Änderung (`change`, ein `@oneOf`) ist eine von:
+
+- `wlan: { wlan, ssid, psk, enabled }`: Name, Passwort, ein/aus eines eigenen WLANs;
+- `portVlan: { port, kind, vlan }`: eines seiner VLANs untagged an einem eigenen Port
+  (`kind: INTERFACE`) oder einer eigenen Dose (`SOCKET`: der Switch-Port hinter der Wand, den
+  die Dose zeigt), oder `vlan: null` für keines.
+
+Die Abfragen:
+
+- `changePlan(resident, change)`: was gespeichert würde, für die Vorschau: die Änderung (ohne
+  die Passwörter, nur dass es ein neues gibt) und die RouterOS-Geräte, deren Konfiguration sich
+  ändert: das Gerät des Plans, bei einem WLAN die APs der Gruppe, bei einem Port mit einem VLAN
+  über VXLAN die anderen Geräte mit diesem VLAN, wenn das Gerät dazukommt oder wegfällt (ihre
+  VTEPs). Ein Switch ohne RouterOS ändert nur NetBox.
+- `saveChange(resident, change, fingerprint)`: schreibt den Plan, wenn er noch der gezeigte ist,
+  als `NetboxWrite`-Job des Geräts des Plans (wie die Helfer der Admins, mit Rückgängig dort).
+  Im NetBox-Changelog steht „WLAN lab-wlan (meier for Familie Meier)“.
 - `savedChange(job)`: wie das Speichern steht (`SAVING`, `SAVED`, `FAILED` mit dem Fehler), nur
   für den Anwohner des Jobs oder einen Admin.
 
@@ -69,6 +80,16 @@ Die Regeln des Helfers „WLAN ändern“ (`helper::wlan`, auch im Admin-Schema 
 - ein- oder ausschalten: der Status `active` oder `disabled` am Wireless LAN; ausgeschaltet
   bleibt es in der Ansicht des Anwohners und zählt für eindeutige SSIDs mit;
 - nichts geändert ist ein Fehler (`NOTHING_TO_CHANGE`).
+
+Die Regeln für ein Netz am Port (der Helfer „VLAN am Port“, `helper::port_vlan`, dazu):
+
+- der Port ist ein Ethernet-Port ohne Bridge, Adresse, Uplink und Kabel zu einem RouterOS-Gerät:
+  den Port, an dem sein eigenes Gerät angebunden ist, stellt `connectDevice` um;
+- an seinem Kabel hängen nur Geräte des Anwohners (auch durch die Dose), sonst `NOT_OWNED` mit
+  dem fremden Gerät: ein anderes Netz schnitte ab, was dort hängt;
+- eine Dose, deren Rear-Port zu keinem Switch-Port führt, ist `SOCKET_WITHOUT_PORT`;
+- ohne VLAN ist es kein Mode und kein VLAN; ein Port ohne VLAN bekommt keines
+  (`NOTHING_TO_CHANGE`).
 
 Die Passwörter stehen weder im Fingerprint noch im Job-Log (`•••`); das alte bleibt für
 Rückgängig nur im Speicher, NetBox-Jobs werden nicht auf die Platte geschrieben. Auf die Geräte
@@ -108,10 +129,16 @@ Die Ansicht (`components::resident`) hat zwei Tabs nach dem Prototyp:
   der Zufallsquelle des Browsers, ohne 0, O, 1, l und I) und der Schalter „Eingeschaltet“,
   „Vorschau“ erst nach einer Änderung. Ein ausgeschaltetes WLAN steht als „ausgeschaltet“ da.
   Die Vorschau sagt in Worten, was sich ändert, welche Geräte eine neue Konfiguration bekommen
-  und dass verbundene Geräte kurz das WLAN verlieren (ausgeschaltet: bis es wieder an ist); „Speichern“ wartet auf den Job und sagt
+  und dass verbundene Geräte kurz das WLAN verlieren (ausgeschaltet: bis es wieder an ist);
+  Vorschau und Speichern teilen sich die WLANs mit „Netz ändern“ (`change_flow`); „Speichern“ wartet auf den Job und sagt
   dann „In NetBox gespeichert“, ohne zu behaupten, dass es schon ausgerollt ist.
 
-Noch nicht gebaut sind Geräte pro Port aus den Leases, Status-Labels, Ports ins VLAN, Geräte anschliessen und Entwürfe über mehrere Elemente (C21).
+Unter jeder Zeile von „Dosen und Geräte“, an deren Kabel nur eigene Geräte hängen, steht „Netz
+ändern“ (`port_vlan_edit`): eines seiner Netze oder „Kein Netz“, „Vorschau“ erst bei einem
+anderen als dem jetzigen; die Vorschau sagt „Kunde: lab-wlan statt Kein Netz“ (ein fremdes
+VLAN als „Netz des Betreibers“), die Geräte und was Geräte daran merken.
+
+Noch nicht gebaut sind Geräte pro Port aus den Leases, Status-Labels, Geräte anschliessen und Entwürfe über mehrere Elemente (C21).
 Status-Labels kommen erst mit einer verlässlichen Quelle: Ein Label, das „ausgerollt“ behauptet, ohne es zu wissen, wäre falsch. Geprüft mit
 Playwright im Lab (2026-11-18) als `meier` (auch in Telefonbreite), `huber`, `reader` und
 `admin`; die Dosen (`wohnung-meier`, `wohnung-huber` hinter `lab-keller-switch`, Geräte ohne
@@ -125,3 +152,11 @@ lab-wap ist nicht in der Gruppe: ihm fehlt das Paket `wireless` für einen CAP. 
 `lab-wlan` aus- und wieder eingeschaltet: ausgeschaltet nahm das Rollout die Konfiguration
 `lab-wlan` und VLAN 104 von der Bridge von lab-np2, `lab-gast` blieb allein mit seiner VLAN im
 Datapath der CAPs; eingeschaltet kam alles zurück, beide Male danach ein leerer Diff.
+
+„Netz ändern“ im Lab geprüft (2026-11-20) als `meier` in Telefonbreite: lab-wap `ether2`
+(„Kunde“) von keinem Netz auf `lab-wlan` und zurück. Die Vorschau nannte lab-wap und lab-np2
+(sein VTEP zu lab-wap); lab-np2 hielt das automatische Rollout an, bis der Admin freigab, dann
+rollte es beide zusammen aus (lab-wap bekam Bridge und VXLAN zu lab-np2), danach waren beide
+Diffs leer. Für Meiers Dose (hinter `lab-keller-switch` ohne RouterOS) sagt die Vorschau, dass
+sich nur NetBox ändert. `ether3` von lab-crs125 blieb ungetestet: Dort baute `lab-wlan` mit
+seinem VXLAN die Switch-Tabellen des CRS125 auf VLAN-Filtering der Bridge um.

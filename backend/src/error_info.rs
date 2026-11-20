@@ -329,6 +329,9 @@ impl From<&Error> for ErrorInfo {
             Error::SsidInvalid => ("SSID_INVALID", vec![]),
             Error::SsidTaken(ssid) => ("SSID_TAKEN", vec![("ssid", ssid.to_string())]),
             Error::NothingToChange => ("NOTHING_TO_CHANGE", vec![]),
+            Error::SocketWithoutPort(socket) => {
+                ("SOCKET_WITHOUT_PORT", vec![("socket", socket.to_string())])
+            }
             Error::NotOwned(what) => ("NOT_OWNED", vec![("what", what.to_string())]),
             Error::NoSingleRadio(device) => {
                 ("NO_SINGLE_RADIO", vec![("device", device.to_string())])
