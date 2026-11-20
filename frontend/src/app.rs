@@ -156,12 +156,13 @@ impl Component for RoleGate {
                 </ToastViewer>
             },
             Some(Ok(RoleKind::Nobody | RoleKind::Other(_))) => {
-                html!(<Bullseye><p>{i18n::resident::NOBODY}</p></Bullseye>)
+                // a gutter: on a phone the text kept to the screen's edge
+                html!(<Bullseye><p class="app-notice">{i18n::resident::NOBODY}</p></Bullseye>)
             }
             Some(Err(error)) => html! {
                 <>
                     <LoginExpired/>
-                    <Bullseye>{error.to_html()}</Bullseye>
+                    <Bullseye><div class="app-notice">{error.to_html()}</div></Bullseye>
                 </>
             },
         }

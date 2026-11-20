@@ -759,6 +759,11 @@ dl.site-diff > dd > .pf-v6-c-button {
     flex: none;
 }
 
+/* a notice alone on the page (no role, an error): off the screen's edge on a phone */
+.app-notice {
+    padding: 0 16px;
+}
+
 /* The residents' view (components::resident), after the prototype
    (docs/concepts/self-service-ui.dc.html): a socket row is the port's card, a cable and what
    is at its other end or the port's network; on a phone stacked, the cable upright. */
