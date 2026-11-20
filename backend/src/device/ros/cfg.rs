@@ -221,11 +221,10 @@ impl DeviceCfg {
             following_renames(&self.base_target, &self.base_current, &self.radio_renames());
         self.base_target.keep_dhcp_v6_clients(&renamed);
         self.ospf_segments = ospf_segments(&l2);
-        self.base_target.place_ospf_credentials(
-            &self.base_current,
-            &self.ospf_segments,
-            &self.ospf_switch,
-        );
+        let ospf_now =
+            ospf_ports_renamed(&self.base_target, &self.base_current, &self.radio_renames());
+        self.base_target
+            .place_ospf_credentials(&ospf_now, &self.ospf_segments, &self.ospf_switch);
         if let Some(package) = self.idle_radios {
             warnings.push(ApplyWarning::CapOffOutsideWlanGroup(
                 CapOffOutsideWlanGroup {
@@ -402,11 +401,10 @@ impl DeviceCfg {
     /// after, and what it keeps is a warning.
     pub fn take_ospf_decision(&mut self, decision: &Decision) {
         self.ospf_switch = decision.switch.clone();
-        self.base_target.place_ospf_credentials(
-            &self.base_current,
-            &self.ospf_segments,
-            &self.ospf_switch,
-        );
+        let ospf_now =
+            ospf_ports_renamed(&self.base_target, &self.base_current, &self.radio_renames());
+        self.base_target
+            .place_ospf_credentials(&ospf_now, &self.ospf_segments, &self.ospf_switch);
         self.ospf_warnings = decision
             .kept
             .iter()
@@ -433,13 +431,14 @@ impl DeviceCfg {
     /// Each OSPF port with a segment and the credentials it has on the device, after a
     /// generate: what `device::ospf_auth::decide` decides on.
     pub fn ospf_ports(&self) -> Box<[OspfPort]> {
+        let now = ospf_ports_renamed(&self.base_target, &self.base_current, &self.radio_renames());
         self.ospf_segments
             .iter()
             .map(|(port, network)| OspfPort {
                 port: port.clone(),
                 network: *network,
-                v2: current_credentials(&self.base_current, OSPF_AREAS[0], port, *network),
-                v3: current_credentials(&self.base_current, OSPF_AREAS[1], port, *network),
+                v2: current_credentials(&now, OSPF_AREAS[0], port, *network),
+                v3: current_credentials(&now, OSPF_AREAS[1], port, *network),
             })
             .collect()
     }
@@ -837,6 +836,48 @@ pub(super) struct Rename {
     new: AsciiString,
 }
 
+/// The interfaces `target` renames: old name to new.
+fn renames<'a>(
+    target: &'a BaseDeviceDataTarget,
+    current: &'a BaseDeviceDataCurrent,
+    more: &'a [Rename],
+) -> HashMap<&'a AsciiString, &'a AsciiString> {
+    current
+        .ethernet
+        .iter()
+        .filter_map(|port| {
+            let new = &target.ethernet.get(&port.default_name)?.name;
+            (new != &port.data.name).then_some((&port.data.name, new))
+        })
+        .chain(more.iter().map(|rename| (&rename.old, &rename.new)))
+        .collect()
+}
+
+/// `current` with the ports of its OSPF templates named as after the renames, to look up the
+/// credentials a port of the target has on the device (`place_ospf_credentials`). The diff
+/// doesn't take it: whether RouterOS follows a rename there is unchecked.
+pub(super) fn ospf_ports_renamed(
+    target: &BaseDeviceDataTarget,
+    current: &BaseDeviceDataCurrent,
+    more: &[Rename],
+) -> BaseDeviceDataCurrent {
+    let renames = renames(target, current, more);
+    let mut current = current.clone();
+    for template in current.ospf_interface.iter_mut() {
+        template.data.interfaces = template
+            .data
+            .interfaces
+            .iter()
+            .map(|name| {
+                renames
+                    .get(name)
+                    .map_or_else(|| name.clone(), |new| (*new).clone())
+            })
+            .collect();
+    }
+    current
+}
+
 /// `current` as it is once the interfaces `target` renames have their new names: what refers
 /// to them follows a rename on RouterOS, so a bridge port, a list member or a bridge VLAN on a
 /// renamed interface stays as it is instead of looking like an entry on another interface.
@@ -848,15 +889,7 @@ pub(super) fn following_renames(
     current: &BaseDeviceDataCurrent,
     more: &[Rename],
 ) -> BaseDeviceDataCurrent {
-    let renames: HashMap<&AsciiString, &AsciiString> = current
-        .ethernet
-        .iter()
-        .filter_map(|port| {
-            let new = &target.ethernet.get(&port.default_name)?.name;
-            (new != &port.data.name).then_some((&port.data.name, new))
-        })
-        .chain(more.iter().map(|rename| (&rename.old, &rename.new)))
-        .collect();
+    let renames = renames(target, current, more);
     let mut current = current.clone();
     if renames.is_empty() {
         return current;

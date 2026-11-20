@@ -58,7 +58,12 @@ das gemeinsame Template des Geräts hat; ein Port mit anderen Credentials bekomm
 kehrt ins gemeinsame zurück, sobald seine Credentials wieder dessen sind, das eigene geht dann.
 Hat jeder Port ein eigenes, geht das gemeinsame (mit `interfaces=""` bliebe ein Template ohne
 Port); der Diff macht dann aus ihm das eigene eines Ports.
-Das eigene Template wird über sein Netz gefunden, so folgt es einem umbenannten Port.
+Das eigene Template wird über sein Netz gefunden, so folgt es einem umbenannten Port. Sonst
+behält ein Port die Credentials des Templates, in dem er auf dem Gerät steckt
+(`current_credentials`, die Ports dort mit den Namen nach den Umbenennungen,
+`ospf_ports_renamed`). So behält ein in NetBox umnummerierter Link (ein Anwohner hängt sein Gerät
+ab und wieder an, „Kabel übernehmen“) seine Credentials. Vorher fiel ein Port, dessen Netz und
+Name sich zugleich änderten, auf keine Authentisierung zurück (lab-wap, 2026-11-20).
 
 ## Freigabe
 

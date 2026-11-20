@@ -137,7 +137,8 @@ pub fn own_template_network(template: &RoutingOspfInterfaceTemplateCfg) -> Optio
 }
 
 /// The credentials a port has on the device in `area`: its segment's own template, else the
-/// shared one it is in (the templates without the provisioner's comment holding it).
+/// template it is in (`current` with the ports' names after the renames): a renumbered link's
+/// port keeps those of its old segment, in doubt the device's credentials stay.
 pub(super) fn current_credentials(
     current: &BaseDeviceDataCurrent,
     area: &[u8],
@@ -153,11 +154,7 @@ pub(super) fn current_credentials(
     };
     in_area()
         .find(|template| own_template_network(template) == Some(network))
-        .or_else(|| {
-            in_area()
-                .filter(|template| own_template_network(template).is_none())
-                .find(|template| template.interfaces.contains(port))
-        })
+        .or_else(|| in_area().find(|template| template.interfaces.contains(port)))
         .map(OspfCredentials::of)
         .unwrap_or_default()
 }

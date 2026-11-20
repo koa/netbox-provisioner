@@ -779,7 +779,9 @@ and `device::ospf_auth::decide` moves it only with every NetBox end (an `ospf` i
 RouterOS device with a primary IPv4, same prefix length) a member of the apply, each seeing
 exactly the others at that port (router id, `Full`/`TwoWay`, v2 and v3; a neighbor without
 interface counts at every port) and all with the same credentials today; else the device's
-credentials stay (`current_credentials`) with the warning `OspfAuthKept` naming the doubt. The
+credentials stay (`current_credentials`: the own template of the port's segment, else the
+template the port is in, its name after the renames, `ospf_ports_renamed`, so a link renumbered
+in NetBox keeps them) with the warning `OspfAuthKept` naming the doubt. The
 generator keeps everything as the device has it (`place_ospf_credentials`, also without the
 setting); a port with credentials other than its area's shared template gets its own template
 (comment `netbox-provisioner: ospf <network>`; the shared one goes once no port is left in

@@ -380,3 +380,38 @@ fn a_shared_template_without_ports_goes() {
         );
     }
 }
+
+/// A link renumbered in NetBox (a resident moving its device, „Kabel übernehmen“) keeps the
+/// credentials its port has on the device, in its old segment's template: in doubt they stay.
+#[test]
+fn a_renumbered_port_keeps_its_credentials() {
+    let (mut target, segments) = target();
+    let mut current = empty_current(&target);
+    let old = credentials(1, "old");
+    current.ospf_interface = current_templates(
+        AREAS
+            .iter()
+            .flat_map(|&area| {
+                [
+                    template(area, &["ether2"]),
+                    own(area, "ether3", "10.0.9.0/30", &old),
+                ]
+            })
+            .collect(),
+    );
+    target.place_ospf_credentials(&current, &segments, &OspfSwitch::new());
+    for area in AREAS {
+        assert_eq!(
+            placed(&target, area),
+            [
+                (None, vec!["ether2".into()], OspfCredentials::default()),
+                (
+                    Some("netbox-provisioner: ospf 10.0.1.2/31".into()),
+                    vec!["ether3".into()],
+                    old.clone()
+                ),
+            ],
+            "{area}"
+        );
+    }
+}
