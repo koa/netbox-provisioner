@@ -49,6 +49,7 @@ use rand::{RngExt, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
+    net::IpAddr,
     sync::atomic::Ordering,
     time::{Duration, Instant, SystemTime},
 };
@@ -901,15 +902,16 @@ impl AccessibleDevice {
     /// The diff to apply, planned (`ApplyPlanned`), for this device alone: no OSPF segment with
     /// another end moves (`ospf_auth`); an empty one is nothing to do.
     pub(crate) async fn plan_apply(&self, log: &Log) -> Result<PlannedApply, Error> {
-        let read = self.read_plan().await?;
+        let read = self.read_plan(&BTreeSet::new()).await?;
         let decision = ospf_auth::decide_alone(read.ospf.as_ref());
         self.plan_from(read, decision, log)
     }
     /// What the plan reads from the device: the config, generated, and what the decision on its
-    /// OSPF segments needs; [`Self::plan_from`] then plans with the decision.
-    pub(crate) async fn read_plan(&self) -> Result<PlanRead, Error> {
+    /// OSPF segments needs; [`Self::plan_from`] then plans with the decision. `batch`: the
+    /// addresses of the other members of its batch (`DeviceCfg::generate_live`).
+    pub(crate) async fn read_plan(&self, batch: &BTreeSet<IpAddr>) -> Result<PlanRead, Error> {
         let mut cfg = DeviceCfg::fetch(&self.login.client, &self.device_config).await?;
-        cfg.generate_live(&self.device_config, &self.login.client)
+        cfg.generate_live(&self.device_config, &self.login.client, batch)
             .await?;
         let ospf = cfg
             .read_ospf(&self.device_config, &self.login.client)
@@ -1140,7 +1142,9 @@ impl AccessibleDevice {
         tokio::time::timeout(CHECK_TIMEOUT, async {
             let client = self.connect_again().await?;
             let mut cfg = DeviceCfg::fetch(&client, &self.device_config).await?;
-            cfg.generate_live(&self.device_config, &client).await?;
+            // the plan set what the batch's addresses gave, which answer by now or stay
+            cfg.generate_live(&self.device_config, &client, &BTreeSet::new())
+                .await?;
             cfg.take_ospf_decision(&self.ospf_decision.lock_anyway());
             if self.watchdog_held.load(Ordering::Relaxed) {
                 cfg.base_target.watchdog.watch_address =

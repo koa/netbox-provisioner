@@ -48,7 +48,7 @@ use mikrotik_model::{
 use prometheus::{HistogramOpts, HistogramVec, Registry};
 use std::sync::LazyLock;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     net::IpAddr,
 };
 
@@ -344,15 +344,24 @@ impl DeviceCfg {
     /// asked over `raw` (`keep_silent_watchdogs`): the plan and every check after the apply
     /// see the same, since a silent address keeps what the device has. Likewise the API is
     /// restricted only where its open connections stay inside `api_networks`
-    /// (`keep_api_open_for`).
+    /// (`keep_api_open_for`). The addresses `batch` gives (NetBox's of the other members of a
+    /// batch) count as answering: they do once the batch is through, or every member goes back.
+    /// A renumbered link's new address answered only after the script, and the check after it
+    /// saw the PoE port's ping target change (lab-np2, 2026-11-20).
     pub async fn generate_live(
         &mut self,
         device: &DeviceAccess,
         raw: &impl Reads,
+        batch: &BTreeSet<IpAddr>,
     ) -> Result<(), Error> {
         self.generate_for(device)?;
-        let addresses = self.base_target.watched_addresses();
-        let answering = access::answering(raw, &addresses).await;
+        let (coming, asked): (Vec<IpAddr>, Vec<IpAddr>) = self
+            .base_target
+            .watched_addresses()
+            .into_iter()
+            .partition(|address| batch.contains(address));
+        let mut answering = access::answering(raw, &asked).await;
+        answering.extend(coming);
         let topology = device.topology().clone();
         self.live_warnings =
             self.base_target

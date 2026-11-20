@@ -1334,7 +1334,10 @@ port pings the powered device's IPv4 at the cable (the setup gives it, the loopb
 the first apply). Only addresses that answer three pings from the device are set
 (`DeviceCfg::generate_live`, in the plan, every check and `generateCfg`): a silent one keeps
 what the device has and is the warning `WatchTargetSilent`, so a device being set up isn't
-power cycled every 5 min and a check after the apply sees no diff from it. A device reaching its parent only through ports that power what they are cabled to
+power cycled every 5 min and a check after the apply sees no diff from it. In a batch the
+addresses NetBox gives the other members count as answering (`generate_live`'s `batch`): they
+answer once it is through, or all go back; a renumbered link's PoE ping stayed on the old
+address and the check after the script saw the new one answer. A device reaching its parent only through ports that power what they are cabled to
 watches nothing: its reboot would cut that power (also the far router of a radio bridge it
 powers). The ping watchdog reboots after one `ping-timeout` without answer, not several, and
 10 min is RouterOS' maximum (CHR 7.24.5), so an update cuts it short: the watchers of a

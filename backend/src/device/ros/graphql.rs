@@ -386,7 +386,13 @@ pub(crate) async fn generate(
     together: &[DeviceAccess],
 ) -> Result<GeneratedCfg, Error> {
     let mut device_cfg = DeviceCfg::fetch(reader, device).await?;
-    device_cfg.generate_live(device, reader).await?;
+    // as the batch would: the others' addresses answer once it is through
+    let batch = together
+        .iter()
+        .filter(|other| other.id() != device.id())
+        .flat_map(crate::device::watchdog::addresses)
+        .collect();
+    device_cfg.generate_live(device, reader, &batch).await?;
     // as the apply would decide on the OSPF segments: alone the segments it shares stay
     // (`OspfAuthKept`), with `together` those with every end among them move
     let ospf = device_cfg.read_ospf(device, reader).await?;

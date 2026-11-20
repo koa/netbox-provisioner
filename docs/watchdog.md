@@ -69,7 +69,12 @@ Watchdog, wie er auf dem Gerät ist, und die Geräteseite warnt (`WatchTargetSil
 würde ein Router ein gespeistes Gerät, das gerade eingerichtet wird, alle 5 min stromlos
 schalten, oder ein Gerät neu starten, dessen Parent noch nicht eingerichtet ist. Weil das
 Behalten auch für die Prüfung nach dem Anwenden gilt, macht ein Ziel, das kurz nicht
-antwortet, kein Rest-Diff.
+antwortet, kein Rest-Diff. In einem Batch gelten die Adressen, die NetBox den anderen
+Mitgliedern gibt, als antwortend, ungepingt: Nach dem Batch antworten sie, oder alle gehen
+zurück. Ein umnummerierter Link (lab-np2 – lab-wap, 2026-11-20) liess sonst den PoE-Ping von
+lab-np2 auf der alten Adresse stehen, die nach dem Batch weg gewesen wäre. Die Prüfung nach
+dem Skript sah die neue Adresse antworten, ein Rest-Diff, und der Batch ging zurück. Die
+Vorschau eines Batchs (`generateCfg(together:)`) rechnet ebenso.
 
 ## Updates
 

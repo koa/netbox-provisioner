@@ -260,7 +260,14 @@ impl Planning for Linked {
     async fn read(self, log: &Log) -> Result<LinkedRead, Error> {
         let link = connect_for_job(&self.device, DeviceTarget::default(), log).await?;
         link.prepare_certificate(log).await?;
-        let read = link.read_plan().await?;
+        let others = self
+            .batch
+            .iter()
+            .filter(|id| **id != self.device.id())
+            .filter_map(|id| self.device.topology().get_device_by_id(id))
+            .flat_map(|member| crate::device::watchdog::addresses(&member))
+            .collect();
+        let read = link.read_plan(&others).await?;
         let control = link.connect_again().await?;
         Ok(LinkedRead {
             linked: self,
