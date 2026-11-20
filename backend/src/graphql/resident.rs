@@ -1,6 +1,7 @@
 //! Scope: The residents' GraphQL schema (`/graphql/resident`): what a resident sees of its
 //! ports and networks, and an admin of every resident's; not what they change (`change`), the
 //! admins' schema (`graphql`), nor who is which role (`role`).
+use crate::helper::connect_device::uplink_port;
 use crate::{
     role::Role,
     topology::{
@@ -74,6 +75,19 @@ pub struct Resident {
     ports: Box<[ResidentPort]>,
     /// its VLANs, by name
     networks: Box<[ResidentNetwork]>,
+    /// its devices, by name
+    devices: Box<[ResidentDevice]>,
+}
+
+/// A device of the resident.
+#[derive(SimpleObject, Debug, Clone, PartialEq, Eq)]
+pub struct ResidentDevice {
+    id: u32,
+    name: Box<str>,
+    /// it runs RouterOS: the provisioner links and configures it
+    routeros: bool,
+    /// its Anschluss with a cable: the port its link goes out of
+    uplink: Option<Box<str>>,
 }
 
 /// A device, site or VLAN by id and name.
@@ -226,11 +240,29 @@ pub fn resident(topology: &Arc<Topology>, owner: OwnerId) -> Option<Resident> {
         .filter_map(|vlan| network(&owned, &vlan))
         .collect();
     networks.sort_by(|a, b| a.name.cmp(&b.name));
+    let mut devices: Vec<ResidentDevice> = owned
+        .devices
+        .iter()
+        .filter_map(|id| topology.get_device_by_id(id))
+        .map(|device| ResidentDevice {
+            id: device.id().0,
+            name: device.name().into(),
+            routeros: device.has_routeros(),
+            uplink: device
+                .has_routeros()
+                .then(|| uplink_port(&device))
+                .flatten()
+                .filter(|port| port.cable().is_some())
+                .map(|port| port.name().into()),
+        })
+        .collect();
+    devices.sort_by_cached_key(|device| naturalize(&device.name));
     Some(Resident {
         id: owner.0,
         name: data.name.clone(),
         ports: ports.into_iter().map(|sorted| sorted.port).collect(),
         networks: networks.into(),
+        devices: devices.into(),
     })
 }
 
@@ -352,7 +384,7 @@ impl PortNetwork {
 /// The interfaces the cables from `start` end at, through patch panels.
 /// The switch port behind the wall of `socket`: the first interface the rear port's cables
 /// reach. It carries the socket's network.
-fn switch_port(socket: &FrontPortAccess) -> Option<InterfaceAccess> {
+pub(crate) fn switch_port(socket: &FrontPortAccess) -> Option<InterfaceAccess> {
     let rear = socket.rear_port()?;
     interfaces_at(CablePortAccess::RearPort(rear))
         .into_vec()
@@ -360,7 +392,7 @@ fn switch_port(socket: &FrontPortAccess) -> Option<InterfaceAccess> {
         .next()
 }
 
-fn interfaces_at(start: CablePortAccess) -> Box<[InterfaceAccess]> {
+pub(crate) fn interfaces_at(start: CablePortAccess) -> Box<[InterfaceAccess]> {
     let mut found = Vec::new();
     start.walk_cable(&mut |path| {
         if let CablePortAccess::Interface(interface) = path.far_port() {

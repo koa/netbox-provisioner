@@ -339,6 +339,15 @@ pub enum Error {
     /// a socket whose rear port leads to no switch port (`device port`)
     #[error("socket {0} leads to no switch port")]
     SocketWithoutPort(Box<str>),
+    /// a device with no port for its link: none cabled to its parent, none free (`device`)
+    #[error("{0} has no port for its link")]
+    NoUplinkPort(Box<str>),
+    /// a port a RouterOS device is linked at (`device`): its network goes with the link
+    #[error("{0} is linked at the port")]
+    DeviceAtPort(Box<str>),
+    /// a resident's change would leave one of its devices unreached (`device`)
+    #[error("{0} would be cut off")]
+    CutOff(Box<str>),
     /// an object of another resident, or an owner the user isn't
     #[error("not yours: {0}")]
     NotOwned(Box<str>),

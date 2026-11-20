@@ -138,3 +138,57 @@ async fn others_ports_and_vlans_are_refused() {
         not_owned
     );
 }
+
+fn connect_query(resident: u32, device: u32, port: u32, kind: &str) -> String {
+    format!(
+        r#"{{ changePlan(resident: {resident}, change: {{ connectDevice: {{ device: {device}, port: {port}, kind: {kind} }} }}) {{
+            fingerprint devices {{ name }}
+        }} }}"#
+    )
+}
+
+fn disconnect_query(resident: u32, device: u32) -> String {
+    format!(
+        r#"{{ changePlan(resident: {resident}, change: {{ disconnectDevice: {device} }}) {{
+            fingerprint
+        }} }}"#
+    )
+}
+
+/// Another's device, or one's own device at another's port or socket, is refused before any
+/// plan; so is disconnecting another's device.
+#[tokio::test]
+async fn others_devices_and_ports_are_neither_connected_nor_disconnected() {
+    let OwnedExample { device, port, .. } = owned_example();
+    let meier = Role::Resident {
+        owners: Box::new([MEIER]),
+    };
+    let huber = Role::Resident {
+        owners: Box::new([HUBER]),
+    };
+    let not_owned = Err("\"NOT_OWNED\"".to_string());
+    assert_eq!(
+        ask(
+            huber.clone(),
+            &connect_query(HUBER.0, device, port, "INTERFACE")
+        )
+        .await,
+        not_owned
+    );
+    assert_eq!(
+        ask(
+            meier.clone(),
+            &connect_query(MEIER.0, device, port, "SOCKET")
+        )
+        .await,
+        not_owned
+    );
+    assert_eq!(
+        ask(meier, &connect_query(MEIER.0, port, port, "INTERFACE")).await,
+        not_owned
+    );
+    assert_eq!(
+        ask(huber, &disconnect_query(HUBER.0, device)).await,
+        not_owned
+    );
+}

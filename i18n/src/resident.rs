@@ -65,6 +65,50 @@ pub fn wlan_connection(access_point: &str, signal: i32) -> String {
     }
 }
 
+pub const CONNECT_DEVICE: &str = "Gerät anschliessen";
+pub const CHOOSE_DEVICE: &str = "Gerät wählen";
+
+/// the button taking one of the resident's devices off its link
+pub fn disconnect_device(device: &str) -> String {
+    format!("{device} abhängen")
+}
+
+/// A port of a device, by name.
+pub struct PortAt<'a> {
+    pub port: &'a str,
+    pub device: &'a str,
+}
+
+/// a cable a change adds, between two ports
+pub fn cable_added(a: PortAt, b: PortAt) -> String {
+    format!(
+        "Neues Kabel: {} {} – {} {}",
+        a.device, a.port, b.device, b.port
+    )
+}
+
+/// a cable a change takes away (the far end may be unknown)
+pub fn cable_removed(end: PortAt, far: Option<PortAt>) -> String {
+    match far {
+        Some(far) => format!(
+            "Kabel weg: {} {} – {} {}",
+            end.device, end.port, far.device, far.port
+        ),
+        None => format!("Kabel weg an {} {}", end.device, end.port),
+    }
+}
+
+pub const LINK_HINT: &str = "Steck das Kabel um, wie es hier steht. Die Geräte bekommen dafür ein Transfernetz; bis sie die Änderung haben, kann das Gerät kurz weg sein.";
+pub const UNLINK_HINT: &str = "Das Gerät bleibt deins, ist danach aber nicht mehr angebunden und bekommt keine Änderungen mehr.";
+
+/// devices unreachable until the devices have the change
+pub fn cut_off(devices: &[&str]) -> String {
+    format!(
+        "Bis die Geräte die Änderung haben, nicht erreichbar: {}",
+        devices.join(", ")
+    )
+}
+
 pub const CHANGE_NETWORK: &str = "Netz ändern";
 pub const CHOOSE_NETWORK: &str = "Netz wählen";
 pub const PORT_CLIENTS_MOVE: &str =

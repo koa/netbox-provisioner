@@ -175,7 +175,15 @@ plan's devices are the RouterOS ones whose config changes, VXLAN peers too (`vte
 the frontend's „Netz ändern“ is `port_vlan_edit`, both sharing `change_flow`. What hangs in a
 network is read live (`graphql::resident::live`, `networkDevices`: leases of the VLAN's DHCP
 routers, WLAN clients at the group's controller, `AccessibleDevice::leases`/`wlan_clients` of
-`device::metrics`, the devices not answering named), shown by `network_devices`. The lab has two residents (`meier`, `huber`: Keycloak
+`device::metrics`, the devices not answering named), shown by `network_devices`. A device
+is linked to the resident's port, socket or another own device's port by
+`ResidentChange.connectDevice` (`helper::connect_device`: what is in the way cleared, the port's
+VLAN off, the socket's cable, then „Verbindung“ and „Loopback“; its Anschluss is
+`connect_device::uplink_port`, the cabled port towards its `ManagementTree` parent) and taken
+off by `disconnectDevice` (`helper::disconnect` at the Anschluss); both are checked on the
+preview: no other's RouterOS device, and on connecting none of the resident's, may lose its way
+to a management root (`keeps_reached`), and a port with a RouterOS device linked takes no
+network (`DEVICE_AT_PORT`); the frontend's `device_link_edit`. The lab has two residents (`meier`, `huber`: Keycloak
 and `local/netbox/seed-residents.py`). An export
 without owners gets them as `null` (`topology::test::example_response`), as do the objects a
 helper's preview creates.

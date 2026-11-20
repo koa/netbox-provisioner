@@ -352,6 +352,18 @@ pub fn server(problem: &impl Problem) -> String {
             "Die Dose {} führt in NetBox zu keinem Switch-Port",
             p("socket")
         ),
+        "NO_UPLINK_PORT" => format!(
+            "{} hat keinen Port für den Anschluss: keiner führt zum Netz, keiner ist frei",
+            p("device")
+        ),
+        "DEVICE_AT_PORT" => format!(
+            "An diesem Port ist {} angebunden: Häng es zuerst ab, dann geht ein Netz",
+            p("device")
+        ),
+        "CUT_OFF" => format!(
+            "Danach wäre {} nicht mehr erreichbar; schliesse es an einem anderen Port an",
+            p("device")
+        ),
         "NOT_OWNED" => format!("Das gehört nicht dir: {}", p("what")),
         "NO_SINGLE_RADIO" => format!(
             "{} hat in NetBox keinen oder mehrere Funk-Ports: eine Funkbrücke hat genau einen",

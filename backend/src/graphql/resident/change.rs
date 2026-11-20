@@ -5,9 +5,14 @@
 //! (`Topology::owned_by`): a resident for its owners, an admin for any (the support view,
 //! `docs/concepts/self-service.md`). A WLAN's name, key and on/off (`helper::wlan`), the VLAN
 //! of a port or socket (`helper::port_vlan`; a socket's is the switch port's behind the wall,
-//! and nothing but the resident's devices may hang at it). Saving writes the plan as a `NetboxWrite` job of the
-//! plan's device, as the admins' helpers do; the devices get it from the automatic rollout.
-use super::{Named, PortKind, switch_port};
+//! and nothing but the resident's devices may hang at it). One of its devices linked to its
+//! port, socket or another of its devices (`helper::connect_device`, also to move the link to
+//! another port of the device), or taken off its link (`helper::disconnect` at its Anschluss);
+//! what is in the way at the port has to be its own, and no other's device may lose its way to
+//! the management roots (`ManagementTree` before and after the plan), nor its own when it
+//! connects. Saving writes the plan as a `NetboxWrite` job of the plan's device, as the admins'
+//! helpers do; the devices get it from the automatic rollout.
+use super::{Named, PortKind, interfaces_at, switch_port};
 use crate::{
     Error,
     config::CONFIG,
@@ -15,8 +20,12 @@ use crate::{
     error_info::{ApiError, ErrorInfo},
     graphql::refetch,
     helper::{
-        self, Helper, NetboxPlan, PlanStep, UpdatePortVlan, UpdateWirelessLan,
-        port_vlan::PortVlanInput, wlan::WlanInput,
+        self, CreateCable, DeleteCable, Helper, NetboxPlan, PlanStep, UpdatePortVlan,
+        UpdateWirelessLan,
+        connect_device::{ConnectDeviceInput, uplink_port},
+        disconnect::DisconnectInput,
+        port_vlan::PortVlanInput,
+        wlan::WlanInput,
     },
     job::{self, JobKind, JobState},
     journal::Started,
@@ -24,14 +33,18 @@ use crate::{
     netbox,
     role::Role,
     topology::{
-        FrontPortId, InterfaceId, OwnerId, Topology, TopologyHolder, VlanId, WlanId,
-        access::{AccessTopology, device::DeviceAccess, front_port::FrontPortAccess},
+        DeviceId, FrontPortId, InterfaceId, OwnerId, Topology, TopologyHolder, VlanId, WlanId,
+        access::{
+            AccessTopology, cable::CablePortAccess, device::DeviceAccess,
+            front_port::FrontPortAccess, interface::InterfaceAccess,
+        },
+        management::ManagementTree,
         ownership::Owned,
     },
 };
 use async_graphql::{Context, Enum, InputObject, Object, OneofObject, SimpleObject};
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     sync::{Arc, LazyLock, Mutex},
 };
 
@@ -45,6 +58,22 @@ pub enum ResidentChange {
     Wlan(WlanInput),
     /// the network of its port or socket (`setPortVlan`)
     PortVlan(PortVlanChange),
+    /// one of its devices linked to its port or socket, or to a port of another of its devices
+    /// (`connectDevice`; with `devicePort` the device's port it goes out of, `setDeviceUplink`)
+    ConnectDevice(ConnectDeviceChange),
+    /// one of its devices, by id, taken off its link (`disconnectDevice`)
+    DisconnectDevice(u32),
+}
+
+/// Where one of the resident's devices gets linked.
+#[derive(Debug, Clone, PartialEq, Eq, InputObject)]
+pub struct ConnectDeviceChange {
+    pub device: u32,
+    /// a row of the resident's ports (`ResidentPort.id` with its `kind`)
+    pub port: u32,
+    pub kind: PortKind,
+    /// the device's port the cable goes into; none: its Anschluss, or its first free port
+    pub device_port: Option<u32>,
 }
 
 /// One of the resident's VLANs untagged at its port or socket, or none.
@@ -66,8 +95,14 @@ pub struct ResidentPlan {
     wlans: Box<[UpdateWirelessLan]>,
     /// the ports whose VLAN it changes (a socket's: the switch port behind it)
     ports: Box<[UpdatePortVlan]>,
-    /// the devices whose configuration changes: the plan's device, a WLAN group's APs (with
-    /// RouterOS only)
+    /// the cables it adds (a socket's: from the socket's front port)
+    cables_added: Box<[CreateCable]>,
+    /// the cables it takes away
+    cables_removed: Box<[DeleteCable]>,
+    /// devices cut off until the devices have the change: those whose only link goes
+    cut_off: Box<[Named]>,
+    /// the devices whose configuration changes: those the steps touch, a WLAN group's APs,
+    /// VXLAN peers (with RouterOS only)
     devices: Box<[Named]>,
 }
 
@@ -123,7 +158,171 @@ fn helper_for(
             Ok(Helper::Wlan(change))
         }
         ResidentChange::PortVlan(change) => port_vlan_helper(topology, &owned, &change),
+        ResidentChange::ConnectDevice(change) => connect_helper(topology, &owned, &change),
+        ResidentChange::DisconnectDevice(device) => disconnect_helper(topology, &owned, device),
     }
+}
+
+/// `owner`'s plan of `change`, refused for what isn't its own or would cut off a device it
+/// mustn't.
+async fn checked_plan(
+    topology: &Arc<Topology>,
+    owner: OwnerId,
+    change: ResidentChange,
+) -> Result<Checked, Error> {
+    let owned = topology.owned_by(owner);
+    // a resident connecting keeps its devices reached, one disconnecting cuts its own off
+    let own_may_go = matches!(change, ResidentChange::DisconnectDevice(_));
+    let helper = helper_for(topology, owner, change)?;
+    let plan = helper.plan(topology).await?;
+    let cuts_cables = plan
+        .steps
+        .iter()
+        .any(|step| matches!(step, PlanStep::DeleteCable(_) | PlanStep::DeleteAddress(_)));
+    if cuts_cables {
+        keeps_reached(topology, &owned, &plan, own_may_go)?;
+    }
+    Ok(Checked { helper, plan })
+}
+
+/// A resident's change with its plan.
+struct Checked {
+    helper: Helper,
+    plan: NetboxPlan,
+}
+
+/// The RouterOS devices reaching a management root before `plan` reach one after it too: all
+/// of others, and the resident's own unless `own_may_go`.
+fn keeps_reached(
+    topology: &Arc<Topology>,
+    owned: &Owned,
+    plan: &NetboxPlan,
+    own_may_go: bool,
+) -> Result<(), Error> {
+    let reached = |topology: &Arc<Topology>| {
+        let tree = ManagementTree::of(topology, topology.management_proxy());
+        topology
+            .list_devices()
+            .filter(DeviceAccess::has_routeros)
+            .map(|device| device.id())
+            .filter(|id| tree.is_root(*id) || tree.parent(*id).is_some())
+            .collect::<BTreeSet<_>>()
+    };
+    let after = plan.preview_topology()?;
+    for lost in reached(topology).difference(&reached(&after)) {
+        let own = owned.devices.contains(lost);
+        if own && own_may_go {
+            continue;
+        }
+        let name: Box<str> = topology
+            .get_device_by_id(lost)
+            .map(|device| device.name().into())
+            .unwrap_or_default();
+        return Err(match own {
+            true => Error::CutOff(name),
+            false => Error::NotOwned(name),
+        });
+    }
+    Ok(())
+}
+
+/// The owned device of id `device`, or why not.
+fn own_device(topology: &Arc<Topology>, owned: &Owned, device: u32) -> Result<DeviceAccess, Error> {
+    if !owned.devices.contains(&DeviceId(device)) {
+        return Err(Error::NotOwned(format!("device {device}").into()));
+    }
+    topology
+        .get_device_by_id(&DeviceId(device))
+        .ok_or(Error::UnknownDevice(device))
+}
+
+/// The link of `change`: to the resident's port, the switch port behind its socket, or a port
+/// of another of its devices; what hangs there now has to be its own.
+fn connect_helper(
+    topology: &Arc<Topology>,
+    owned: &Owned,
+    change: &ConnectDeviceChange,
+) -> Result<Helper, Error> {
+    let device = own_device(topology, owned, change.device)?;
+    if !device.has_routeros() {
+        return Err(Error::NoRouterOs(device.name().into()));
+    }
+    let device_port = match change.device_port {
+        Some(id) => topology
+            .get_interface_by_id(InterfaceId(id))
+            .filter(|port| port.device().is_some_and(|d| d.id() == device.id()))
+            .ok_or_else(|| Error::NotOwned(format!("port {id}").into()))?,
+        None => uplink_port(&device).ok_or_else(|| Error::NoUplinkPort(device.name().into()))?,
+    };
+    let (port, socket, in_the_way) = match change.kind {
+        PortKind::Interface => {
+            if !owned.ports.contains(&InterfaceId(change.port)) {
+                return Err(Error::NotOwned(format!("port {}", change.port).into()));
+            }
+            let port = topology
+                .get_interface_by_id(InterfaceId(change.port))
+                .ok_or(Error::UnknownInterface(change.port))?;
+            let at = port.connected_interfaces().into_vec();
+            (port, None, at)
+        }
+        PortKind::Socket => {
+            if !owned.sockets.contains(&FrontPortId(change.port)) {
+                return Err(Error::NotOwned(format!("socket {}", change.port).into()));
+            }
+            let socket = FrontPortAccess::create(topology.clone(), FrontPortId(change.port));
+            let port = switch_port(&socket).ok_or_else(|| {
+                Error::SocketWithoutPort(socket.name().unwrap_or_default().into())
+            })?;
+            let at = interfaces_at(CablePortAccess::FrontPort(socket)).into_vec();
+            (port, Some(change.port), at)
+        }
+    };
+    if let Some(foreign) = in_the_way
+        .iter()
+        .filter_map(InterfaceAccess::device)
+        .find(|other| other.id() != device.id() && !owned.devices.contains(&other.id()))
+    {
+        return Err(Error::NotOwned(foreign.name().into()));
+    }
+    Ok(Helper::ConnectDevice(ConnectDeviceInput {
+        port: port.id().0,
+        socket,
+        device_port: device_port.id().0,
+    }))
+}
+
+/// The link at the Anschluss of `device` out of NetBox; refused while a device not the
+/// resident's hangs at one of its other ports (fed by it, or reached through it).
+fn disconnect_helper(
+    topology: &Arc<Topology>,
+    owned: &Owned,
+    device: u32,
+) -> Result<Helper, Error> {
+    let device = own_device(topology, owned, device)?;
+    let port = uplink_port(&device)
+        .filter(|port| port.cable().is_some())
+        .ok_or_else(|| Error::NothingToDisconnect(device.name().into()))?;
+    if let Some(foreign) = device
+        .interfaces()
+        .iter()
+        .filter(|other| other.id() != port.id())
+        .flat_map(|other| other.connected_interfaces().into_vec())
+        .filter_map(|far| far.device())
+        .find(|far| far.id() != device.id() && !owned.devices.contains(&far.id()))
+    {
+        return Err(Error::NotOwned(foreign.name().into()));
+    }
+    // the router at the other end writes it, as when it was connected
+    let writer = port
+        .connected_interfaces()
+        .iter()
+        .filter_map(InterfaceAccess::device)
+        .find(DeviceAccess::has_routeros)
+        .unwrap_or(device);
+    Ok(Helper::Disconnect(DisconnectInput {
+        device: writer.id().0,
+        interface: port.id().0,
+    }))
 }
 
 /// The port whose VLAN `change` sets: the resident's own, or the switch port behind its
@@ -164,6 +363,15 @@ fn port_vlan_helper(
     {
         return Err(not_owned(format!("VLAN {vlan}")));
     }
+    // a device linked there goes with its link (`disconnectDevice`), not with a network
+    if let Some(linked) = port
+        .connected_interfaces()
+        .iter()
+        .filter_map(|far| far.device())
+        .find(DeviceAccess::has_routeros)
+    {
+        return Err(Error::DeviceAtPort(linked.name().into()));
+    }
     // a port cut off from its network cuts off what hangs at it: the resident's devices only
     if let Some(foreign) = port
         .connected_interfaces()
@@ -198,7 +406,29 @@ fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
             _ => None,
         })
         .collect();
+    let cables_added = plan
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            PlanStep::CreateCable(create) => Some(create.clone()),
+            _ => None,
+        })
+        .collect();
+    let cables_removed = plan
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            PlanStep::DeleteCable(delete) => Some(delete.clone()),
+            _ => None,
+        })
+        .collect();
     let device = plan.device();
+    let touched = plan
+        .steps
+        .iter()
+        .flat_map(touched_devices)
+        .filter_map(|id| device.topology().get_device_by_id(&DeviceId(id)))
+        .collect::<Vec<_>>();
     let aps = plan
         .steps
         .iter()
@@ -226,6 +456,7 @@ fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
     // only those the provisioner configures: a switch without RouterOS changes in NetBox only
     let mut seen = std::collections::BTreeSet::new();
     let devices = std::iter::once(device.clone())
+        .chain(touched)
         .chain(aps)
         .chain(vteps)
         .filter(|device| device.has_routeros() && seen.insert(device.id()))
@@ -238,7 +469,34 @@ fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
         fingerprint: plan.fingerprint_value(),
         wlans,
         ports,
+        cables_added,
+        cables_removed,
+        cut_off: plan
+            .cut_off
+            .iter()
+            .map(|device| Named {
+                id: device.id,
+                name: device.name.clone(),
+            })
+            .collect(),
         devices,
+    }
+}
+
+/// The devices a step changes something at (their ids; a created one's is a preview id).
+fn touched_devices(step: &PlanStep) -> Vec<u32> {
+    match step {
+        PlanStep::CreateInterface(create) => vec![create.device.id],
+        PlanStep::CreateAddress(create) => vec![create.device.id],
+        PlanStep::SetPrimaryIp(set) => vec![set.device.id],
+        PlanStep::CreateCable(create) => vec![create.a.device.id, create.b.device.id],
+        PlanStep::UpdateInterface(update) => vec![update.interface.device.id],
+        PlanStep::DeleteCable(delete) => std::iter::once(delete.port.device.id)
+            .chain(delete.far.iter().map(|far| far.device.id))
+            .collect(),
+        PlanStep::DeleteAddress(delete) => vec![delete.interface.device.id],
+        PlanStep::UpdatePortVlan(update) => vec![update.interface.device.id],
+        _ => Vec::new(),
     }
 }
 
@@ -324,9 +582,7 @@ impl QueryChange {
     ) -> Result<ResidentPlan, ApiError> {
         let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
         let owner = acting_for(context, &topology, resident)?;
-        let plan = helper_for(&topology, owner, change)?
-            .plan(&topology)
-            .await?;
+        let Checked { plan, .. } = checked_plan(&topology, owner, change).await?;
         Ok(resident_plan(&plan))
     }
     /// How saving the change of job `job` went, for its resident or an admin.
@@ -370,7 +626,8 @@ impl MutationResident {
         }
         let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
         let owner = acting_for(context, &topology, resident)?;
-        let helper = helper_for(&topology, owner, change)?;
+        // the checks on the plan as previewed; the write refuses a plan changed since
+        let Checked { helper, .. } = checked_plan(&topology, owner, change).await?;
         let device = helper.device(&topology)?;
         let user = started_by(context, &topology, owner);
         let holder = self.topology.clone();

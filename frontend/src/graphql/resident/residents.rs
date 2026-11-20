@@ -39,6 +39,16 @@ pub struct Resident {
     pub name: String,
     pub ports: Vec<ResidentPort>,
     pub networks: Vec<ResidentNetwork>,
+    pub devices: Vec<ResidentDevice>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct ResidentDevice {
+    pub id: i32,
+    pub name: String,
+    pub routeros: bool,
+    pub uplink: Option<String>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

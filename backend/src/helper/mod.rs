@@ -13,6 +13,7 @@
 pub mod address_takeover;
 pub mod bridge_leave;
 pub mod cable_takeover;
+pub mod connect_device;
 pub mod connection;
 pub mod customer_disconnect;
 pub mod customer_net;
@@ -93,6 +94,8 @@ pub enum Helper {
     LeaseTakeover(lease_takeover::LeaseTakeoverInput),
     /// a WLAN's SSID or key, for its group's controller
     Wlan(wlan::WlanInput),
+    /// a device's port linked to a router's port (also through a socket), for the router
+    ConnectDevice(connect_device::ConnectDeviceInput),
 }
 
 impl Helper {
@@ -115,6 +118,7 @@ impl Helper {
             Helper::AddressTakeover(input) => address_takeover::plan(topology, input),
             Helper::LeaseTakeover(input) => lease_takeover::plan(topology, input).await,
             Helper::Wlan(input) => wlan::plan(topology, input),
+            Helper::ConnectDevice(input) => connect_device::plan(topology, input).await,
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -175,6 +179,10 @@ impl Helper {
                 .wlan_group()
                 .and_then(|group| group.controller())
                 .ok_or(Error::UnknownWlan(input.wlan)),
+            Helper::ConnectDevice(input) => topology
+                .get_interface_by_id(crate::topology::InterfaceId(input.port))
+                .and_then(|interface| interface.device())
+                .ok_or(Error::UnknownInterface(input.port)),
         }
     }
 }

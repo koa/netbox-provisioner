@@ -75,7 +75,11 @@ Die Änderung (`change`, ein `@oneOf`) ist eine von:
 - `wlan: { wlan, ssid, psk, enabled }`: Name, Passwort, ein/aus eines eigenen WLANs;
 - `portVlan: { port, kind, vlan }`: eines seiner VLANs untagged an einem eigenen Port
   (`kind: INTERFACE`) oder einer eigenen Dose (`SOCKET`: der Switch-Port hinter der Wand, den
-  die Dose zeigt), oder `vlan: null` für keines.
+  die Dose zeigt), oder `vlan: null` für keines;
+- `connectDevice: { device, port, kind, devicePort }`: eines seiner RouterOS-Geräte an einen
+  eigenen Port, eine eigene Dose oder einen Port eines anderen eigenen Geräts;
+  `devicePort` ist der Port des Geräts, ohne ihn sein Anschluss;
+- `disconnectDevice: <Gerät>`: eines seiner Geräte abhängen.
 
 Die Abfragen:
 
@@ -103,12 +107,49 @@ Die Regeln des Helfers „WLAN ändern“ (`helper::wlan`, auch im Admin-Schema 
 Die Regeln für ein Netz am Port (der Helfer „VLAN am Port“, `helper::port_vlan`, dazu):
 
 - der Port ist ein Ethernet-Port ohne Bridge, Adresse, Uplink und Kabel zu einem RouterOS-Gerät:
-  den Port, an dem sein eigenes Gerät angebunden ist, stellt `connectDevice` um;
+  den Port, an dem sein eigenes Gerät angebunden ist, stellt `connectDevice` um
+  (`DEVICE_AT_PORT` mit dem Gerät);
 - an seinem Kabel hängen nur Geräte des Anwohners (auch durch die Dose), sonst `NOT_OWNED` mit
   dem fremden Gerät: ein anderes Netz schnitte ab, was dort hängt;
 - eine Dose, deren Rear-Port zu keinem Switch-Port führt, ist `SOCKET_WITHOUT_PORT`;
 - ohne VLAN ist es kein Mode und kein VLAN; ein Port ohne VLAN bekommt keines
   (`NOTHING_TO_CHANGE`).
+
+Der **Anschluss** eines Geräts (`helper::connect_device::uplink_port`) ist sein Ethernet-Port
+mit Kabel in einem Netz mit seinem Vorgänger im Management-Baum (`ManagementTree`, wie die
+Watchdogs), ohne Vorgänger sein erster freier Ethernet-Port (ohne Kabel, Bridge, Adresse).
+`residents` gibt ihn mit jedem Gerät (`devices { routeros uplink }`).
+
+Gerät anschliessen (`helper::connect_device`, nur für Anwohner):
+
+- an einem eigenen Port, einer eigenen Dose (dann der Switch-Port dahinter, das neue Kabel geht
+  von der Front der Dose zum Gerät) oder einem Port eines anderen eigenen Geräts;
+- was im Weg ist, geht zuerst, nacheinander auf dem Stand, den das davor lässt: die bisherige
+  Verbindung des Geräts an seinem Port und am alten Anschluss („Verbindung abräumen“), was am
+  Port oder in der Dose steckt, dort nur Geräte des Anwohners (sonst `NOT_OWNED`), und das VLAN
+  des Ports (eine Verbindung hat Adressen, kein VLAN);
+- dann „Verbindung“ (Kabel, `/31` des Transfer-Pools, `ospf`, MTU, Labels) und, wo es fehlt,
+  „Loopback“; die Schritte jedes Teils hinter die davor geschoben (`PlanStep::shift`);
+- ein Gerät ohne Port für den Anschluss ist `NO_UPLINK_PORT`.
+
+Gerät abhängen ist „Verbindung abräumen“ an seinem Anschluss, geschrieben vom Router am anderen
+Ende. Abgelehnt wird es, solange an einem anderen Port des Geräts ein fremdes Gerät hängt (es
+speist es oder erreicht es über ihn): `NOT_OWNED`. Das Gerät bleibt in NetBox und gehört
+weiter dem Anwohner.
+
+Beide prüfen den Plan auf der Vorschau: Ein RouterOS-Gerät, das vorher eine Wurzel des
+Management-Baums erreicht, erreicht danach auch eine. Ist es fremd, ist das `NOT_OWNED`. Ist es
+ein eigenes, ist es `CUT_OFF`, ausser beim Abhängen. Geprüft wird bei `changePlan` und noch
+einmal bei `saveChange`. Die Vorschau nennt die Kabel, die wegkommen und dazukommen
+(`cablesRemoved`, `cablesAdded`), die Geräte, die bis zum Ausrollen weg sind (`cutOff`), und
+die RouterOS-Geräte, an denen ein Schritt etwas ändert.
+
+Im Lab geprüft (2026-11-20): Meier hängte lab-wap von lab-np2 ether3 ab und wieder an. NetBox
+bekam den neuen Link (`/31`, Kabel, `ospf`, Labels), der alte ging weg; der Batch beider Geräte
+lief mit leerem Diff danach durch, die OSPF-Authentisierung blieb. Gefunden und behoben wurden
+dabei zwei Fehler, die jedes Umnummerieren eines Links trifft: die verlorenen OSPF-Zugangsdaten
+([OSPF-Authentisierung](ospf-auth.md)) und das Ping-Ziel des PoE-Ports
+([Watchdog](watchdog.md)). Offen ist das Wartefenster danach (E30).
 
 Die Passwörter stehen weder im Fingerprint noch im Job-Log (`•••`); das alte bleibt für
 Rückgängig nur im Speicher, NetBox-Jobs werden nicht auf die Platte geschrieben. Auf die Geräte

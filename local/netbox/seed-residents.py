@@ -3,7 +3,8 @@
 
 The owner group „Anwohner“ with the owners „Familie Meier“ (NetBox user `meier`) and
 „Huber AG“ (`huber`), named like the Keycloak users of local/keycloak/realm.json. Meier has
-lab-wap, the port ether3 of lab-crs125 and the VLAN lab-wlan with its WLAN, Huber the port
+lab-wap, the port ether3 of lab-crs125, the port ether3 of lab-np2 lab-wap hangs at (to take
+it off its link and link it again) and the VLAN lab-wlan with its WLAN, Huber the port
 ether4 of lab-crs125 and the VLAN lab-gast. Ownership changes no device's configuration.
 
 Each has a socket in its flat: a wall device (`wohnung-<user>`) with a front port, whose rear
@@ -29,7 +30,7 @@ RESIDENTS = {
         "user": "meier",
         "socket": {"label": "Wohnzimmer", "switch_port": "ether1", "plugged": "meier-pc"},
         "devices": ["lab-wap"],
-        "ports": [("lab-crs125", "ether3")],
+        "ports": [("lab-crs125", "ether3"), ("lab-np2", "ether3")],
         "vlans": ["lab-wlan"],
     },
     "Huber AG": {

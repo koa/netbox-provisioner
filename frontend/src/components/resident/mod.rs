@@ -3,12 +3,14 @@
 use crate::graphql::resident::residents::{
     FarEnd, PortKind, Resident, ResidentNetwork, ResidentPort,
 };
+use device_link_edit::DeviceLinkEdit;
 use i18n::resident as t;
 use network_devices::NetworkDevicesView;
 use port_vlan_edit::PortVlanEdit;
 use wlan_edit::WlanEdit;
 
 mod change_flow;
+mod device_link_edit;
 mod network_devices;
 mod port_vlan_edit;
 mod wlan_edit;
@@ -126,7 +128,14 @@ fn port_row(resident: &Resident, port: &ResidentPort, on_saved: &Callback<()>) -
     // a socket's network is behind the wall, whatever is plugged in: shown with the socket
     let network = (socket && !port.far_ends.is_empty())
         .then(|| html!(<><br/><small>{network_text(port)}</small></>));
-    let edit = port.far_ends.iter().all(|end| end.own_device).then(|| {
+    // a device the provisioner links hangs there: its link, not a network (`DeviceLinkEdit`)
+    let linked = port.far_ends.iter().any(|end| {
+        resident
+            .devices
+            .iter()
+            .any(|device| device.id == end.device.id && device.routeros)
+    });
+    let edit = (!linked && port.far_ends.iter().all(|end| end.own_device)).then(|| {
         html! {
             <PortVlanEdit
                 resident={resident.id}
@@ -136,6 +145,14 @@ fn port_row(resident: &Resident, port: &ResidentPort, on_saved: &Callback<()>) -
             />
         }
     });
+    let link = html! {
+        <DeviceLinkEdit
+            resident={resident.id}
+            port={port.clone()}
+            devices={resident.devices.clone()}
+            on_saved={on_saved.clone()}
+        />
+    };
     let left = html! {
         <Card size={CardSize::Compact} class="sock-card">
             <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
@@ -167,6 +184,7 @@ fn port_row(resident: &Resident, port: &ResidentPort, on_saved: &Callback<()>) -
                 <div class="sock-side">{right}</div>
             </div>
             {edit}
+            {link}
         </div>
     }
 }

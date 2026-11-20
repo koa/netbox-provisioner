@@ -9,6 +9,18 @@ use crate::error::ServerProblem;
 pub enum ResidentChange {
     Wlan(WlanInput),
     PortVlan(PortVlanChange),
+    ConnectDevice(ConnectDeviceChange),
+    DisconnectDevice(i32),
+}
+
+#[derive(cynic::InputObject, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct ConnectDeviceChange {
+    pub device: i32,
+    pub port: i32,
+    pub kind: PortKindInput,
+    /// none: its Anschluss
+    pub device_port: Option<i32>,
 }
 
 #[derive(cynic::InputObject, Debug, Clone, PartialEq)]
@@ -61,7 +73,38 @@ pub struct ResidentPlan {
     pub fingerprint: String,
     pub wlans: Vec<UpdateWirelessLan>,
     pub ports: Vec<UpdatePortVlan>,
+    pub cables_added: Vec<CreateCable>,
+    pub cables_removed: Vec<DeleteCable>,
+    pub cut_off: Vec<Named>,
     pub devices: Vec<Named>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct CreateCable {
+    pub a: InterfaceRef,
+    pub b: InterfaceRef,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct DeleteCable {
+    pub port: InterfaceRef,
+    pub far: Option<InterfaceRef>,
+}
+
+/// A port and its device, by name.
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct InterfaceRef {
+    pub name: String,
+    pub device: DeviceRef,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct DeviceRef {
+    pub name: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
