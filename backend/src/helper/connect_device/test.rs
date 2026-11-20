@@ -5,6 +5,20 @@ use crate::{
     topology::{PrefixPool, access::ip_addresses::IpAddressAccess, test::example_topology},
 };
 
+/// The devices by id, their ports by id: the topology's come in no order, a test picks the
+/// same each run.
+fn by_id(topology: &Arc<Topology>) -> impl Iterator<Item = DeviceAccess> {
+    let mut devices = topology.list_devices().collect::<Vec<_>>();
+    devices.sort_by_key(|device| device.id().0);
+    devices.into_iter()
+}
+
+fn ports_by_id(device: &DeviceAccess) -> Vec<InterfaceAccess> {
+    let mut ports = device.interfaces().into_vec();
+    ports.sort_by_key(|port| port.id().0);
+    ports
+}
+
 /// A RouterOS device's port with a link in the transfer pool to another router, directly.
 fn linked_port(topology: &Arc<Topology>) -> InterfaceAccess {
     let pools = topology.pool_prefixes(PrefixPool::Transfer, false);
@@ -12,10 +26,9 @@ fn linked_port(topology: &Arc<Topology>) -> InterfaceAccess {
         ip.net()
             .is_some_and(|net| pools.iter().any(|pool| pool.net.contains(&net.addr())))
     };
-    topology
-        .list_devices()
+    by_id(topology)
         .filter(|device| device.has_routeros())
-        .flat_map(|device| device.interfaces().into_vec())
+        .flat_map(|device| ports_by_id(&device))
         .find(|port| {
             port.ips().iter().any(in_pool)
                 && port.cable().is_some()
@@ -28,10 +41,9 @@ fn linked_port(topology: &Arc<Topology>) -> InterfaceAccess {
 
 /// A free Ethernet port of a RouterOS device other than `not`: no cable, bridge or address.
 fn free_port(topology: &Arc<Topology>, not: &DeviceAccess) -> InterfaceAccess {
-    topology
-        .list_devices()
+    by_id(topology)
         .filter(|device| device.has_routeros() && device.id() != not.id())
-        .flat_map(|device| device.interfaces().into_vec())
+        .flat_map(|device| ports_by_id(&device))
         .find(|port| {
             port.is_ethernet_port()
                 && port.cable().is_none()
@@ -112,25 +124,44 @@ fn the_routers_port_loses_its_vlan() {
 #[test]
 fn the_anschluss_moves_on_the_device() {
     let topology = example_topology();
-    let (device_port, other) = topology
+    let pools = topology.pool_prefixes(PrefixPool::Transfer, false);
+    let in_pool = |ip: &IpAddressAccess| {
+        ip.net()
+            .is_some_and(|net| pools.iter().any(|pool| pool.net.contains(&net.addr())))
+    };
+    // a device's Anschluss with a link of the transfer pool to a router, and a free port of it;
+    // the first by id, the topology's devices come in no order
+    let mut devices = topology
         .list_devices()
         .filter(|device| device.has_routeros())
-        .flat_map(|device| device.interfaces().into_vec())
-        .filter(|port| port.cable().is_some() && !port.ips().is_empty())
-        .filter(|port| {
-            port.connected_interfaces()
-                .first()
-                .is_some_and(|far| far.device().is_some_and(|d| d.has_routeros()))
-        })
-        .find_map(|port| {
-            let device = port.device()?;
-            let other = device.interfaces().into_vec().into_iter().find(|other| {
-                other.is_ethernet_port()
-                    && other.cable().is_none()
-                    && other.bridge().is_none()
-                    && other.ips().is_empty()
-            })?;
-            Some((port, other))
+        .collect::<Vec<_>>();
+    devices.sort_by_key(|device| device.id().0);
+    let (device_port, other) = devices
+        .iter()
+        .find_map(|device| {
+            let port = uplink_port(device)?;
+            let linked = port.cable().is_some()
+                && port.ips().iter().any(in_pool)
+                && port
+                    .connected_interfaces()
+                    .first()
+                    .is_some_and(|far| far.device().is_some_and(|d| d.has_routeros()));
+            if !linked {
+                return None;
+            }
+            let mut free = device
+                .interfaces()
+                .into_vec()
+                .into_iter()
+                .filter(|other| {
+                    other.is_ethernet_port()
+                        && other.cable().is_none()
+                        && other.bridge().is_none()
+                        && other.ips().is_empty()
+                })
+                .collect::<Vec<_>>();
+            free.sort_by_key(|other| other.id().0);
+            Some((port, free.into_iter().next()?))
         })
         .expect("a linked device with a free port");
     let router_port = device_port.connected_interfaces()[0].clone();
