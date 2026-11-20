@@ -360,6 +360,11 @@ pub fn server(problem: &impl Problem) -> String {
             "An diesem Port ist {} angebunden: Häng es zuerst ab, dann geht ein Netz",
             p("device")
         ),
+        "UNKNOWN_LOCATION" => format!("Location {} gibt es in NetBox nicht", p("id")),
+        "OTHER_CREDENTIALS" => format!(
+            "In diesem Raum bekäme {} andere Zugangsdaten; der Provisioner käme nicht mehr darauf",
+            p("device")
+        ),
         "CUT_OFF" => format!(
             "Danach wäre {} nicht mehr erreichbar; schliesse es an einem anderen Port an",
             p("device")

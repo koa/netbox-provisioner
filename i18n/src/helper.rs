@@ -655,6 +655,19 @@ pub fn link_device(name: &str, site: Option<&str>) -> String {
         None => name.to_string(),
     }
 }
+/// a device put in another location (a room); none: the site only
+pub fn update_device_location(
+    device: &str,
+    location: Option<&str>,
+    before: Option<&str>,
+) -> String {
+    let location = location.unwrap_or("keine Location");
+    match before {
+        Some(before) => format!("Location von {device} auf {location} setzen (vorher {before})"),
+        None => format!("Location von {device} auf {location} setzen"),
+    }
+}
+
 pub fn set_primary(version: &str, device: &str, address: &str, before: Option<&str>) -> String {
     match before {
         Some(before) => {

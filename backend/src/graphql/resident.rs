@@ -5,10 +5,11 @@ use crate::helper::connect_device::uplink_port;
 use crate::{
     role::Role,
     topology::{
-        OwnerId, Topology, TopologyHolder, WlanAuth,
+        OwnerId, SiteId, Topology, TopologyHolder, WlanAuth,
         access::{
             AccessTopology, cable::CablePortAccess, device::DeviceAccess,
-            front_port::FrontPortAccess, interface::InterfaceAccess, vlan::VlanAccess,
+            front_port::FrontPortAccess, interface::InterfaceAccess, site::SiteAccess,
+            vlan::VlanAccess,
         },
         natural::{naturalize, naturalize_interface},
         ownership::Owned,
@@ -77,6 +78,18 @@ pub struct Resident {
     networks: Box<[ResidentNetwork]>,
     /// its devices, by name
     devices: Box<[ResidentDevice]>,
+    /// the rooms (NetBox locations) of the sites it has ports or devices in, by site and in
+    /// the order of the building: where its devices can stand
+    locations: Box<[ResidentLocation]>,
+}
+
+/// A NetBox location a device of the resident can stand in.
+#[derive(SimpleObject, Debug, Clone, PartialEq, Eq)]
+pub struct ResidentLocation {
+    id: u32,
+    /// its name and the names of the ones it is in, the outermost first
+    path: Box<[Box<str>]>,
+    site: Option<Named>,
 }
 
 /// A device of the resident.
@@ -90,6 +103,8 @@ pub struct ResidentDevice {
     uplink: Option<Box<str>>,
     /// its Ethernet ports, one of which can be its Anschluss (RouterOS devices only)
     ports: Box<[Named]>,
+    /// the NetBox location (room) it stands in
+    location: Option<u32>,
 }
 
 /// A device, site or VLAN by id and name.
@@ -260,16 +275,71 @@ pub fn resident(topology: &Arc<Topology>, owner: OwnerId) -> Option<Resident> {
                 true => ethernet_ports(&device),
                 false => Box::default(),
             },
+            location: device.location_id(),
         })
         .collect();
     devices.sort_by_cached_key(|device| naturalize(&device.name));
+    let sites = resident_sites(topology, &owned);
+    let mut locations: Vec<(String, ResidentLocation)> = topology
+        .locations()
+        .iter()
+        .filter(|(_, location)| location.site.is_some_and(|site| sites.contains(&site)))
+        .map(|(id, location)| {
+            let site = location.site.map(|id| {
+                let site = SiteAccess::create(topology.clone(), id);
+                Named {
+                    id: id.0,
+                    name: site.name().into(),
+                }
+            });
+            let key = format!(
+                "{}\0{}",
+                site.as_ref().map(|site| &*site.name).unwrap_or_default(),
+                location_key(&location.path)
+            );
+            let location = ResidentLocation {
+                id: *id,
+                path: location.path.clone(),
+                site,
+            };
+            (key, location)
+        })
+        .collect();
+    locations.sort_by(|a, b| a.0.cmp(&b.0));
     Some(Resident {
         id: owner.0,
         name: data.name.clone(),
         ports: ports.into_iter().map(|sorted| sorted.port).collect(),
         networks: networks.into(),
         devices: devices.into(),
+        locations: locations
+            .into_iter()
+            .map(|(_, location)| location)
+            .collect(),
     })
+}
+
+/// The sites `owned` has ports, sockets or devices in.
+pub(crate) fn resident_sites(topology: &Arc<Topology>, owned: &Owned) -> BTreeSet<SiteId> {
+    let of = |device: Option<DeviceAccess>| device.and_then(|device| device.site());
+    owned
+        .devices
+        .iter()
+        .map(|id| of(topology.get_device_by_id(id)))
+        .chain(owned.ports.iter().map(|id| {
+            of(topology
+                .get_interface_by_id(*id)
+                .and_then(|port| port.device()))
+        }))
+        .chain(
+            owned
+                .sockets
+                .iter()
+                .map(|id| of(FrontPortAccess::create(topology.clone(), *id).device())),
+        )
+        .flatten()
+        .map(|site| AccessTopology::id(&site))
+        .collect()
 }
 
 /// The Ethernet ports of `device`, by name.

@@ -11,6 +11,14 @@ pub enum ResidentChange {
     PortVlan(PortVlanChange),
     ConnectDevice(ConnectDeviceChange),
     DisconnectDevice(i32),
+    DeviceRoom(DeviceRoomChange),
+}
+
+#[derive(cynic::InputObject, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct DeviceRoomChange {
+    pub device: i32,
+    pub location: i32,
 }
 
 #[derive(cynic::InputObject, Debug, Clone, PartialEq)]
@@ -75,6 +83,7 @@ pub struct ResidentPlan {
     pub ports: Vec<UpdatePortVlan>,
     pub cables_added: Vec<CreateCable>,
     pub cables_removed: Vec<DeleteCable>,
+    pub rooms: Vec<UpdateDeviceLocation>,
     pub cut_off: Vec<Named>,
     pub devices: Vec<Named>,
 }
@@ -105,6 +114,20 @@ pub struct InterfaceRef {
 #[cynic(schema = "resident")]
 pub struct DeviceRef {
     pub name: String,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct UpdateDeviceLocation {
+    pub device: DeviceRef,
+    pub location: Option<LocationRef>,
+    pub location_before: Option<LocationRef>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct LocationRef {
+    pub path: Vec<String>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

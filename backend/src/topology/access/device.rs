@@ -76,6 +76,10 @@ impl DeviceAccess {
     pub fn location(&self) -> &[Box<str>] {
         self.data().map(|d| &*d.location).unwrap_or_default()
     }
+    /// the NetBox id of its location
+    pub fn location_id(&self) -> Option<u32> {
+        self.data().and_then(|d| d.location_id)
+    }
     /// the `model` of its NetBox device type
     pub fn device_type(&self) -> &str {
         self.data().map(|d| &*d.device_type).unwrap_or_default()

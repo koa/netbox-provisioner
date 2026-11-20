@@ -11,7 +11,7 @@ use log::{error, info};
 use mikrotik_model::ascii::AsciiString;
 use regex::Regex;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::{Display, Formatter},
     hash::Hash,
     net::IpAddr,
@@ -147,6 +147,8 @@ pub struct Topology {
     services: HashMap<ServiceId, ForwardData>,
     /// the NetBox owners of devices, ports and VLANs, the residents (`ownership`)
     owners: HashMap<OwnerId, OwnerData>,
+    /// NetBox's locations (rooms, flats, floors) by id
+    locations: BTreeMap<u32, LocationData>,
     /// `findings::collect`, computed when the topology is built (`Topology::with_findings`)
     findings: Box<[findings::Finding]>,
     /// the NetBox response it is built from, which a helper's plan is tried on
@@ -189,6 +191,7 @@ impl Topology {
             ip_range_idx,
             services,
             owners,
+            locations,
             findings,
             source: _,
             management_proxy: _,
@@ -219,6 +222,7 @@ impl Topology {
             ("ip_range_idx", *ip_range_idx == other.ip_range_idx),
             ("services", *services == other.services),
             ("owners", *owners == other.owners),
+            ("locations", *locations == other.locations),
             ("findings", *findings == other.findings),
         ]
         .into_iter()
@@ -226,6 +230,14 @@ impl Topology {
         .map(|(part, _)| part)
         .collect()
     }
+}
+
+/// A NetBox location: a room, a flat, a floor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocationData {
+    /// its name and the names of the ones it is in, the outermost first
+    pub path: Box<[Box<str>]>,
+    pub site: Option<SiteId>,
 }
 
 /// The NetBox response a topology is built from: compared by identity and not printed, it is
@@ -313,6 +325,10 @@ impl Topology {
     pub fn management_proxy(&self) -> Option<&str> {
         self.management_proxy.as_deref()
     }
+    /// NetBox's locations (rooms, flats, floors) by id.
+    pub fn locations(&self) -> &BTreeMap<u32, LocationData> {
+        &self.locations
+    }
     pub(crate) fn rebuilt_with(
         &self,
         change: impl FnOnce(&mut serde_json::Value),
@@ -353,6 +369,8 @@ pub struct Device {
     /// the names of its NetBox location and the ones it is in, the outermost first (a
     /// floor, a flat, a room); empty without one
     pub location: Box<[Box<str>]>,
+    /// the NetBox id of its location
+    pub location_id: Option<u32>,
     pub ports: HashSet<CablePort>,
     pub primary_ip: Option<IpAddressId>,
     pub primary_ip_v4: Option<IpAddressId>,

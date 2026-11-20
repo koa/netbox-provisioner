@@ -149,7 +149,11 @@ device, the rear port leads to the switch whose port's network the socket has) a
 (`Topology.owners`, what NetBox gives each directly), and `topology::ownership` derives the
 rest (`Topology::owned_by`: the ports of its devices, the WLANs on its VLANs, their groups).
 Its view groups by site and then by the device's NetBox location path (`Device.location`,
-from `location_list`, outermost first). It changes nothing in the generated configs. Who a user
+from `location_list`, outermost first; `Topology::locations` with their sites,
+`DeviceAccess::location_id`). It changes nothing in the generated configs, but a device
+without a tenant of its own takes its credentials from its location's tenant: a resident's
+`deviceRoom` (`helper::device_location`, step `UpdateDeviceLocation`) refuses a location giving
+a RouterOS device other credentials (`OTHER_CREDENTIALS`). Who a user
 is decides `role::of` per request: admin, else a resident by the owners NetBox has its
 `preferred_username` in (`netbox::owners`, kept 30 s), else nobody. Residents ask
 `/graphql/resident` (`graphql::resident`, `docs/self-service.md`), a schema of its own that

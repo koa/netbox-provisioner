@@ -40,6 +40,16 @@ pub struct Resident {
     pub ports: Vec<ResidentPort>,
     pub networks: Vec<ResidentNetwork>,
     pub devices: Vec<ResidentDevice>,
+    pub locations: Vec<ResidentLocation>,
+}
+
+/// A room a device of the resident can stand in.
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct ResidentLocation {
+    pub id: i32,
+    pub path: Vec<String>,
+    pub site: Option<Named>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -50,6 +60,7 @@ pub struct ResidentDevice {
     pub routeros: bool,
     pub uplink: Option<String>,
     pub ports: Vec<Named>,
+    pub location: Option<i32>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

@@ -20,9 +20,10 @@ use crate::{
     error_info::{ApiError, ErrorInfo},
     graphql::refetch,
     helper::{
-        self, CreateCable, DeleteCable, Helper, NetboxPlan, PlanStep, UpdatePortVlan,
-        UpdateWirelessLan,
+        self, CreateCable, DeleteCable, Helper, NetboxPlan, PlanStep, UpdateDeviceLocation,
+        UpdatePortVlan, UpdateWirelessLan,
         connect_device::{ConnectDeviceInput, uplink_port},
+        device_location::DeviceLocationInput,
         disconnect::DisconnectInput,
         port_vlan::PortVlanInput,
         wlan::WlanInput,
@@ -63,6 +64,16 @@ pub enum ResidentChange {
     ConnectDevice(ConnectDeviceChange),
     /// one of its devices, by id, taken off its link (`disconnectDevice`)
     DisconnectDevice(u32),
+    /// the room of one of its devices (`setDeviceRoom`)
+    DeviceRoom(DeviceRoomChange),
+}
+
+/// The room (NetBox location) one of the resident's devices stands in: one of the sites it
+/// has ports or devices in.
+#[derive(Debug, Clone, PartialEq, Eq, InputObject)]
+pub struct DeviceRoomChange {
+    pub device: u32,
+    pub location: u32,
 }
 
 /// Where one of the resident's devices gets linked.
@@ -99,6 +110,8 @@ pub struct ResidentPlan {
     cables_added: Box<[CreateCable]>,
     /// the cables it takes away
     cables_removed: Box<[DeleteCable]>,
+    /// the devices it puts in another room
+    rooms: Box<[UpdateDeviceLocation]>,
     /// devices cut off until the devices have the change: those whose only link goes
     cut_off: Box<[Named]>,
     /// the devices whose configuration changes: those the steps touch, a WLAN group's APs,
@@ -160,7 +173,31 @@ fn helper_for(
         ResidentChange::PortVlan(change) => port_vlan_helper(topology, &owned, &change),
         ResidentChange::ConnectDevice(change) => connect_helper(topology, &owned, &change),
         ResidentChange::DisconnectDevice(device) => disconnect_helper(topology, &owned, device),
+        ResidentChange::DeviceRoom(change) => room_helper(topology, &owned, &change),
     }
+}
+
+/// The room of `change`: its device the resident's, the location in one of its sites.
+fn room_helper(
+    topology: &Arc<Topology>,
+    owned: &Owned,
+    change: &DeviceRoomChange,
+) -> Result<Helper, Error> {
+    own_device(topology, owned, change.device)?;
+    let location = topology
+        .locations()
+        .get(&change.location)
+        .ok_or(Error::UnknownLocation(change.location))?;
+    if !location
+        .site
+        .is_some_and(|site| super::resident_sites(topology, owned).contains(&site))
+    {
+        return Err(Error::NotOwned(location.path.join(" > ").into()));
+    }
+    Ok(Helper::DeviceLocation(DeviceLocationInput {
+        device: change.device,
+        location: Some(change.location),
+    }))
 }
 
 /// `owner`'s plan of `change`, refused for what isn't its own or would cut off a device it
@@ -422,6 +459,14 @@ fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
             _ => None,
         })
         .collect();
+    let rooms = plan
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            PlanStep::UpdateDeviceLocation(update) => Some(update.clone()),
+            _ => None,
+        })
+        .collect();
     let device = plan.device();
     let touched = plan
         .steps
@@ -455,7 +500,14 @@ fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
         .collect::<Vec<_>>();
     // only those the provisioner configures: a switch without RouterOS changes in NetBox only
     let mut seen = std::collections::BTreeSet::new();
-    let devices = std::iter::once(device.clone())
+    // a room is NetBox's only: the device's configuration stays
+    let configured = !plan
+        .steps
+        .iter()
+        .all(|step| matches!(step, PlanStep::UpdateDeviceLocation(_)));
+    let devices = configured
+        .then(|| device.clone())
+        .into_iter()
         .chain(touched)
         .chain(aps)
         .chain(vteps)
@@ -471,6 +523,7 @@ fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
         ports,
         cables_added,
         cables_removed,
+        rooms,
         cut_off: plan
             .cut_off
             .iter()

@@ -6,8 +6,8 @@
 use super::{
     CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreateIpRange,
     CreatePrefix, CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
-    DeleteWirelessLink, Helper, PlanStep, SetPrimaryIp, Target, UpdateInterface, UpdatePort,
-    UpdatePortVlan, UpdateWirelessLan, UpdateWirelessLink, flags,
+    DeleteWirelessLink, Helper, PlanStep, SetPrimaryIp, Target, UpdateDeviceLocation,
+    UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLan, UpdateWirelessLink, flags,
 };
 use crate::{
     Error,
@@ -159,6 +159,10 @@ async fn write_step(
         }
         PlanStep::UpdateWirelessLan(update) => {
             update_wireless_lan(rest, update, log).await?;
+            None
+        }
+        PlanStep::UpdateDeviceLocation(update) => {
+            update_device_location(rest, update, log).await?;
             None
         }
         PlanStep::DeleteInterface(delete) => {
@@ -1091,6 +1095,35 @@ async fn update_wireless_link(
         path,
         Value::Object(change),
         Value::Object(before),
+        changes,
+    )
+    .await
+}
+
+/// Writes `update` once the device is still in the location the plan found.
+async fn update_device_location(
+    rest: &NetboxRest,
+    update: &UpdateDeviceLocation,
+    log: &Log,
+) -> Result<(), Error> {
+    let path = format!("dcim/devices/{}/", update.device.id);
+    let current = rest.get(&path).await?;
+    let location = current["location"]["id"].as_u64();
+    if location != update.location_before.as_ref().map(|l| l.id.into()) {
+        return Err(Error::NetboxChanged(update.device.name.clone()));
+    }
+    let name = |location: &super::LocationRef| -> Box<str> { location.path.join(" > ").into() };
+    let changes = vec![FieldChange {
+        field: "location".into(),
+        value: update.location.as_ref().map(name),
+        previous: update.location_before.as_ref().map(name),
+    }];
+    write_update(
+        rest,
+        log,
+        path,
+        json!({ "location": update.location.as_ref().map(|l| l.id) }),
+        json!({ "location": location }),
         changes,
     )
     .await

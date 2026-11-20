@@ -154,6 +154,34 @@ pub(crate) fn example_response() -> serde_json::Value {
             device["location"] = serde_json::Value::Null;
         }
     }
+    // and before a location's site and tenant were: the site of a device in it (else the
+    // first device's), no tenant
+    let mut site_of = std::collections::HashMap::new();
+    for device in raw["data"]["device_list"].as_array().into_iter().flatten() {
+        if let Some(location) = device["location"]["id"].as_str() {
+            site_of
+                .entry(location.to_owned())
+                .or_insert_with(|| device["site"]["id"].clone());
+        }
+    }
+    let first_site = raw["data"]["device_list"][0]["site"]["id"].clone();
+    for location in raw["data"]["location_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        let site = location["id"]
+            .as_str()
+            .and_then(|id| site_of.get(id))
+            .unwrap_or(&first_site)
+            .clone();
+        if let Some(location) = location.as_object_mut() {
+            location
+                .entry("site")
+                .or_insert_with(|| serde_json::json!({ "id": site }));
+            location.entry("tenant").or_insert(serde_json::Value::Null);
+        }
+    }
     for cable in raw["data"]["cable_list"]
         .as_array_mut()
         .into_iter()
@@ -332,10 +360,11 @@ fn a_devices_location_is_its_path_of_locations() {
     let mut raw = example_response();
     let data = &mut raw["data"];
     data["location_list"] = serde_json::json!([
-        { "id": "1", "name": "2. OG", "parent": null },
-        { "id": "2", "name": "Wohnung Meier", "parent": { "id": "1" } },
-        { "id": "3", "name": "a", "parent": { "id": "4" } },
-        { "id": "4", "name": "b", "parent": { "id": "3" } },
+        { "id": "1", "name": "2. OG", "parent": null, "site": { "id": "1" }, "tenant": null },
+        { "id": "2", "name": "Wohnung Meier", "parent": { "id": "1" }, "site": { "id": "1" },
+          "tenant": null },
+        { "id": "3", "name": "a", "parent": { "id": "4" }, "site": { "id": "1" }, "tenant": null },
+        { "id": "4", "name": "b", "parent": { "id": "3" }, "site": { "id": "1" }, "tenant": null },
     ]);
     let devices = data["device_list"].as_array_mut().expect("devices");
     devices[0]["location"] = serde_json::json!({ "id": "2", "tenant": null });

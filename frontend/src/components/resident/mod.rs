@@ -4,11 +4,12 @@ use crate::graphql::{
     request_resident,
     resident::{
         live::{SeenUplink, SeenUplinksQuery, SeenUplinksVariables},
-        residents::{FarEnd, PortKind, Resident, ResidentNetwork, ResidentPort},
+        residents::{FarEnd, Named, PortKind, Resident, ResidentNetwork, ResidentPort},
     },
 };
 use cynic::QueryBuilder;
 use device_link_edit::DeviceLinkEdit;
+use device_room_edit::DeviceRoomEdit;
 use i18n::resident as t;
 use network_devices::NetworkDevicesView;
 use port_vlan_edit::PortVlanEdit;
@@ -16,6 +17,7 @@ use wlan_edit::WlanEdit;
 
 mod change_flow;
 mod device_link_edit;
+mod device_room_edit;
 mod network_devices;
 mod port_vlan_edit;
 mod wlan_edit;
@@ -158,8 +160,10 @@ fn ports(resident: &Resident, seen: &[SeenUplink], on_saved: &Callback<()>) -> H
                 let path = t::location_path(group.location);
                 html!(<Title level={Level::H4}>{path}</Title>)
             });
+            // keyed: a device moving to another room moves its rows, the rest keeps its state
+            let key = format!("{:?}\0{}", group.site, group.location.join("\0"));
             html! {
-                <section class="resident-site">
+                <section class="resident-site" {key}>
                     {site.flatten()}
                     {location}
                     { for group.ports.into_iter().map(|port| port_row(resident, port, seen, on_saved)) }
@@ -210,6 +214,33 @@ fn port_row(
             />
         }
     });
+    // the resident's devices at the port stand in a room it chooses
+    let rooms = port
+        .far_ends
+        .iter()
+        .filter(|end| end.own_device && !resident.locations.is_empty())
+        .filter_map(|end| {
+            resident
+                .devices
+                .iter()
+                .find(|device| device.id == end.device.id)
+        })
+        .map(|device| {
+            let named = Named {
+                id: device.id,
+                name: device.name.clone(),
+            };
+            html! {
+                <DeviceRoomEdit
+                    key={device.id}
+                    resident={resident.id}
+                    device={named}
+                    location={device.location}
+                    locations={resident.locations.clone()}
+                    on_saved={on_saved.clone()}
+                />
+            }
+        });
     let link = html! {
         <DeviceLinkEdit
             resident={resident.id}
@@ -228,7 +259,10 @@ fn port_row(
     let right = if port.far_ends.is_empty() {
         network_card(port)
     } else {
-        port.far_ends.iter().map(far_end_card).collect()
+        port.far_ends
+            .iter()
+            .map(|end| far_end_card(resident, port, end))
+            .collect()
     };
     let cable = (!port.far_ends.is_empty()).then(|| {
         html! {
@@ -251,18 +285,32 @@ fn port_row(
             </div>
             {edit}
             {link}
+            { for rooms }
         </div>
     }
 }
 
-fn far_end_card(end: &FarEnd) -> Html {
+/// The device at the other end of the port's cable; one of the resident's in another room than
+/// the port says where it stands.
+fn far_end_card(resident: &Resident, port: &ResidentPort, end: &FarEnd) -> Html {
     let own = end
         .own_device
         .then(|| html!(<><br/><small>{t::YOUR_DEVICE}</small></>));
+    let room = resident
+        .devices
+        .iter()
+        .find(|device| end.own_device && device.id == end.device.id)
+        .and_then(|device| device.location)
+        .and_then(|id| resident.locations.iter().find(|location| location.id == id))
+        .filter(|location| location.path != port.location)
+        .map(|location| {
+            let path = t::location_path(&location.path);
+            html!(<><br/><small>{t::stands_in(&path)}</small></>)
+        });
     html! {
         <Card size={CardSize::Compact} class="sock-card">
             <CardHeader><CardTitle>{end.device.name.clone()}</CardTitle></CardHeader>
-            <CardBody><small>{t::far_port(&end.port)}</small>{own}</CardBody>
+            <CardBody><small>{t::far_port(&end.port)}</small>{own}{room}</CardBody>
         </Card>
     }
 }

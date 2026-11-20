@@ -274,6 +274,7 @@ impl TopologyBuilder {
                 .collect(),
             services: self.forwards.into(),
             owners: self.owners.into(),
+            locations: Default::default(),
             findings: Box::default(),
             source: None,
             management_proxy: self.management_proxy,

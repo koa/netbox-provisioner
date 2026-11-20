@@ -12,6 +12,11 @@ use serde_json::{Value, json};
 /// Asks the residents' schema `query` as `role`: the data, or the first error's code.
 async fn ask(role: Role, query: &str) -> Result<Value, String> {
     let OwnedExample { raw, .. } = owned_example();
+    ask_on(raw, role, query).await
+}
+
+/// [`ask`] on the NetBox response `raw`.
+async fn ask_on(raw: Value, role: Role, query: &str) -> Result<Value, String> {
     let schema = create_resident_schema(TopologyHolder::from(topology_from(raw)));
     let response = schema
         .execute(async_graphql::Request::new(query).data(role))
@@ -191,4 +196,61 @@ async fn others_devices_and_ports_are_neither_connected_nor_disconnected() {
         ask(huber, &disconnect_query(HUBER.0, device)).await,
         not_owned
     );
+}
+
+/// Meier puts its device in a room of its site, which changes no device's configuration; a
+/// room of a site it has nothing in, and another's device, are refused.
+#[tokio::test]
+async fn a_device_goes_to_a_room_of_the_residents_sites() {
+    let OwnedExample {
+        mut raw, device, ..
+    } = owned_example();
+    let entry = raw["data"]["device_list"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|entry| entry["id"] == device.to_string().as_str())
+        .expect("meier's device")
+        .clone();
+    let tenant = entry["location"]["tenant"].clone();
+    let locations = raw["data"]["location_list"]
+        .as_array_mut()
+        .expect("locations");
+    locations.push(json!({
+        "id": "9101", "name": "Werkstatt", "parent": null,
+        "site": { "id": entry["site"]["id"] }, "tenant": tenant,
+    }));
+    locations.push(json!({
+        "id": "9102", "name": "Anderswo", "parent": null,
+        "site": { "id": "999999" }, "tenant": tenant,
+    }));
+    let query = |location: u32| {
+        format!(
+            r#"{{ changePlan(resident: {}, change: {{ deviceRoom: {{ device: {device}, location: {location} }} }}) {{
+                rooms {{ device {{ id }} location {{ id path }} }} devices {{ id }}
+            }} }}"#,
+            MEIER.0
+        )
+    };
+    let meier = Role::Resident {
+        owners: Box::new([MEIER]),
+    };
+    let data = ask_on(raw.clone(), meier.clone(), &query(9101))
+        .await
+        .expect("a plan");
+    assert_eq!(
+        data["changePlan"]["rooms"],
+        json!([{ "device": { "id": device }, "location": { "id": 9101, "path": ["Werkstatt"] } }])
+    );
+    assert_eq!(data["changePlan"]["devices"], json!([]));
+    let not_owned = Err("\"NOT_OWNED\"".to_string());
+    assert_eq!(ask_on(raw.clone(), meier, &query(9102)).await, not_owned);
+    let huber = Role::Resident {
+        owners: Box::new([HUBER]),
+    };
+    let query = query(9101).replace(
+        &format!("resident: {}", MEIER.0),
+        &format!("resident: {}", HUBER.0),
+    );
+    assert_eq!(ask_on(raw, huber, &query).await, not_owned);
 }

@@ -8,7 +8,7 @@ use super::{
 use crate::graphql::{
     authenticated::{
         netbox_plan::{
-            FindingKinds, HelperJobs, HelperJobsVariables, NetboxPlanPreview,
+            FindingKinds, HelperJobs, HelperJobsVariables, LocationRef, NetboxPlanPreview,
             NetboxPlanPreviewVariables, NetboxPlanQuery, NetboxPlanVariables, PlanStep as Step,
         },
         types::{CfgDiff, InterfaceRef, IpVersion, JobKind, JobState, PoeMode, RadioRole, VlanRef},
@@ -187,6 +187,14 @@ pub(super) fn describe(step: &Step) -> String {
             &set.address,
             set.before.as_deref(),
         ),
+        Step::UpdateDeviceLocation(update) => {
+            let path = |location: &LocationRef| location.path.join(" > ");
+            t::update_device_location(
+                &update.device.name,
+                update.location.as_ref().map(path).as_deref(),
+                update.location_before.as_ref().map(path).as_deref(),
+            )
+        }
         Step::Unknown => t::UNKNOWN_STEP.into(),
     }
 }

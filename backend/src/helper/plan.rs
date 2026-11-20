@@ -30,6 +30,7 @@ pub enum PlanStep {
     UpdatePortVlan(UpdatePortVlan),
     DeleteInterface(DeleteInterface),
     UpdateWirelessLan(UpdateWirelessLan),
+    UpdateDeviceLocation(UpdateDeviceLocation),
 }
 
 /// An object of NetBox or one an earlier step of the plan creates.
@@ -377,6 +378,23 @@ impl std::fmt::Debug for UpdateWirelessLan {
             .field("enabled", &self.enabled)
             .finish_non_exhaustive()
     }
+}
+
+/// A NetBox location by id, with its name and the names of the ones it is in, the outermost
+/// first.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct LocationRef {
+    pub id: u32,
+    pub path: Box<[Box<str>]>,
+}
+
+/// The location of `device`: `location` (none: the site only) in place of `location_before`,
+/// which it must still have.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct UpdateDeviceLocation {
+    pub device: DeviceRef,
+    pub location: Option<LocationRef>,
+    pub location_before: Option<LocationRef>,
 }
 
 /// The VLAN of a port: `vlan` untagged (802.1Q mode access), or none (no mode); no tagged

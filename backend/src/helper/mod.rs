@@ -17,6 +17,7 @@ pub mod connect_device;
 pub mod connection;
 pub mod customer_disconnect;
 pub mod customer_net;
+pub mod device_location;
 pub mod disconnect;
 pub mod flags;
 pub mod foreign_radio_bridge;
@@ -35,8 +36,8 @@ mod write;
 pub use plan::{
     CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreateIpRange,
     CreatePrefix, CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
-    DeleteWirelessLink, PlanStep, SetPrimaryIp, Target, UpdateInterface, UpdatePort,
-    UpdatePortVlan, UpdateWirelessLan, UpdateWirelessLink,
+    DeleteWirelessLink, LocationRef, PlanStep, SetPrimaryIp, Target, UpdateDeviceLocation,
+    UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLan, UpdateWirelessLink,
 };
 pub use write::{FieldChange, NetboxUndone, NetboxWritten, undo, write};
 
@@ -96,6 +97,8 @@ pub enum Helper {
     Wlan(wlan::WlanInput),
     /// a device's port linked to a router's port (also through a socket), for the router
     ConnectDevice(connect_device::ConnectDeviceInput),
+    /// the location of a device (a room), for the device
+    DeviceLocation(device_location::DeviceLocationInput),
 }
 
 impl Helper {
@@ -119,6 +122,7 @@ impl Helper {
             Helper::LeaseTakeover(input) => lease_takeover::plan(topology, input).await,
             Helper::Wlan(input) => wlan::plan(topology, input),
             Helper::ConnectDevice(input) => connect_device::plan(topology, input).await,
+            Helper::DeviceLocation(input) => device_location::plan(topology, input),
         }
     }
     /// The device the plan is for, whose job writes it.
@@ -183,6 +187,9 @@ impl Helper {
                 .get_interface_by_id(crate::topology::InterfaceId(input.port))
                 .and_then(|interface| interface.device())
                 .ok_or(Error::UnknownInterface(input.port)),
+            Helper::DeviceLocation(input) => topology
+                .get_device_by_id(&DeviceId(input.device))
+                .ok_or(Error::UnknownDevice(input.device)),
         }
     }
 }
@@ -483,6 +490,23 @@ impl NetboxPlan {
                         if let Some(interface) = interface(json, &end.id.to_string()) {
                             interface["wireless_link"] = link.clone();
                         }
+                    }
+                }
+                PlanStep::UpdateDeviceLocation(update) => {
+                    let location = update.location.as_ref().map(|location| {
+                        let id = location.id.to_string();
+                        // its tenant, which a device without its own takes the credentials of
+                        let tenant = json["location_list"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .find(|entry| entry["id"] == id.as_str())
+                            .map(|entry| entry["tenant"].clone())
+                            .unwrap_or(Value::Null);
+                        json!({ "id": id, "tenant": tenant })
+                    });
+                    if let Some(device) = device(json, update.device.id) {
+                        device["location"] = location.unwrap_or(Value::Null);
                     }
                 }
                 PlanStep::UpdateWirelessLan(update) => {

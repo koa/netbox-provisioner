@@ -9,16 +9,16 @@ use crate::{
     topology::{
         Cable, CableId, CablePort, CircuitTermination, CircuitTerminationId, Device, DeviceId,
         DeviceRole, Duplex, ForwardData, FrontPort, FrontPortId, Interface, InterfaceId,
-        IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId, OwnerData,
-        OwnerId, PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink, RadioRole,
-        RearPort, RearPortId, ServiceId, ServicePort, SiteData, SiteId, Topology, VlanData,
-        VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WirelessLinkEnd, WlanAuth,
-        WlanData, WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
+        IpAddressData, IpAddressId, IpPrefixData, IpPrefixId, IpRangeData, IpRangeId, LocationData,
+        OwnerData, OwnerId, PhysicalPortId, PoeMode, PortType, PrefixPool, Radio, RadioLink,
+        RadioRole, RearPort, RearPortId, ServiceId, ServicePort, SiteData, SiteId, Topology,
+        VlanData, VlanGroupData, VlanGroupId, VlanId, VxlanData, VxlanId, WirelessLinkEnd,
+        WlanAuth, WlanData, WlanGroupData, WlanGroupId, WlanId, WlanOpenSettings, WlanWpaSettings,
     },
 };
 use ipnet::IpNet;
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     str::FromStr,
     sync::Arc,
 };
@@ -54,7 +54,20 @@ pub(crate) fn build_topology_from(
         }
     }
     let locations = Locations::new(&data.location_list);
-    let mut builder = Builder::default();
+    let mut builder = Builder {
+        locations: data
+            .location_list
+            .iter()
+            .filter_map(|location| {
+                let data = LocationData {
+                    path: locations.path(location.id.inner()),
+                    site: location.site.id.inner().parse().ok().map(SiteId),
+                };
+                Some((location.id.inner().parse().ok()?, data))
+            })
+            .collect(),
+        ..Builder::default()
+    };
     for wlan_group in data.wireless_lan_group_list {
         builder.add_wlan_group(wlan_group);
     }
@@ -125,6 +138,7 @@ struct SiteGathered {
 /// for a later one (the interfaces of an address, of a VLAN, the prefix of a network).
 #[derive(Default)]
 struct Builder {
+    locations: BTreeMap<u32, LocationData>,
     devices: HashMap<DeviceId, Device>,
     sites: HashMap<SiteId, SiteGathered>,
     interfaces: HashMap<InterfaceId, Interface>,
@@ -243,6 +257,10 @@ impl Builder {
             .as_ref()
             .map(|location| locations.path(location.id.inner()))
             .unwrap_or_default();
+        let location_id = device
+            .location
+            .as_ref()
+            .and_then(|location| location.id.inner().parse().ok());
         let Some(device_id) = device.id.inner().parse().ok().map(DeviceId) else {
             return;
         };
@@ -365,6 +383,7 @@ impl Builder {
                 name: device.name.map(String::into_boxed_str).unwrap_or_default(),
                 site,
                 location,
+                location_id,
                 ports,
                 primary_ip,
                 primary_ip_v4,
@@ -860,6 +879,7 @@ impl Builder {
                     (id, data)
                 })
                 .collect(),
+            locations: self.locations,
             findings: Box::default(),
         }
         .with_findings()

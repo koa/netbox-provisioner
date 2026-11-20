@@ -345,6 +345,13 @@ pub enum Error {
     /// a port a RouterOS device is linked at (`device`): its network goes with the link
     #[error("{0} is linked at the port")]
     DeviceAtPort(Box<str>),
+    /// a NetBox location that isn't there (`id`)
+    #[error("unknown location {0}")]
+    UnknownLocation(u32),
+    /// a device that would take other credentials from its new location's tenant, and the
+    /// provisioner couldn't log in any more (`device`)
+    #[error("{0} would get other credentials")]
+    OtherCredentials(Box<str>),
     /// a resident's change would leave one of its devices unreached (`device`)
     #[error("{0} would be cut off")]
     CutOff(Box<str>),

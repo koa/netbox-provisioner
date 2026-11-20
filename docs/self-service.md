@@ -78,7 +78,8 @@ Die Änderung (`change`, ein `@oneOf`) ist eine von:
 - `connectDevice: { device, port, kind, devicePort }`: eines seiner RouterOS-Geräte an einen
   eigenen Port, eine eigene Dose oder einen Port eines anderen eigenen Geräts;
   `devicePort` ist der Port des Geräts, ohne ihn sein Anschluss;
-- `disconnectDevice: <Gerät>`: eines seiner Geräte abhängen.
+- `disconnectDevice: <Gerät>`: eines seiner Geräte abhängen;
+- `deviceRoom: { device, location }`: der Raum (NetBox-Location) eines seiner Geräte.
 
 Die Abfragen:
 
@@ -146,6 +147,18 @@ Gerät abhängen ist „Verbindung abräumen“ an seinem Anschluss, geschrieben
 Ende. Abgelehnt wird es, solange an einem anderen Port des Geräts ein fremdes Gerät hängt (es
 speist es oder erreicht es über ihn): `NOT_OWNED`. Das Gerät bleibt in NetBox und gehört
 weiter dem Anwohner.
+
+Der **Raum** eines Geräts (`helper::device_location`, der Helfer „Raum eines Geräts“) ist seine
+NetBox-Location. `residents` gibt die Locations aller Sites, in denen der Anwohner Ports, Dosen
+oder Geräte hat (`locations`, nach Site und in der Reihenfolge des Gebäudes), und die Location
+jedes Geräts (`devices { location }`). Eine Location einer anderen Site ist `NOT_OWNED`. Ein
+RouterOS-Gerät ohne eigenen Tenant hat die Zugangsdaten vom Tenant seiner Location: Eine
+Location, die ihm andere gäbe, ist `OTHER_CREDENTIALS`, sonst käme der Provisioner nicht mehr
+darauf. Der Raum ändert nur NetBox, an keinem Gerät die Konfiguration. Die Ports eines Geräts
+stehen in der Ansicht unter seinem Raum; an der Dose oder dem Port, wo es angeschlossen ist,
+sagt die Karte „steht in …“, wenn der Raum ein anderer ist. Im Lab geprüft (2026-11-20): lab-wap
+nach „1. OG › Wohnung Meier“, dann nach „1. OG“, meier-pc nach „1. OG › Wohnung Meier“; das
+Rollout danach hatte nichts zu tun.
 
 Beide prüfen den Plan auf der Vorschau: Ein RouterOS-Gerät, das vorher eine Wurzel des
 Management-Baums erreicht, erreicht danach auch eine. Ist es fremd, ist das `NOT_OWNED`. Ist es

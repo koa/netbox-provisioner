@@ -335,6 +335,10 @@ impl From<&Error> for ErrorInfo {
             Error::NoUplinkPort(device) => ("NO_UPLINK_PORT", vec![("device", device.to_string())]),
             Error::DeviceAtPort(device) => ("DEVICE_AT_PORT", vec![("device", device.to_string())]),
             Error::CutOff(device) => ("CUT_OFF", vec![("device", device.to_string())]),
+            Error::UnknownLocation(id) => ("UNKNOWN_LOCATION", vec![("id", id.to_string())]),
+            Error::OtherCredentials(device) => {
+                ("OTHER_CREDENTIALS", vec![("device", device.to_string())])
+            }
             Error::NotOwned(what) => ("NOT_OWNED", vec![("what", what.to_string())]),
             Error::NoSingleRadio(device) => {
                 ("NO_SINGLE_RADIO", vec![("device", device.to_string())])

@@ -87,6 +87,25 @@ pub fn take_uplink(port: &str) -> String {
     format!("{port} übernehmen")
 }
 
+/// the button choosing the room one of the resident's devices stands in
+pub fn change_room(device: &str) -> String {
+    format!("Raum von {device}")
+}
+pub const CHOOSE_ROOM: &str = "Raum wählen";
+
+/// a device moved to another room, in the preview
+pub fn room_moved(device: &str, room: &str, before: Option<&str>) -> String {
+    match before {
+        Some(before) => format!("{device} steht neu in {room} (vorher {before})"),
+        None => format!("{device} steht neu in {room}"),
+    }
+}
+
+/// a device standing in another room than the socket it is plugged in
+pub fn stands_in(room: &str) -> String {
+    format!("steht in {room}")
+}
+
 /// A port of a device, by name.
 pub struct PortAt<'a> {
     pub port: &'a str,

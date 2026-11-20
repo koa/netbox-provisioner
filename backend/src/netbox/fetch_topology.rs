@@ -170,6 +170,8 @@ pub struct LocationEntry {
     pub id: Id,
     pub name: String,
     pub parent: Option<LocationRef>,
+    pub site: SiteRef,
+    pub tenant: Option<TenantRef>,
 }
 
 #[derive(cynic::QueryFragment, Serialize, Debug, Clone)]
