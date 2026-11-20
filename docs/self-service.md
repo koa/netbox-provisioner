@@ -59,10 +59,9 @@ Konzepts in einer Abfrage) liest live, was in einem eigenen Netz hängt:
 
 Jedes Gerät wird einmal gelesen, Tabellen bis 10 s alt, alle Geräte zugleich. Wer nicht
 antwortet, steht in `unreachable`: Seine Geräte fehlen, und das UI sagt das. Im Anwohner-UI
-liest „Geräte im Netz“ in der Karte des Netzes auf Klick. Im Lab geprüft (2026-11-20) als
-`meier` und `huber`: Das Lab hat weder einen DHCP-Server noch WLAN-Clients. Gelesen wurde
-lab-np2 als Controller (ein Login), die Liste war zu Recht leer; das Zusammenführen ist mit
-Unit-Tests geprüft.
+liest „Geräte im Netz“ in der Karte des Netzes auf Klick. Im Lab geprüft (2026-11-20) als `meier` und `huber`: Das Lab hat weder einen DHCP-Server noch
+WLAN-Clients. Gelesen wurde lab-np2 als Controller (ein Login), die Liste war zu Recht leer; das
+Zusammenführen ist mit Unit-Tests geprüft.
 
 ### Ändern
 
@@ -118,7 +117,18 @@ Die Regeln für ein Netz am Port (der Helfer „VLAN am Port“, `helper::port_v
 Der **Anschluss** eines Geräts (`helper::connect_device::uplink_port`) ist sein Ethernet-Port
 mit Kabel in einem Netz mit seinem Vorgänger im Management-Baum (`ManagementTree`, wie die
 Watchdogs), ohne Vorgänger sein erster freier Ethernet-Port (ohne Kabel, Bridge, Adresse).
-`residents` gibt ihn mit jedem Gerät (`devices { routeros uplink }`).
+`residents` gibt ihn mit jedem Gerät, dazu seine Ethernet-Ports (`devices { routeros uplink
+ports }`).
+
+**Anschluss ändern** ist `connectDevice` an denselben Port mit `devicePort`: Der Plan räumt den
+alten Link ab und legt ihn an den anderen Port des Geräts. Steckt das Kabel an einem anderen
+Port als dem Anschluss von NetBox, sagt es `seenUplinks(resident)`: Der Router am anderen Ende
+des NetBox-Kabels sieht das Gerät in seinen Nachbarn (`/ip/neighbor`, `neighbors::evaluate`)
+mit dem Port, über den es sendet; ein NetBox-Port des Geräts, der nicht sein Anschluss ist, ist
+ein Treffer. Jeder Router wird einmal gelesen (höchstens 10 s alt), alle zugleich; einer, der
+nicht antwortet, steht in `unreachable`. Das UI zeigt „Das Kabel von lab-wap steckt an ether1“
+mit „ether1 übernehmen“; von selbst geschieht nichts. Ein Gerät ohne Kabel in NetBox hat keinen
+Router zum Fragen: Es wird von Hand angeschlossen.
 
 Gerät anschliessen (`helper::connect_device`, nur für Anwohner):
 
@@ -144,7 +154,13 @@ einmal bei `saveChange`. Die Vorschau nennt die Kabel, die wegkommen und dazukom
 (`cablesRemoved`, `cablesAdded`), die Geräte, die bis zum Ausrollen weg sind (`cutOff`), und
 die RouterOS-Geräte, an denen ein Schritt etwas ändert.
 
-Im Lab geprüft (2026-11-20): Meier hängte lab-wap von lab-np2 ether3 ab und wieder an. NetBox
+Im Lab geprüft (2026-11-20): Meier hängte lab-wap von lab-np2 ether3 ab und wieder an. Danach
+legte er dessen Anschluss in NetBox auf ether2, das Kabel blieb an ether1. Die Seite zeigte
+„Das Kabel von lab-wap steckt an ether1“, und „ether1 übernehmen“ wurde gespeichert. Der Batch
+(neue `/31`, neue OSPF-Schlüssel beider Enden) lief mit leerem Diff danach durch. Dabei
+verliert ein Port, der eine Zeit lang Anschluss war, sein Label: Die Verbindung benennt ihn nach
+dem Gerät am anderen Ende, das Abräumen leert es.
+Beim ersten Durchgang: NetBox
 bekam den neuen Link (`/31`, Kabel, `ospf`, Labels), der alte ging weg; der Batch beider Geräte
 lief mit leerem Diff danach durch, die OSPF-Authentisierung blieb. Gefunden und behoben wurden
 dabei zwei Fehler, die jedes Umnummerieren eines Links trifft: die verlorenen OSPF-Zugangsdaten

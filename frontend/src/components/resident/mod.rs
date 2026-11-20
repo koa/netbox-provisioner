@@ -1,8 +1,13 @@
 //! Scope: What a resident sees of its network, in tabs: its sockets and devices, its networks;
 //! not loading it (`pages::residents`, `app`), nor the admins' choice of a resident.
-use crate::graphql::resident::residents::{
-    FarEnd, PortKind, Resident, ResidentNetwork, ResidentPort,
+use crate::graphql::{
+    request_resident,
+    resident::{
+        live::{SeenUplink, SeenUplinksQuery, SeenUplinksVariables},
+        residents::{FarEnd, PortKind, Resident, ResidentNetwork, ResidentPort},
+    },
 };
+use cynic::QueryBuilder;
 use device_link_edit::DeviceLinkEdit;
 use i18n::resident as t;
 use network_devices::NetworkDevicesView;
@@ -17,7 +22,9 @@ mod wlan_edit;
 use patternfly_yew::prelude::{
     Card, CardBody, CardHeader, CardSize, CardTitle, Content, Level, Tab, Tabs, Title,
 };
-use yew::{Callback, Html, Properties, function_component, html, html_nested, use_state};
+use yew::{
+    Callback, Component, Context, Html, Properties, html, html_nested, platform::spawn_local,
+};
 
 #[derive(Debug, Clone, PartialEq, Properties)]
 pub struct ResidentViewProps {
@@ -27,32 +34,85 @@ pub struct ResidentViewProps {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum View {
+pub enum View {
     Ports,
     Networks,
 }
 
-/// A resident's sockets and devices, and its networks.
-#[function_component]
-pub fn ResidentView(props: &ResidentViewProps) -> Html {
-    let view = use_state(|| View::Ports);
-    let onselect = {
-        let view = view.clone();
-        move |shown| view.set(shown)
-    };
-    let resident = &props.resident;
-    html! {
-        <div class="resident-view">
-            <Tabs<View> selected={*view} {onselect}>
-                <Tab<View> index={View::Ports} title={t::TAB_PORTS}>
-                    {ports(resident, &props.on_saved)}
-                </Tab<View>>
-                <Tab<View> index={View::Networks} title={t::TAB_NETWORKS}>
-                    {networks(resident, &props.on_saved)}
-                </Tab<View>>
-            </Tabs<View>>
-        </div>
+/// A resident's sockets and devices, and its networks; where the routers see its devices
+/// plugged in, read once the view is shown and again with each loaded resident.
+pub struct ResidentView {
+    view: View,
+    /// the devices whose cable is in another port than their Anschluss; empty while read or
+    /// where the routers didn't answer (the view offers nothing then)
+    seen: Vec<SeenUplink>,
+}
+
+pub enum ResidentViewMsg {
+    Show(View),
+    Seen(Vec<SeenUplink>),
+}
+
+impl Component for ResidentView {
+    type Message = ResidentViewMsg;
+    type Properties = ResidentViewProps;
+
+    fn create(ctx: &Context<Self>) -> Self {
+        read_seen(ctx);
+        ResidentView {
+            view: View::Ports,
+            seen: Vec::new(),
+        }
     }
+
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            ResidentViewMsg::Show(view) => self.view = view,
+            ResidentViewMsg::Seen(seen) => self.seen = seen,
+        }
+        true
+    }
+
+    fn changed(&mut self, ctx: &Context<Self>, old: &Self::Properties) -> bool {
+        // a new callback each time the page renders is no reason to ask the routers
+        if old.resident != ctx.props().resident {
+            read_seen(ctx);
+        }
+        true
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let props = ctx.props();
+        let resident = &props.resident;
+        let onselect = ctx.link().callback(ResidentViewMsg::Show);
+        html! {
+            <div class="resident-view">
+                <Tabs<View> selected={self.view} {onselect}>
+                    <Tab<View> index={View::Ports} title={t::TAB_PORTS}>
+                        {ports(resident, &self.seen, &props.on_saved)}
+                    </Tab<View>>
+                    <Tab<View> index={View::Networks} title={t::TAB_NETWORKS}>
+                        {networks(resident, &props.on_saved)}
+                    </Tab<View>>
+                </Tabs<View>>
+            </div>
+        }
+    }
+}
+
+/// Asks where the routers see the resident's devices plugged in.
+fn read_seen(ctx: &Context<ResidentView>) {
+    let scope = ctx.link().clone();
+    let variables = SeenUplinksVariables {
+        resident: ctx.props().resident.id,
+    };
+    spawn_local(async move {
+        let seen = request_resident(scope.clone(), SeenUplinksQuery::build(variables))
+            .await
+            .map(|data| data.seen_uplinks.devices)
+            .unwrap_or_default();
+        scope.send_message(ResidentViewMsg::Seen(seen));
+    });
 }
 
 /// The ports of one site and location, as the backend sorts them (site, location, device,
@@ -64,7 +124,7 @@ struct Group<'a> {
 }
 
 /// The ports by site, and in it by location (a floor, a flat, a room).
-fn ports(resident: &Resident, on_saved: &Callback<()>) -> Html {
+fn ports(resident: &Resident, seen: &[SeenUplink], on_saved: &Callback<()>) -> Html {
     let ports: &[ResidentPort] = &resident.ports;
     if ports.is_empty() {
         return html!(<Content><p>{t::NO_PORTS}</p></Content>);
@@ -102,7 +162,7 @@ fn ports(resident: &Resident, on_saved: &Callback<()>) -> Html {
                 <section class="resident-site">
                     {site.flatten()}
                     {location}
-                    { for group.ports.into_iter().map(|port| port_row(resident, port, on_saved)) }
+                    { for group.ports.into_iter().map(|port| port_row(resident, port, seen, on_saved)) }
                 </section>
             }
         })
@@ -111,7 +171,12 @@ fn ports(resident: &Resident, on_saved: &Callback<()>) -> Html {
 
 /// A socket: left the port, a cable, right what is at the cable's other end, or its network.
 /// Its network can change where nothing but the resident's devices hangs at it.
-fn port_row(resident: &Resident, port: &ResidentPort, on_saved: &Callback<()>) -> Html {
+fn port_row(
+    resident: &Resident,
+    port: &ResidentPort,
+    seen: &[SeenUplink],
+    on_saved: &Callback<()>,
+) -> Html {
     let socket = port.kind == PortKind::Socket;
     let title = match &port.label {
         Some(label) => label.clone(),
@@ -150,6 +215,7 @@ fn port_row(resident: &Resident, port: &ResidentPort, on_saved: &Callback<()>) -
             resident={resident.id}
             port={port.clone()}
             devices={resident.devices.clone()}
+            seen={seen.to_vec()}
             on_saved={on_saved.clone()}
         />
     };

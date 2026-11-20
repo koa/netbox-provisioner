@@ -183,7 +183,10 @@ VLAN off, the socket's cable, then „Verbindung“ and „Loopback“; its Ansc
 off by `disconnectDevice` (`helper::disconnect` at the Anschluss); both are checked on the
 preview: no other's RouterOS device, and on connecting none of the resident's, may lose its way
 to a management root (`keeps_reached`), and a port with a RouterOS device linked takes no
-network (`DEVICE_AT_PORT`); the frontend's `device_link_edit`. The lab has two residents (`meier`, `huber`: Keycloak
+network (`DEVICE_AT_PORT`); the frontend's `device_link_edit`. Changing the Anschluss is
+`connectDevice` to the same port with `devicePort`; `seenUplinks` (`resident::live`) reads the
+router at the far end of the Anschluss' cable (`neighbors::evaluate`) and names the device's
+NetBox port it is seen on, where that isn't the Anschluss, for „übernehmen“. The lab has two residents (`meier`, `huber`: Keycloak
 and `local/netbox/seed-residents.py`). An export
 without owners gets them as `null` (`topology::test::example_response`), as do the objects a
 helper's preview creates.

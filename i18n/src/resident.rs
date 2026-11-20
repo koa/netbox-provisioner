@@ -73,6 +73,20 @@ pub fn disconnect_device(device: &str) -> String {
     format!("{device} abhängen")
 }
 
+/// the button choosing another port of a device as its Anschluss
+pub const CHANGE_UPLINK: &str = "Anschluss ändern";
+pub const CHOOSE_PORT: &str = "Port wählen";
+
+/// the router sees the device's cable in another port than NetBox's Anschluss
+pub fn uplink_seen(device: &str, port: &str) -> String {
+    format!("Das Kabel von {device} steckt an {port}")
+}
+
+/// the button taking the port the cable is in as the Anschluss
+pub fn take_uplink(port: &str) -> String {
+    format!("{port} übernehmen")
+}
+
 /// A port of a device, by name.
 pub struct PortAt<'a> {
     pub port: &'a str,
@@ -99,6 +113,8 @@ pub fn cable_removed(end: PortAt, far: Option<PortAt>) -> String {
 }
 
 pub const LINK_HINT: &str = "Steck das Kabel um, wie es hier steht. Die Geräte bekommen dafür ein Transfernetz; bis sie die Änderung haben, kann das Gerät kurz weg sein.";
+pub const TAKE_HINT: &str =
+    "Das Kabel steckt schon so. Bis die Geräte die Änderung haben, kann das Gerät kurz weg sein.";
 pub const UNLINK_HINT: &str = "Das Gerät bleibt deins, ist danach aber nicht mehr angebunden und bekommt keine Änderungen mehr.";
 
 /// devices unreachable until the devices have the change

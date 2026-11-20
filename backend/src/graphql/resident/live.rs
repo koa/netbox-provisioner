@@ -7,18 +7,25 @@
 //! client of one of its WLANs at the WLAN group's controller (its CAPsMAN registers the CAPs'
 //! clients), joined by MAC. Each device is read once, all of them at once; one that doesn't
 //! answer is named, so the view doesn't pass a part for the whole.
+//!
+//! The port a device's cable is in (its Anschluss), where it isn't the one of NetBox: the
+//! router at the other end of NetBox's cable sees the device's port by name in its neighbors
+//! (`seenUplinks`). Taken over by the resident, nothing happens by itself.
 use super::{Named, change::acting_for};
 use crate::{
     Error,
     device::{
         interface_live::client_name,
         metrics::{Lease, WlanClient},
+        neighbors::{self, SeenNeighbor},
     },
     error_info::ApiError,
     facts::Freshness,
+    helper::connect_device::uplink_port,
     topology::{
         DeviceId, TopologyHolder, VlanId,
         access::{AccessTopology, DeviceTarget, device::DeviceAccess, interface::InterfaceAccess},
+        findings::InterfaceRef,
     },
 };
 use async_graphql::{Context, Object, SimpleObject, futures_util::future::join_all};
@@ -55,6 +62,28 @@ pub struct WlanConnection {
     access_point: Box<str>,
     /// dBm
     signal: i32,
+}
+
+/// Where the routers see the resident's devices plugged in, where it isn't NetBox's Anschluss.
+#[derive(SimpleObject, Debug, Clone)]
+pub struct SeenUplinks {
+    devices: Box<[SeenUplink]>,
+    /// the routers that didn't answer: their devices are missing
+    unreachable: Box<[Named]>,
+}
+
+/// A device of the resident whose cable is in `port`, not in its Anschluss of NetBox.
+#[derive(SimpleObject, Debug, Clone, PartialEq, Eq)]
+pub struct SeenUplink {
+    device: u32,
+    port: Named,
+}
+
+/// A device of the resident and the router port NetBox's cable at its Anschluss leads to.
+struct Linked {
+    device: DeviceAccess,
+    uplink: InterfaceAccess,
+    router_port: InterfaceAccess,
 }
 
 /// A WLAN of the network and the controller registering its clients.
@@ -190,6 +219,95 @@ impl QueryLive {
             unreachable: unreachable.into(),
         })
     }
+    /// Where the routers see `resident`'s RouterOS devices plugged in, where it isn't their
+    /// Anschluss in NetBox; each router read once, all at once.
+    async fn seen_uplinks(
+        &self,
+        context: &Context<'_>,
+        resident: u32,
+    ) -> Result<SeenUplinks, ApiError> {
+        let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
+        let owner = acting_for(context, &topology, resident)?;
+        let mut routers = BTreeMap::<DeviceId, (DeviceAccess, Vec<Linked>)>::new();
+        for device in topology
+            .owned_by(owner)
+            .devices
+            .iter()
+            .filter_map(|id| topology.get_device_by_id(id))
+            .filter(DeviceAccess::has_routeros)
+        {
+            let Some(uplink) = uplink_port(&device).filter(|port| port.cable().is_some()) else {
+                continue;
+            };
+            let Some((router, router_port)) = uplink
+                .connected_interfaces()
+                .into_iter()
+                .find_map(|far| Some((far.device().filter(DeviceAccess::has_routeros)?, far)))
+            else {
+                continue;
+            };
+            routers
+                .entry(router.id())
+                .or_insert_with(|| (router, Vec::new()))
+                .1
+                .push(Linked {
+                    device,
+                    uplink,
+                    router_port,
+                });
+        }
+        let read = join_all(
+            routers
+                .into_values()
+                .map(|(router, linked)| async move { (seen_by(&router).await, router, linked) }),
+        )
+        .await;
+        let mut devices = Vec::new();
+        let mut unreachable = Vec::new();
+        for (seen, router, linked) in read {
+            let Ok(seen) = seen else {
+                unreachable.push(Named {
+                    id: router.id().0,
+                    name: router.name().into(),
+                });
+                continue;
+            };
+            devices.extend(linked.iter().filter_map(|linked| {
+                let at = seen.get(&linked.router_port.id().0)?;
+                let port = plugged_in(linked.device.id().0, linked.uplink.id().0, at)?;
+                Some(SeenUplink {
+                    device: linked.device.id().0,
+                    port: Named {
+                        id: port.id,
+                        name: port.name,
+                    },
+                })
+            }));
+        }
+        Ok(SeenUplinks {
+            devices: devices.into(),
+            unreachable: unreachable.into(),
+        })
+    }
+}
+
+/// Who `router` sees at its NetBox ports (by id); an error where it doesn't answer.
+async fn seen_by(router: &DeviceAccess) -> Result<BTreeMap<u32, Vec<SeenNeighbor>>, Error> {
+    let accessible = router
+        .connect(DeviceTarget::default())
+        .await?
+        .ok_or(Error::UnknownDevice(router.id().0))?;
+    let table = neighbors::read_table(&accessible.reader().at(Freshness::MaxAge(MAX_AGE))).await?;
+    Ok(neighbors::evaluate(router, &table).seen)
+}
+
+/// The port of `device` the router sees at its end of the cable (`seen`), where it is a NetBox
+/// port other than its Anschluss `uplink`.
+fn plugged_in(device: u32, uplink: u32, seen: &[SeenNeighbor]) -> Option<InterfaceRef> {
+    seen.iter()
+        .filter(|neighbor| neighbor.device.as_ref().is_some_and(|d| d.id == device))
+        .find_map(|neighbor| neighbor.interface.clone())
+        .filter(|port| port.id != uplink)
 }
 
 /// What one device answered.

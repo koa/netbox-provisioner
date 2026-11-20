@@ -49,6 +49,7 @@ pub struct ResidentDevice {
     pub name: String,
     pub routeros: bool,
     pub uplink: Option<String>,
+    pub ports: Vec<Named>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

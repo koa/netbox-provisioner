@@ -88,6 +88,8 @@ pub struct ResidentDevice {
     routeros: bool,
     /// its Anschluss with a cable: the port its link goes out of
     uplink: Option<Box<str>>,
+    /// its Ethernet ports, one of which can be its Anschluss (RouterOS devices only)
+    ports: Box<[Named]>,
 }
 
 /// A device, site or VLAN by id and name.
@@ -254,6 +256,10 @@ pub fn resident(topology: &Arc<Topology>, owner: OwnerId) -> Option<Resident> {
                 .flatten()
                 .filter(|port| port.cable().is_some())
                 .map(|port| port.name().into()),
+            ports: match device.has_routeros() {
+                true => ethernet_ports(&device),
+                false => Box::default(),
+            },
         })
         .collect();
     devices.sort_by_cached_key(|device| naturalize(&device.name));
@@ -264,6 +270,21 @@ pub fn resident(topology: &Arc<Topology>, owner: OwnerId) -> Option<Resident> {
         networks: networks.into(),
         devices: devices.into(),
     })
+}
+
+/// The Ethernet ports of `device`, by name.
+fn ethernet_ports(device: &DeviceAccess) -> Box<[Named]> {
+    let mut ports = device
+        .interfaces()
+        .iter()
+        .filter(|port| port.is_ethernet_port())
+        .map(|port| Named {
+            id: port.id().0,
+            name: port.name().into(),
+        })
+        .collect::<Vec<_>>();
+    ports.sort_by_cached_key(|port| naturalize_interface(&port.name));
+    ports.into()
 }
 
 /// A port with what it is sorted by.

@@ -1,6 +1,10 @@
 //! Scope: Tests of `graphql::resident::live`; nothing else.
-use super::joined;
+use super::{joined, plugged_in};
 use crate::device::metrics::{Capsman, Lease, WlanClient};
+use crate::{
+    device::neighbors::SeenNeighbor,
+    topology::findings::{DeviceRef, InterfaceRef},
+};
 use std::{str::FromStr, time::Duration};
 
 fn mac(text: &str) -> mikrotik_model::MacAddress {
@@ -59,4 +63,37 @@ fn leases_and_clients_join_by_mac() {
     assert!(devices[1].wlan.is_some());
     assert!(devices[0].wlan.is_none());
     assert!(devices[2].wlan.is_some());
+}
+
+fn seen(device: u32, port: Option<u32>) -> SeenNeighbor {
+    let device_ref = DeviceRef {
+        id: device,
+        name: format!("device {device}").into(),
+        site: Some(1),
+    };
+    SeenNeighbor {
+        identity: device_ref.name.clone(),
+        interface_name: "ether2".into(),
+        board: "cAP ax".into(),
+        device: Some(device_ref.clone()),
+        interface: port.map(|id| InterfaceRef {
+            id,
+            name: "ether2".into(),
+            device: device_ref,
+        }),
+    }
+}
+
+/// The router seeing the device at another NetBox port than its Anschluss names that port;
+/// at its Anschluss, at a port NetBox doesn't have, or only another device: nothing.
+#[test]
+fn the_port_the_router_sees_the_device_at() {
+    let other = seen(7, Some(71));
+    assert_eq!(
+        plugged_in(6, 61, &[other.clone(), seen(6, Some(62))]).map(|port| port.id),
+        Some(62)
+    );
+    assert_eq!(plugged_in(6, 61, &[seen(6, Some(61))]), None);
+    assert_eq!(plugged_in(6, 61, &[seen(6, None)]), None);
+    assert_eq!(plugged_in(6, 61, &[other]), None);
 }

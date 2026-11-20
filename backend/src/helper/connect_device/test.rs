@@ -106,3 +106,51 @@ fn the_routers_port_loses_its_vlan() {
         plan.steps
     );
 }
+
+/// Another port of the device to the same router port (the Anschluss changed): the old link
+/// goes, the router's port is free for the new one.
+#[test]
+fn the_anschluss_moves_on_the_device() {
+    let topology = example_topology();
+    let (device_port, other) = topology
+        .list_devices()
+        .filter(|device| device.has_routeros())
+        .flat_map(|device| device.interfaces().into_vec())
+        .filter(|port| port.cable().is_some() && !port.ips().is_empty())
+        .filter(|port| {
+            port.connected_interfaces()
+                .first()
+                .is_some_and(|far| far.device().is_some_and(|d| d.has_routeros()))
+        })
+        .find_map(|port| {
+            let device = port.device()?;
+            let other = device.interfaces().into_vec().into_iter().find(|other| {
+                other.is_ethernet_port()
+                    && other.cable().is_none()
+                    && other.bridge().is_none()
+                    && other.ips().is_empty()
+            })?;
+            Some((port, other))
+        })
+        .expect("a linked device with a free port");
+    let router_port = device_port.connected_interfaces()[0].clone();
+    let input = ConnectDeviceInput {
+        port: router_port.id().0,
+        socket: None,
+        device_port: other.id().0,
+    };
+    let plan = prepare(&topology, &input).expect("a plan");
+    let after = plan.preview_topology().expect("a preview");
+    let old = after
+        .get_interface_by_id(device_port.id())
+        .expect("the old port");
+    assert!(
+        old.cable().is_none() && old.ips().is_empty(),
+        "{:?}",
+        plan.steps
+    );
+    let router_port = after
+        .get_interface_by_id(router_port.id())
+        .expect("the router's port");
+    assert!(router_port.cable().is_none(), "{:?}", plan.steps);
+}

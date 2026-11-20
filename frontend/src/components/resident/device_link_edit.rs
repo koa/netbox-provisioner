@@ -1,6 +1,7 @@
-//! Scope: Linking one of a resident's devices to a port or socket of it, and taking a device at
-//! it off its link: the choice, the preview in words, saving; not the row it sits in
-//! (`components::resident`).
+//! Scope: Linking one of a resident's devices to a port or socket of it, moving the link of a
+//! device at it to another of the device's ports (its Anschluss, also the one a router sees its
+//! cable in), and taking a device at it off its link: the choice, the preview in words,
+//! saving; not the row it sits in (`components::resident`).
 use super::change_flow::{ask_plan, devices_alert, save, saving};
 use crate::{
     components::widgets::popup::Select,
@@ -10,6 +11,7 @@ use crate::{
             ConnectDeviceChange, InterfaceRef, PortKindInput, ResidentChange, ResidentPlan,
             SaveState, SavedChange,
         },
+        live::SeenUplink,
         residents::{PortKind, ResidentDevice, ResidentPort},
     },
 };
@@ -25,6 +27,8 @@ pub struct DeviceLinkEditProps {
     pub port: ResidentPort,
     /// the resident's devices
     pub devices: Vec<ResidentDevice>,
+    /// where the routers see the resident's devices plugged in, where it isn't their Anschluss
+    pub seen: Vec<SeenUplink>,
     /// a change is saved: the page loads the resident again
     pub on_saved: Callback<()>,
 }
@@ -42,10 +46,16 @@ impl Display for DeviceChoice {
     }
 }
 
-/// What is changed: a device linked here, or one at the port taken off its link.
+/// What is changed: a device linked here, the link of one at the port moved to another of its
+/// ports (`seen`: the one a router sees its cable in), or one at the port taken off its link.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LinkChange {
     Connect(DeviceChoice),
+    Uplink {
+        device: DeviceChoice,
+        port: DeviceChoice,
+        seen: bool,
+    },
     Disconnect(DeviceChoice),
 }
 
@@ -53,6 +63,11 @@ pub enum LinkChange {
 pub enum DeviceLinkEdit {
     Closed,
     Choosing(Option<DeviceChoice>),
+    /// another port of `device` as its Anschluss
+    ChoosingUplink {
+        device: DeviceChoice,
+        port: Option<DeviceChoice>,
+    },
     Preview {
         change: LinkChange,
         plan: Option<ResidentPlan>,
@@ -69,6 +84,7 @@ pub enum DeviceLinkEdit {
 
 pub enum DeviceLinkEditMsg {
     Open,
+    OpenUplink(DeviceChoice),
     Close,
     Choose(DeviceChoice),
     Preview(LinkChange),
@@ -92,8 +108,17 @@ impl Component for DeviceLinkEdit {
         *self = match (state, msg) {
             (_, DeviceLinkEditMsg::Open) => DeviceLinkEdit::Choosing(None),
             (_, DeviceLinkEditMsg::Close) => DeviceLinkEdit::Closed,
+            (_, DeviceLinkEditMsg::OpenUplink(device)) => {
+                DeviceLinkEdit::ChoosingUplink { device, port: None }
+            }
             (DeviceLinkEdit::Choosing(_), DeviceLinkEditMsg::Choose(choice)) => {
                 DeviceLinkEdit::Choosing(Some(choice))
+            }
+            (DeviceLinkEdit::ChoosingUplink { device, .. }, DeviceLinkEditMsg::Choose(port)) => {
+                DeviceLinkEdit::ChoosingUplink {
+                    device,
+                    port: Some(port),
+                }
             }
             (_, DeviceLinkEditMsg::Preview(change)) => {
                 ask_plan(
@@ -116,7 +141,17 @@ impl Component for DeviceLinkEdit {
                 DeviceLinkEditMsg::Back,
             ) => match change {
                 LinkChange::Connect(choice) => DeviceLinkEdit::Choosing(Some(choice)),
-                LinkChange::Disconnect(_) => DeviceLinkEdit::Closed,
+                LinkChange::Uplink {
+                    device,
+                    port,
+                    seen: false,
+                } => DeviceLinkEdit::ChoosingUplink {
+                    device,
+                    port: Some(port),
+                },
+                LinkChange::Uplink { seen: true, .. } | LinkChange::Disconnect(_) => {
+                    DeviceLinkEdit::Closed
+                }
             },
             (
                 DeviceLinkEdit::Preview {
@@ -169,9 +204,26 @@ impl Component for DeviceLinkEdit {
                         />
                     }
                 });
-                let disconnect = linked_here(props).into_iter().map(|device| {
+                let here = linked_here(props);
+                let seen = here.iter().filter_map(|device| seen_alert(ctx, device));
+                let uplink = here
+                    .iter()
+                    .filter(|device| !other_ports(props, device).is_empty())
+                    .map(|device| {
+                        let device = device.clone();
+                        html! {
+                            <Button
+                                variant={ButtonVariant::Secondary}
+                                label={t::CHANGE_UPLINK}
+                                onclick={link.callback(move |_| {
+                                    DeviceLinkEditMsg::OpenUplink(device.clone())
+                                })}
+                            />
+                        }
+                    });
+                let disconnect = here.iter().map(|device| {
                     let label = t::disconnect_device(&device.name);
-                    let change = LinkChange::Disconnect(device);
+                    let change = LinkChange::Disconnect(device.clone());
                     html! {
                         <Button
                             variant={ButtonVariant::Secondary}
@@ -182,7 +234,14 @@ impl Component for DeviceLinkEdit {
                         />
                     }
                 });
-                html!(<div class="wlan-edit-actions">{connect}{ for disconnect }</div>)
+                html! {
+                    <>
+                        { for seen }
+                        <div class="wlan-edit-actions">
+                            {connect}{ for uplink }{ for disconnect }
+                        </div>
+                    </>
+                }
             }
             DeviceLinkEdit::Choosing(choice) => {
                 let chosen = choice.clone();
@@ -203,6 +262,38 @@ impl Component for DeviceLinkEdit {
                                     chosen.clone().map(|chosen| {
                                         DeviceLinkEditMsg::Preview(LinkChange::Connect(chosen))
                                     })
+                                })}
+                            />
+                            <Button
+                                variant={ButtonVariant::Link}
+                                label={t::DISCARD}
+                                onclick={link.callback(|_| DeviceLinkEditMsg::Close)}
+                            />
+                        </div>
+                    </div>
+                }
+            }
+            DeviceLinkEdit::ChoosingUplink { device, port } => {
+                let chosen = port.clone().map(|port| LinkChange::Uplink {
+                    device: device.clone(),
+                    port,
+                    seen: false,
+                });
+                html! {
+                    <div class="wlan-edit">
+                        <Select<DeviceChoice>
+                            placeholder={t::CHOOSE_PORT}
+                            selected={port.clone()}
+                            entries={other_ports(props, device)}
+                            onselect={link.callback(DeviceLinkEditMsg::Choose)}
+                        />
+                        <div class="wlan-edit-actions">
+                            <Button
+                                variant={ButtonVariant::Primary}
+                                label={t::PREVIEW}
+                                disabled={chosen.is_none()}
+                                onclick={link.batch_callback(move |_| {
+                                    chosen.clone().map(DeviceLinkEditMsg::Preview)
                                 })}
                             />
                             <Button
@@ -272,17 +363,67 @@ fn linked_here(props: &DeviceLinkEditProps) -> Vec<DeviceChoice> {
         .collect()
 }
 
+/// The ports of `device` that can be its Anschluss instead of the one it has.
+fn other_ports(props: &DeviceLinkEditProps, device: &DeviceChoice) -> Vec<DeviceChoice> {
+    props
+        .devices
+        .iter()
+        .find(|own| own.id == device.id)
+        .map(|own| {
+            own.ports
+                .iter()
+                .filter(|port| own.uplink.as_ref() != Some(&port.name))
+                .map(|port| DeviceChoice {
+                    id: port.id,
+                    name: port.name.clone(),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The port a router sees the cable of `device` in, where it isn't its Anschluss, to take over.
+fn seen_alert(ctx: &Context<DeviceLinkEdit>, device: &DeviceChoice) -> Option<Html> {
+    let seen = ctx
+        .props()
+        .seen
+        .iter()
+        .find(|seen| seen.device == device.id)?;
+    let change = LinkChange::Uplink {
+        device: device.clone(),
+        port: DeviceChoice {
+            id: seen.port.id,
+            name: seen.port.name.clone(),
+        },
+        seen: true,
+    };
+    let title = t::uplink_seen(&device.name, &seen.port.name);
+    Some(html! {
+        <Alert inline=true r#type={AlertType::Info} {title}>
+            <Button
+                variant={ButtonVariant::Secondary}
+                label={t::take_uplink(&seen.port.name)}
+                onclick={ctx.link().callback(move |_| DeviceLinkEditMsg::Preview(change.clone()))}
+            />
+        </Alert>
+    })
+}
+
 fn resident_change(props: &DeviceLinkEditProps, change: &LinkChange) -> ResidentChange {
-    match change {
-        LinkChange::Connect(device) => ResidentChange::ConnectDevice(ConnectDeviceChange {
+    let connect = |device: &DeviceChoice, device_port| {
+        ResidentChange::ConnectDevice(ConnectDeviceChange {
             device: device.id,
             port: props.port.id,
             kind: match props.port.kind {
                 PortKind::Socket => PortKindInput::Socket,
                 _ => PortKindInput::Interface,
             },
-            device_port: None,
-        }),
+            device_port,
+        })
+    };
+    match change {
+        LinkChange::Connect(device) => connect(device, None),
+        LinkChange::Uplink { device, port, .. } => connect(device, Some(port.id)),
         LinkChange::Disconnect(device) => ResidentChange::DisconnectDevice(device.id),
     }
 }
@@ -306,11 +447,12 @@ fn preview(ctx: &Context<DeviceLinkEdit>, change: &LinkChange, plan: &ResidentPl
         .iter()
         .map(|cable| t::cable_added(port_at(&cable.a), port_at(&cable.b)));
     let hint = match change {
-        LinkChange::Connect(_) => t::LINK_HINT,
+        LinkChange::Connect(_) | LinkChange::Uplink { seen: false, .. } => t::LINK_HINT,
+        LinkChange::Uplink { seen: true, .. } => t::TAKE_HINT,
         LinkChange::Disconnect(_) => t::UNLINK_HINT,
     };
     // a device taken off its link is away for good, as the hint says
-    let connect = matches!(change, LinkChange::Connect(_));
+    let connect = !matches!(change, LinkChange::Disconnect(_));
     let cut_off = (connect && !plan.cut_off.is_empty()).then(|| {
         let names = plan
             .cut_off
