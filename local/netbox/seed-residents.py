@@ -11,6 +11,11 @@ Each has a socket in its flat: a wall device (`wohnung-<user>`) with a front por
 port is cabled to a port of `lab-keller-switch` with the resident's VLAN untagged; Meier's
 `meier-pc` is plugged in. None of them has RouterOS or a cable to a lab device, so no
 configuration changes. The walls are in locations „1. OG“ › „Wohnung <User>“.
+
+The user group „Anwohner“, which NetBox gives every user created by an OIDC login
+(`REMOTE_AUTH_DEFAULT_GROUPS` in configuration.py), with its two permissions: „Netz lesen“
+without constraint and „eigene WLANs lesen“, the wireless LANs on the user's VLANs; none for
+wireless links and tenants (their PSKs and credentials).
 Idempotent, like seed-lab.py, whose NetBox client it takes.
 
     local/netbox/seed-residents.py [--url http://127.0.0.1:8001] [--token-file …]
@@ -24,6 +29,12 @@ here = pathlib.Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("seed_lab", here / "seed-lab.py")
 seed_lab = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(seed_lab)
+
+# what „Netz lesen“ shows (docs/concepts/self-service.md, „Leserechte in NetBox“)
+NETWORK_TYPES = [
+    "dcim.device", "dcim.interface", "dcim.cable", "dcim.site", "ipam.vlan", "ipam.prefix",
+    "ipam.ipaddress",
+]
 
 RESIDENTS = {
     "Familie Meier": {
@@ -103,13 +114,27 @@ def main():
     args = parser.parse_args()
     nb = seed_lab.NetBox(args.url, pathlib.Path(args.token_file).read_text().strip())
 
+    users_group = nb.ensure("users/groups", {"name": "Anwohner"})["id"]
+    nb.ensure("users/permissions", {"name": "Netz lesen"}, {
+        "actions": ["view"],
+        "object_types": NETWORK_TYPES,
+        "groups": [users_group],
+        "constraints": None,
+    })
+    nb.ensure("users/permissions", {"name": "eigene WLANs lesen"}, {
+        "actions": ["view"],
+        "object_types": ["wireless.wirelesslan"],
+        "groups": [users_group],
+        "constraints": {"vlan__owner__users": "$user"},
+    })
     group = nb.ensure("users/owner-groups", {"name": "Anwohner"})["id"]
     for name, resident in RESIDENTS.items():
         users = nb.call("GET", "users/users", query={"username": resident["user"]})["results"]
         if users:
             user = users[0]["id"]
         else:
-            # logs in to NetBox only over OIDC in production; the lab never logs in as it
+            # logs in to NetBox only over OIDC in production, which then creates the user; a
+            # login as it in the lab NetBox gets a second user (`meier<hash>`, docs/login.md)
             user = nb.call("POST", "users/users", {
                 "username": resident["user"], "password": secrets.token_urlsafe(24),
             })["id"]

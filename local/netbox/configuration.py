@@ -24,3 +24,13 @@ REPORTS_ROOT = os.path.join(_data, "reports")
 SCRIPTS_ROOT = os.path.join(_data, "scripts")
 DEBUG = True
 TIME_ZONE = "Europe/Zurich"
+
+# Login over the lab's Keycloak (local/keycloak, client "netbox"), as production does over
+# Pocket-ID; the local admin/admin keeps working. A user the login creates gets the group
+# „Anwohner“ (local/netbox/seed-residents.py).
+REMOTE_AUTH_ENABLED = True
+REMOTE_AUTH_BACKEND = "social_core.backends.open_id_connect.OpenIdConnectAuth"
+REMOTE_AUTH_DEFAULT_GROUPS = ["Anwohner"]
+SOCIAL_AUTH_OIDC_OIDC_ENDPOINT = "http://localhost:8180/realms/lab"
+SOCIAL_AUTH_OIDC_KEY = "netbox"
+SOCIAL_AUTH_OIDC_SECRET = "lab-only-netbox-client-secret"

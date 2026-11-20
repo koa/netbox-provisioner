@@ -97,3 +97,45 @@ Benutzer haben feste IDs (`lab-admin`, `lab-reader`), damit `auth_users` in
 Gruppe `admin`, ein Group-Membership-Mapper setzt den Claim `groups`. Die Anwohner
 `meier`/`meier` und `huber`/`huber` sind in der Lab-NetBox Mitglieder ihrer Owner
 (`local/netbox/seed-residents.py`); `reader` ist weder Admin noch Anwohner.
+
+## NetBox über OIDC
+
+NetBox meldet über denselben Provider an (`python-social-auth`, Backend `oidc`). In der
+NetBox-Konfiguration, wie die Lab-NetBox mit Keycloak (`local/netbox/configuration.py`):
+
+```python
+REMOTE_AUTH_ENABLED = True
+REMOTE_AUTH_BACKEND = "social_core.backends.open_id_connect.OpenIdConnectAuth"
+REMOTE_AUTH_DEFAULT_GROUPS = ["Anwohner"]
+SOCIAL_AUTH_OIDC_OIDC_ENDPOINT = "<Issuer>"
+SOCIAL_AUTH_OIDC_KEY = "<Client ID>"
+SOCIAL_AUTH_OIDC_SECRET = "<Client Secret>"
+```
+
+Der Client ist ein eigener, vertraulicher (mit Secret), Callback
+`<NetBox>/oauth/complete/oidc/`. Der Login beginnt mit einem POST auf `/oauth/begin/oidc/` (der
+Knopf auf der Login-Seite); ein GET dorthin ist `405`.
+
+Mit Keycloak geprüft (NetBox 4.7.3, 2026-11-20), mit dem Benutzer `fischer`, den NetBox vorher
+nicht kannte:
+
+- Der erste Login legt den Benutzer `fischer` an, also `preferred_username` des Tokens, mit
+  E-Mail und Namen, in der Gruppe „Anwohner“.
+- Ohne Owner sieht er Geräte, aber kein Wireless LAN; Wireless Links, Tenants (und Locations,
+  die „Netz lesen“ nicht nennt) sind `403`, in GraphQL leer.
+- Bei „Familie Meier“ eingetragen, sieht er in REST und GraphQL genau `lab-wlan` mit PSK, nicht
+  `lab-gast` von Huber.
+- Der Provisioner: `preferred_username` ist `fischer`, also der NetBox-Benutzername, und die
+  Rolle ist `RESIDENT` mit dem Owner „Familie Meier“; die Ansicht zeigt dessen Ports und
+  Geräte. Ohne Owner (nach dem Cache von 30 s) ist die Rolle `NOBODY`, die Seite sagt es. Ohne
+  Gruppe fehlt der Claim `groups` im Token ganz; `admin` hat ihn und ist `ADMIN`.
+
+**Benutzer nicht vorher anlegen.** Gibt es den Benutzernamen in NetBox schon (von Hand
+angelegt), verknüpft NetBox den Login nicht damit, sondern legt einen zweiten an
+(`meier73c3169cbfaf4116`), in „Anwohner“ und ohne Owner: Der Anwohner sieht in NetBox sein
+WLAN nicht, und der Provisioner, der den Owner über `preferred_username` sucht, fände den alten
+Benutzer. Ein Anwohner meldet sich darum zuerst bei NetBox an, dann trägt ihn ein Admin bei
+seinem Owner ein. Im Lab sind `meier` und `huber` so angelegte Benutzer: Für den Login bei
+NetBox ist `fischer` da.
+
+Mit Pocket-ID ist das noch nicht geprüft.

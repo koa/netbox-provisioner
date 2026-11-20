@@ -67,8 +67,10 @@ Gebaut: Besitz, Rollen und die lesende Schnittstelle der Anwohner
   Owner unter `users` ein. Die Mitglieder stehen damit nur in NetBox, der Provider meldet nur an.
 - **Rolle im Provisioner:** Gruppe `admin` im Token (`groups`-Claim) → Admin. Sonst sucht der
   Provisioner die Owner des Benutzers (`owner_list(filters: {users: {username: …}})`) mit dem
-  Benutzernamen, den NetBox beim Login angelegt hat (bei OIDC `preferred_username`; zu prüfen,
-  welchen Claim NetBox mit Pocket-ID nimmt). Ohne Owner und ohne `admin` darf er nichts.
+  Benutzernamen, den NetBox beim Login angelegt hat (`preferred_username`, mit Keycloak geprüft,
+  [login.md](../login.md#netbox-über-oidc); mit Pocket-ID noch zu prüfen). Ohne Owner und ohne
+  `admin` darf er nichts. Ein Benutzer, den es in NetBox schon gibt, wird beim Login nicht
+  übernommen, NetBox legt einen zweiten an: Benutzer nicht von Hand anlegen.
 - `auth_users` bleibt als Notschalter für Admins, bis die Gruppen verlässlich sind.
 
 ## Leserechte in NetBox
@@ -89,8 +91,9 @@ Liste; auch verschachtelt (`device.tenant`, `interface.wireless_link`, `vlan.ten
 zu sehen, obwohl es im Lab einen Tenant mit Zugangsdaten und zwei Funkbrücken mit PSK gibt. Die
 Bedingung über das VLAN (`vlan__owner__users`) ebenso (2026-11-17, zwei Owner mit je einem VLAN
 und einem WLAN darauf): Jeder sieht in REST und GraphQL nur das WLAN auf seinem VLAN, samt PSK.
-Nicht geprüft: das Login von NetBox über Pocket-ID selbst, und ob für Ports und WLAN-Gruppen eine
-ähnliche Bedingung nötig wird.
+Mit Keycloak auch das Login von NetBox selbst (2026-11-20, [login.md](../login.md#netbox-über-oidc)):
+Der neue Benutzer kommt in „Anwohner“ und sieht mit seinem Owner nur dessen WLAN. Nicht geprüft:
+dasselbe mit Pocket-ID, und ob für Ports und WLAN-Gruppen eine ähnliche Bedingung nötig wird.
 
 ## Was der Server prüft
 

@@ -80,6 +80,25 @@
           "temporary": false
         }
       ]
+    },
+    {
+      "username": "fischer",
+      "id": "lab-fischer",
+      "enabled": true,
+      "email": "fischer@lab.local",
+      "emailVerified": true,
+      "realmRoles": [
+        "default-roles-lab"
+      ],
+      "firstName": "Familie",
+      "lastName": "Fischer",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "fischer",
+          "temporary": false
+        }
+      ]
     }
   ],
   "clients": [
@@ -121,6 +140,17 @@
             "userinfo.token.claim": "true"
           }
         }
+      ]
+    },
+    {
+      "clientId": "netbox",
+      "publicClient": false,
+      "secret": "lab-only-netbox-client-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1:8001/oauth/complete/oidc/",
+        "http://localhost:8001/oauth/complete/oidc/"
       ]
     }
   ],
