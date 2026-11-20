@@ -18,6 +18,7 @@ use ipnet::IpNet;
 use std::{collections::BTreeSet, sync::Arc};
 
 pub mod change;
+pub mod live;
 #[cfg(test)]
 mod test;
 
@@ -31,6 +32,7 @@ pub fn create_resident_schema(topology: TopologyHolder) -> ResidentGraphqlSchema
             topology: topology.clone(),
         },
         change::QueryChange::new(topology.clone()),
+        live::QueryLive::new(topology.clone()),
     );
     Schema::build(
         query,
@@ -42,7 +44,7 @@ pub fn create_resident_schema(topology: TopologyHolder) -> ResidentGraphqlSchema
 
 /// What a resident sees (`QueryView`) and the plans of its changes (`change`).
 #[derive(MergedObject)]
-pub struct QueryResident(QueryView, change::QueryChange);
+pub struct QueryResident(QueryView, change::QueryChange, live::QueryLive);
 
 pub struct QueryView {
     topology: TopologyHolder,

@@ -43,6 +43,28 @@ pub const SAVED: &str = "In NetBox gespeichert";
 pub const SAVED_HINT: &str = "Auf die Geräte kommt die Änderung mit dem Ausrollen; wie weit das \
     ist, zeigt diese Seite noch nicht.";
 pub const NOT_SAVED: &str = "Nicht gespeichert";
+pub const SHOW_DEVICES: &str = "Geräte im Netz";
+pub const READING_DEVICES: &str = "Geräte werden gelesen …";
+pub const READ_AGAIN: &str = "Erneut lesen";
+pub const NO_DEVICES: &str = "Keine Geräte gefunden";
+pub const NO_HOSTNAME: &str = "Ohne Namen";
+
+/// devices in a network: routers or controllers that didn't answer, so their devices are missing
+pub fn devices_unreachable(devices: &[&str]) -> String {
+    format!(
+        "Nicht erreicht: {}; die Geräte dort fehlen in der Liste",
+        devices.join(", ")
+    )
+}
+
+/// devices in a network: one connected over WLAN, at an access point (empty: not known)
+pub fn wlan_connection(access_point: &str, signal: i32) -> String {
+    match access_point {
+        "" => format!("WLAN, {signal} dBm"),
+        ap => format!("WLAN über {ap}, {signal} dBm"),
+    }
+}
+
 pub const CHANGE_NETWORK: &str = "Netz ändern";
 pub const CHOOSE_NETWORK: &str = "Netz wählen";
 pub const PORT_CLIENTS_MOVE: &str =

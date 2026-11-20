@@ -45,6 +45,25 @@ liegt.
     seinen WLANs (SSID, Passwort bei WPA, Zahl der APs der Gruppe). Ein WLAN einer Gruppe ohne
     `controller` fehlt, wie in der Konfiguration.
 
+### Geräte im Netz
+
+`networkDevices(resident, vlan)` (`graphql::resident::live`, die Leases und WLAN-Clients des
+Konzepts in einer Abfrage) liest live, was in einem eigenen Netz hängt:
+
+- die gebundenen Leases (`/ip/dhcp-server/lease`) der Router mit einem DHCP-Server im VLAN
+  (ein Interface, das das VLAN ist, mit `dhcp`), nur Adressen in dessen IPv4-Netzen; der Name
+  ist der des DHCP-Clients bis zum ersten Steuerzeichen;
+- die Clients der WLANs auf dem VLAN, beim Controller ihrer Gruppe (sein CAPsMAN führt auch die
+  Clients der CAPs), mit Access Point und Signal; das Band fehlt noch;
+- beide über die MAC zusammengeführt, nach Adresse sortiert, Clients ohne Lease zuletzt.
+
+Jedes Gerät wird einmal gelesen, Tabellen bis 10 s alt, alle Geräte zugleich. Wer nicht
+antwortet, steht in `unreachable`: Seine Geräte fehlen, und das UI sagt das. Im Anwohner-UI
+liest „Geräte im Netz“ in der Karte des Netzes auf Klick. Im Lab geprüft (2026-11-20) als
+`meier` und `huber`: Das Lab hat weder einen DHCP-Server noch WLAN-Clients. Gelesen wurde
+lab-np2 als Controller (ein Login), die Liste war zu Recht leer; das Zusammenführen ist mit
+Unit-Tests geprüft.
+
 ### Ändern
 
 Jede Änderung ist der Plan eines Helfers (`graphql::resident::change`), erlaubt nur an

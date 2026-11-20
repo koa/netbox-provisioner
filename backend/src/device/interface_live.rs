@@ -560,7 +560,7 @@ pub fn check(
 /// The host name a DHCP client sent, up to its first control character: RouterOS reports it as
 /// sent, and a client padding a fixed field sends NUL bytes after it (a Tinkerforge brick's
 /// `Tinkerforge5093BA` came with a row of them).
-fn client_name(name: &str) -> Option<Box<str>> {
+pub(crate) fn client_name(name: &str) -> Option<Box<str>> {
     let name = name
         .split(|c: char| c.is_control() || c == char::REPLACEMENT_CHARACTER)
         .next()

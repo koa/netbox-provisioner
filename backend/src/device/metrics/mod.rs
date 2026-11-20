@@ -1,5 +1,6 @@
 //! Scope: What `/metrics` reads of a device beyond the network map's reading: its WLAN clients and
-//! radios, interface counters, Ethernet links and DHCP leases; not their rendering as metrics
+//! radios, interface counters, Ethernet links and DHCP leases (the clients and leases also for a
+//! resident's view, `graphql::resident::live`); not their rendering as metrics
 //! (`crate::metrics`).
 //!
 //! What the mikrotik-metrik-exporter read (C14), each table as a fact (`access::Reader::at`), over
@@ -165,6 +166,24 @@ impl AccessibleDevice {
     /// The device's [`DeviceMetrics`], as fresh as `freshness` asks (a scrape: begun since it).
     pub async fn metrics(&self, freshness: Freshness) -> Result<DeviceMetrics, Error> {
         read(&self.reader().at(freshness)).await
+    }
+    /// The bound leases of the device's DHCP servers.
+    pub async fn leases(&self, freshness: Freshness) -> Result<Box<[Lease]>, Error> {
+        let client = self.reader().at(freshness);
+        Ok(collect_if_present::<IpDhcpServerLease>(&client)
+            .await?
+            .into_iter()
+            .filter_map(bound_lease)
+            .collect())
+    }
+    /// The WLAN clients the device's CAPsMANs and its own radios have registered.
+    pub async fn wlan_clients(&self, freshness: Freshness) -> Result<Box<[WlanClient]>, Error> {
+        let client = self.reader().at(freshness);
+        let capsman = LegacyCapsman::read(&client).await?;
+        let mut clients = wifi_clients(&client).await?;
+        clients.extend(legacy_clients(&client, &capsman).await?);
+        clients.extend(wireless(&client).await?.clients);
+        Ok(clients.into())
     }
 }
 

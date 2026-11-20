@@ -172,7 +172,10 @@ wlan_edit`. A port's or socket's network (`ResidentChange.portVlan`) is `helper:
 (also `vlan: null`) on the port, or for a socket the switch port behind it
 (`resident::switch_port`), refused when a device not the resident's hangs at its cable; the
 plan's devices are the RouterOS ones whose config changes, VXLAN peers too (`vtep_peers`);
-the frontend's „Netz ändern“ is `port_vlan_edit`, both sharing `change_flow`. The lab has two residents (`meier`, `huber`: Keycloak
+the frontend's „Netz ändern“ is `port_vlan_edit`, both sharing `change_flow`. What hangs in a
+network is read live (`graphql::resident::live`, `networkDevices`: leases of the VLAN's DHCP
+routers, WLAN clients at the group's controller, `AccessibleDevice::leases`/`wlan_clients` of
+`device::metrics`, the devices not answering named), shown by `network_devices`. The lab has two residents (`meier`, `huber`: Keycloak
 and `local/netbox/seed-residents.py`). An export
 without owners gets them as `null` (`topology::test::example_response`), as do the objects a
 helper's preview creates.

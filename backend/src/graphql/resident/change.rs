@@ -90,7 +90,11 @@ pub struct SavedChange {
 }
 
 /// The owner a request may act for: a resident its own, an admin any NetBox names.
-fn acting_for(context: &Context<'_>, topology: &Topology, resident: u32) -> Result<OwnerId, Error> {
+pub(super) fn acting_for(
+    context: &Context<'_>,
+    topology: &Topology,
+    resident: u32,
+) -> Result<OwnerId, Error> {
     let owner = OwnerId(resident);
     let allowed = match context.data_opt::<Role>() {
         Some(Role::Admin) => topology.owners().any(|(id, _)| id == owner),

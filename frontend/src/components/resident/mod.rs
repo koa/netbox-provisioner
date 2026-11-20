@@ -4,10 +4,12 @@ use crate::graphql::resident::residents::{
     FarEnd, PortKind, Resident, ResidentNetwork, ResidentPort,
 };
 use i18n::resident as t;
+use network_devices::NetworkDevicesView;
 use port_vlan_edit::PortVlanEdit;
 use wlan_edit::WlanEdit;
 
 mod change_flow;
+mod network_devices;
 mod port_vlan_edit;
 mod wlan_edit;
 use patternfly_yew::prelude::{
@@ -244,6 +246,7 @@ fn networks(resident: &Resident, on_saved: &Callback<()>) -> Html {
                         <li>{subnets}</li>
                         {wlans}
                     </ul>
+                    <NetworkDevicesView resident={resident.id} vlan={network.id}/>
                 </CardBody>
             </Card>
         }
