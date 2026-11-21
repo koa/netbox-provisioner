@@ -70,7 +70,8 @@ eigenen Objekten: ein Anwohner für seine Owner, ein Admin für jeden (Support-A
 lehnt der Server mit `NOT_OWNED` ab (`what`: `RESIDENT`, `DEVICE`, `PORT`, `SOCKET`, `VLAN`,
 `WLAN` oder `LOCATION`, `id`: die NetBox-ID).
 
-Die Änderung (`change`, ein `@oneOf`) ist eine von:
+Gespeichert werden die Entwürfe des UI zusammen: `changes` ist eine Liste, jede Änderung
+(`ResidentChange`, ein `@oneOf`) eine von:
 
 - `wlan: { wlan, ssid, psk, enabled }`: Name, Passwort, ein/aus eines eigenen WLANs;
 - `portVlan: { port, kind, vlan }`: eines seiner VLANs untagged an einem eigenen Port
@@ -84,13 +85,17 @@ Die Änderung (`change`, ein `@oneOf`) ist eine von:
 
 Die Abfragen:
 
-- `changePlan(resident, change)`: was gespeichert würde, für die Vorschau: die Änderung (ohne
-  die Passwörter, nur dass es ein neues gibt) und die RouterOS-Geräte, deren Konfiguration sich
-  ändert: das Gerät des Plans, bei einem WLAN die APs der Gruppe, bei einem Port mit einem VLAN
-  über VXLAN die anderen Geräte mit diesem VLAN, wenn das Gerät dazukommt oder wegfällt (ihre
-  VTEPs). Ein Switch ohne RouterOS ändert nur NetBox.
-- `saveChange(resident, change, fingerprint)`: schreibt den Plan, wenn er noch der gezeigte ist,
-  als `NetboxWrite`-Job des Geräts des Plans (wie die Helfer der Admins, mit Rückgängig dort).
+- `changePlan(resident, changes)`: was gespeichert würde, für die Vorschau. Der Server plant
+  die Änderungen in der Reihenfolge der Liste, jede auf dem Stand, den die vorherigen in NetBox
+  lassen (`helper::sequence`), zu einem Plan. Die Vorschau nennt die Änderungen (ohne die
+  Passwörter, nur dass es ein neues gibt) und die RouterOS-Geräte, deren Konfiguration sich
+  ändert: die Geräte der Änderungen (ausser beim Raum) und der Schritte, bei einem WLAN die APs
+  der Gruppe, bei einem Port mit einem VLAN über VXLAN die anderen Geräte mit diesem VLAN, wenn
+  das Gerät dazukommt oder wegfällt (ihre VTEPs). Das ist eine Näherung (E33). Ein Switch ohne
+  RouterOS ändert nur NetBox.
+- `saveChange(resident, changes, fingerprint)`: schreibt den Plan, wenn er noch der gezeigte
+  ist, in einem `NetboxWrite`-Job auf dem Gerät der ersten Änderung (wie die Helfer der Admins,
+  mit Rückgängig dort).
   Im NetBox-Changelog steht „WLAN lab-wlan (meier for Familie Meier)“.
 - `savedChange(job)`: wie das Speichern steht (`SAVING`, `SAVED`, `FAILED` mit dem Fehler), nur
   für den Anwohner des Jobs oder einen Admin.
@@ -128,8 +133,8 @@ Port als dem Anschluss von NetBox, sagt es `seenUplinks(resident)`: Der Router a
 des NetBox-Kabels sieht das Gerät in seinen Nachbarn (`/ip/neighbor`, `neighbors::evaluate`)
 mit dem Port, über den es sendet; ein NetBox-Port des Geräts, der nicht sein Anschluss ist, ist
 ein Treffer. Jeder Router wird einmal gelesen (höchstens 10 s alt), alle zugleich; einer, der
-nicht antwortet, steht in `unreachable`. Das UI zeigt „Das Kabel von lab-wap steckt an ether1“
-mit „ether1 übernehmen“; von selbst geschieht nichts. Ein Gerät ohne Kabel in NetBox hat keinen
+nicht antwortet, steht in `unreachable`. Das UI zeigt beim Gerät „Das Kabel steckt an ether1,
+nicht an ether2“ mit „ether1 übernehmen“; von selbst geschieht nichts. Ein Gerät ohne Kabel in NetBox hat keinen
 Router zum Fragen: Es wird von Hand angeschlossen.
 
 Gerät anschliessen (`helper::connect_device`, nur für Anwohner):
@@ -155,22 +160,24 @@ oder Geräte hat (`locations`, nach Site und in der Reihenfolge des Gebäudes), 
 jedes Geräts (`devices { location }`). Eine Location einer anderen Site ist `NOT_OWNED`. Ein
 RouterOS-Gerät ohne eigenen Tenant hat die Zugangsdaten vom Tenant seiner Location: Eine
 Location, die ihm andere gäbe, ist `OTHER_CREDENTIALS`, sonst käme der Provisioner nicht mehr
-darauf. Der Raum ändert nur NetBox, an keinem Gerät die Konfiguration. Die Ports eines Geräts
-stehen in der Ansicht unter seinem Raum; an der Dose oder dem Port, wo es angeschlossen ist,
-sagt die Karte „steht in …“, wenn der Raum ein anderer ist. Im Lab geprüft (2026-11-20): lab-wap
+darauf. Der Raum ändert nur NetBox, an keinem Gerät die Konfiguration. Wie die Ansicht ein
+Gerät in einem anderen Raum als seine Dose zeigt, steht unter [Anwohner-UI](#anwohner-ui). Im Lab geprüft (2026-11-20): lab-wap
 nach „1. OG › Wohnung Meier“, dann nach „1. OG“, meier-pc nach „1. OG › Wohnung Meier“; das
 Rollout danach hatte nichts zu tun.
 
-Beide prüfen den Plan auf der Vorschau: Ein RouterOS-Gerät, das vorher eine Wurzel des
-Management-Baums erreicht, erreicht danach auch eine. Ist es fremd, ist das `FOREIGN_DEVICE_CUT_OFF`. Ist es
-ein eigenes, ist es `CUT_OFF`, ausser beim Abhängen. Geprüft wird bei `changePlan` und noch
-einmal bei `saveChange`. Die Vorschau nennt die Kabel, die wegkommen und dazukommen
+Ob eine Änderung erlaubt ist (eigene Objekte, was im Weg ist), prüft jede auf ihrem Stand.
+Ob Geräte abgeschnitten werden, prüft der ganze Plan, denn die Geräte bekommen ihn auf einmal:
+Ein RouterOS-Gerät, das vorher eine Wurzel des Management-Baums erreicht, erreicht danach auch
+eine. Ist es fremd, ist das `FOREIGN_DEVICE_CUT_OFF`. Ist es ein eigenes, ist es `CUT_OFF`,
+ausser es wird abgehängt oder erreicht seine Wurzel über ein abgehängtes Gerät. Geprüft wird
+bei `changePlan` und noch einmal bei `saveChange`. Die Vorschau nennt die Kabel, die wegkommen und dazukommen
 (`cablesRemoved`, `cablesAdded`), die Geräte, die bis zum Ausrollen weg sind (`cutOff`), und
 die RouterOS-Geräte, an denen ein Schritt etwas ändert.
 
-Im Lab geprüft (2026-11-20): Meier hängte lab-wap von lab-np2 ether3 ab und wieder an. Danach
-legte er dessen Anschluss in NetBox auf ether2, das Kabel blieb an ether1. Die Seite zeigte
-„Das Kabel von lab-wap steckt an ether1“, und „ether1 übernehmen“ wurde gespeichert. Der Batch
+Im Lab geprüft (2026-11-20, noch mit einer Änderung pro Speichern): Meier hängte lab-wap von
+lab-np2 ether3 ab und wieder an. Danach legte er dessen Anschluss in NetBox auf ether2, das
+Kabel blieb an ether1. Die Seite zeigte „Das Kabel von lab-wap steckt an ether1“, und „ether1
+übernehmen“ wurde gespeichert. Der Batch
 (neue `/31`, neue OSPF-Schlüssel beider Enden) lief mit leerem Diff danach durch. Dabei
 verliert ein Port, der eine Zeit lang Anschluss war, sein Label: Die Verbindung benennt ihn nach
 dem Gerät am anderen Ende, das Abräumen leert es.
@@ -228,9 +235,10 @@ entspricht, ist kein Entwurf.
   Steht ein Gerät in einem anderen Raum als die Dose, verweist die Dose nur dorthin („Steht in
   …, siehe dort“). Das Gerät hat dann im eigenen Raum eine Zeile („Patchkabel von …“, bei einem
   Port „Kabel von …“). Eine eigene Zeile hat auch ein RouterOS-Gerät ohne Anbindung („Nicht
-  angeschlossen“) oder eines am Port des Betreibers. Der Port seines Anschlusses entfällt
-  dann, ebenso ein Port eines eigenen Geräts, der in einer eigenen Dose steckt. Auf dem
-  Telefon stapeln sich die Karten, das Kabel steht senkrecht.
+  angeschlossen“) oder eines am Port des Betreibers. Keine Zeile hat der Port, über den ein
+  eigenes Gerät angebunden ist (sein Anschluss, oder sein Port in einer eigenen Dose): Dieses
+  Kabel zeigt die Karte des Geräts. Auf dem Telefon stapeln sich die Karten, das Kabel steht
+  senkrecht.
 - **Netze:** eine Karte „Netz …“ pro VLAN (mit der SSID in Klammern, wo sie abweicht), darin
   der Schalter „WLAN „…““ und, eingeschaltet:
   - Name und Passwort, je mit „Ändern“ und „Übernehmen“ (geprüft wie im Backend);
@@ -244,15 +252,21 @@ Die **Vorschau** („Das ändert sich“, `save_dialog`) plant alle Entwürfe zu
 mit einer Liste). Sie sagt in Worten, was sich ändert, warnt vor Geräten, die bis zum
 Ausrollen weg sind, nennt die Geräte mit neuer Konfiguration und sagt, was Geräte daran
 merken. „Speichern“ schreibt alles in einem Job, wartet darauf und sagt dann „In NetBox
-gespeichert“, ohne zu behaupten, dass es schon ausgerollt ist. Der Server plant die
-Änderungen in dieser Reihenfolge, jede auf dem Stand nach den vorherigen, und prüft sie dort:
-erst Geräte abhängen, dann Netze von Ports, Geräte anschliessen, Räume, WLANs.
+gespeichert“, ohne zu behaupten, dass es schon ausgerollt ist. Das UI schickt die Entwürfe in
+der Reihenfolge, in der jede Änderung NetBox so vorfindet, wie sie es braucht
+(`Drafts::changes`): erst Geräte abhängen (das macht ihre Ports frei), dann Netze von Ports,
+Geräte anschliessen, Räume, WLANs. Ein Gerät, das an einen Port kommt, nimmt dessen Netz weg;
+ein Netz-Entwurf dort entfällt, und die Wahl des Netzes fehlt, solange es kommt.
 
 Noch nicht gebaut sind Geräte pro Port aus den Leases, Status-Labels und der Tab
-„Änderungen“ (C21).
-Status-Labels kommen erst mit einer verlässlichen Quelle: Ein Label, das „ausgerollt“ behauptet, ohne es zu wissen, wäre falsch. Geprüft mit
-Playwright im Lab (2026-11-18) als `meier` (auch in Telefonbreite), `huber`, `reader` und
-`admin`; die Dosen (`wohnung-meier`, `wohnung-huber` hinter `lab-keller-switch`, Geräte ohne
+„Änderungen“ (C21). Status-Labels kommen erst mit einer verlässlichen Quelle: Ein Label, das
+„ausgerollt“ behauptet, ohne es zu wissen, wäre falsch.
+
+Die folgenden Lab-Tests bis 2026-11-20 liefen noch mit dem UI davor (ein Dialog pro
+Änderung, „WLAN ändern“, „Netz ändern“) und mit einer Änderung pro Speichern.
+
+Geprüft mit Playwright im Lab (2026-11-18) als `meier` (auch in Telefonbreite), `huber`,
+`reader` und `admin`; die Dosen (`wohnung-meier`, `wohnung-huber` hinter `lab-keller-switch`, Geräte ohne
 RouterOS, in den Locations „1. OG › Wohnung …“) am 2026-11-19 als `meier` und `huber`.
 
 „WLAN ändern“ im Lab geprüft (2026-11-19) als `meier`, auch in Telefonbreite: `lab-wlan` mit

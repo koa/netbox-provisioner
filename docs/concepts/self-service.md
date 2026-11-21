@@ -1,76 +1,40 @@
 # Konzept: Self-Service für Anwohner
 
-Status: Konzept, nicht umgesetzt; Entscheidungen vom 2026-10-23 und 2026-11-17 eingearbeitet,
-dazu die Ergebnisse des [Anwohner-UI](#anwohner-ui) (Prototyp, 2026-11-17).
-Aufgabe C7 in [todo.md](../todo.md).
-
-## Ausgangslage
-
-- **Zugang:** OIDC (Pocket-ID produktiv, Keycloak im Lab). Hinein darf, wer mit seinem `sub` in
-  `auth_users` steht; alle, die hinein dürfen, dürfen alles. `allow_apply` und
-  `allow_netbox_write` gelten für den ganzen Server ([Login](../login.md), `WritesAllowed`).
-- **Besitz in NetBox** (4.7): ein eigenes Feld `owner` an Device, Interface, VLAN, Wireless LAN,
-  Wireless LAN Group, Prefix und den meisten anderen Objekten. Ein Owner führt NetBox-Benutzer
-  (`users`) und -Gruppen (`user_groups`) und muss zu einer Owner Group gehören. GraphQL gibt
-  `users`/`user_groups` eines Owners nicht aus, filtert aber danach
-  (`owner_list(filters: {users: {username: …}})`). Tenants gibt es auch, gebraucht für die Zugangsdaten (`mikrotik_credentials`,
-  gesucht am Gerät, an der Location, an der Site); sie bleiben dafür.
-- **WLAN:** SSID und PSK stehen am Wireless LAN in NetBox; der Generator verteilt sie über CAPsMAN
-  auf die APs der Gruppe ([WLAN](../netbox-modeling.md#wlan)).
+Status: zum grossen Teil gebaut. Was gebaut ist, beschreibt [self-service.md](../self-service.md):
+Besitz, Rollen, die Schnittstelle der Anwohner mit ihren Prüfungen und das Anwohner-UI mit
+Entwürfen. Hier steht, was offen ist, dazu die Entscheidungen vom 2026-10-23 und 2026-11-17 und
+die Ergebnisse des [Prototyps](#anwohner-ui) (2026-11-17). Aufgaben C7 und C21 in
+[todo.md](../todo.md).
 
 ## Personas
 
 | Persona | darf |
 |---|---|
-| Admin | alles wie heute |
+| Admin | alles; dazu die Ansicht eines gewählten Anwohners, mit dessen Regeln |
 | Anwohner | seine WLANs: einschalten, ausschalten, SSID und Passwort (PSK); seine Ports: eines seiner VLANs aufschalten oder eines seiner Geräte anschliessen; seine Geräte: wo sie angeschlossen sind, an welchem eigenen Port (Anschluss), in welchem Raum sie stehen und wie ihre Ports belegt sind; die Clients seiner WLANs und die Leases seiner Netze sehen |
 
 Ein Anwohner (Haushalt, Firma) ist **ein Owner** in NetBox, seine Benutzer sind NetBox-Benutzer
 in dessen `users`. Alle Owner der Anwohner liegen in einer Owner Group „Anwohner“ (NetBox
-verlangt eine; der Provisioner beachtet sie nicht). Ein Objekt ohne `owner` oder mit einem
-anderen (der des Netzbetreibers) bleibt den Admins. Custom Fields braucht es dafür nicht.
+verlangt eine; der Provisioner beachtet sie nicht). Alle APs einer WLAN-Gruppe strahlen alle
+WLANs der Gruppe aus, auch die anderer Anwohner im selben Haus, und tragen deren VLANs über das
+VXLAN der Gruppe. Das ist gewollt: Der Anwohner konfiguriert sein Gerät nur über den
+Provisioner, fremde VLANs müssen nicht von ihm ferngehalten werden.
 
-Was einem Anwohner gehört:
+## Anmelden über Pocket-ID
 
-- **In NetBox gesetzt** (`owner`, nur von Admins):
-  - **Geräte**, die ihm übergeben werden, meist APs mit eingebautem Switch; RouterOS-Geräte wie
-    die Router.
-  - **Ports** fremder Geräte (`owner` am Interface, z.B. die Wohnungsdose an einem Switch des
-    Betreibers).
-  - **VLANs**, etwa „Allgemein“, „Gast“, „Server“; ihre VLAN-Gruppe hat eine VNI, sonst
-    erreichen sie seine Ports und Geräte nicht ([VXLAN](../netbox-modeling.md#vxlan)).
-- **Abgeleitet:**
-  - die Ports seiner Geräte;
-  - die WLANs auf seinen VLANs (Feld `vlan` des Wireless LAN): Mit dem VLAN gehört ihm das WLAN;
-    `owner` am Wireless LAN braucht es nicht. Ein WLAN ohne VLAN gehört niemandem, es ist ohnehin
-    ein Fehler (`WlanWithoutVlan`);
-  - die Prefixe seiner VLANs und deren Leases;
-  - seine WLAN-Gruppe: die Gruppe seiner WLANs. Liegen sie in mehreren, legt der Admin sie bei
-    der Übergabe des Geräts fest.
+Mit Keycloak gebaut und geprüft ([login.md](../login.md#netbox-über-oidc)). Offen ist dasselbe
+mit Pocket-ID:
 
-Alle APs einer WLAN-Gruppe strahlen alle WLANs der Gruppe aus (eine Provisioning-Regel am
-Controller), auch die anderer Anwohner im selben Haus, und tragen deren VLANs über das VXLAN der
-Gruppe. Das ist gewollt: Der Anwohner konfiguriert sein Gerät nur über den Provisioner, fremde
-VLANs müssen nicht von ihm ferngehalten werden.
-
-## Wer ist wer
-
-Gebaut: Besitz, Rollen und die lesende Schnittstelle der Anwohner
-([self-service.md](../self-service.md)). Offen bleiben NetBox über Pocket-ID mit der Gruppe
-„Anwohner“ und die Prüfung der Claims bei Pocket-ID.
-
-- **Anmelden:** NetBox und Provisioner melden beide über denselben OIDC-Provider an
-  (Pocket-ID). NetBox legt einen Benutzer beim ersten Login an und gibt ihm die Gruppen aus
-  `REMOTE_AUTH_DEFAULT_GROUPS` (`user_default_groups_handler` in der Login-Pipeline von 4.7.1);
-  die Gruppe „Anwohner“ bekommt so jeder neue Benutzer.
+- NetBox und Provisioner melden beide über denselben OIDC-Provider an. NetBox legt einen
+  Benutzer beim ersten Login an und gibt ihm die Gruppen aus `REMOTE_AUTH_DEFAULT_GROUPS`
+  (`user_default_groups_handler` in der Login-Pipeline von NetBox 4.7.1); die Gruppe „Anwohner“
+  bekommt so jeder neue Benutzer.
 - **Neuer Anwohner:** Er meldet sich einmal bei NetBox an; ein Admin trägt ihn danach bei seinem
   Owner unter `users` ein. Die Mitglieder stehen damit nur in NetBox, der Provider meldet nur an.
-- **Rolle im Provisioner:** Gruppe `admin` im Token (`groups`-Claim) → Admin. Sonst sucht der
-  Provisioner die Owner des Benutzers (`owner_list(filters: {users: {username: …}})`) mit dem
-  Benutzernamen, den NetBox beim Login angelegt hat (`preferred_username`, mit Keycloak geprüft,
-  [login.md](../login.md#netbox-über-oidc); mit Pocket-ID noch zu prüfen). Ohne Owner und ohne
-  `admin` darf er nichts. Ein Benutzer, den es in NetBox schon gibt, wird beim Login nicht
-  übernommen, NetBox legt einen zweiten an: Benutzer nicht von Hand anlegen.
+  Ein Benutzer, den es in NetBox schon gibt, wird beim Login nicht übernommen, NetBox legt einen
+  zweiten an: Benutzer nicht von Hand anlegen.
+- Der Provisioner findet die Owner über `preferred_username`. Ob Pocket-ID darin den
+  Benutzernamen gibt, den NetBox anlegt, ist zu prüfen.
 - `auth_users` bleibt als Notschalter für Admins, bis die Gruppen verlässlich sind.
 
 ## Leserechte in NetBox
@@ -91,46 +55,10 @@ Liste; auch verschachtelt (`device.tenant`, `interface.wireless_link`, `vlan.ten
 zu sehen, obwohl es im Lab einen Tenant mit Zugangsdaten und zwei Funkbrücken mit PSK gibt. Die
 Bedingung über das VLAN (`vlan__owner__users`) ebenso (2026-11-17, zwei Owner mit je einem VLAN
 und einem WLAN darauf): Jeder sieht in REST und GraphQL nur das WLAN auf seinem VLAN, samt PSK.
-Mit Keycloak auch das Login von NetBox selbst (2026-11-20, [login.md](../login.md#netbox-über-oidc)):
-Der neue Benutzer kommt in „Anwohner“ und sieht mit seinem Owner nur dessen WLAN. Nicht geprüft:
-dasselbe mit Pocket-ID, und ob für Ports und WLAN-Gruppen eine ähnliche Bedingung nötig wird.
-
-## Was der Server prüft
-
-Die Grenze bleibt wie in `CLAUDE.md`: Entschieden wird einmal, an der Schnittstelle. Statt eines
-Guards „darf schreiben“ bekommt jede Mutation die Frage „darf dieser Benutzer **dieses Objekt**
-ändern“. Anwohner bekommen eigene, enge Mutationen statt Zugriff auf die Admin-Helfer. Sie
-legen fest, was ein Anwohner **in NetBox** eintragen darf; was das auf fremden Geräten
-bewirkt, ist erlaubt (sein Port bekommt ein Transfernetz und `ospf`, ein Switch wird VTEP seiner
-VLANs, der Controller seiner Gruppe bekommt einen CAP):
-
-- `setWlanPsk(wlan, psk)`: das Passwort eines eigenen WLANs, mindestens 12 Zeichen;
-- `setWlanSsid(wlan, ssid)`: die SSID eines eigenen WLANs, höchstens 32 Bytes und in seiner
-  WLAN-Gruppe eindeutig (geprüft gegen alle WLANs der Gruppe, auch die fremden, die er nicht
-  lesen darf);
-- `setWlanEnabled(wlan, on)`: ein eigenes WLAN ein- oder ausschalten (`status` am Wireless LAN;
-  der Generator lässt ein ausgeschaltetes weg). Sicherheit und VLAN bleiben den Admins; neue
-  WLANs legt er nicht an: die Zusammenhänge von VLAN, WLAN und Adressen sind für Anwohner zu
-  verwickelt;
-- `setPortVlan(port, vlan)`: ein eigenes VLAN untagged an einem eigenen Port, oder keines;
-- `connectDevice(port, device)`: ein eigenes Gerät an einen eigenen Port (auch einen Port eines
-  anderen eigenen Geräts): Kabel, Transfernetz und `ospf` wie „Neues Gerät anschliessen“ und
-  „Verbindung“, Loopback falls keine, die WLAN-Gruppe vorgegeben (seine). Hing es vorher woanders,
-  räumt der Plan die alte Verbindung ab („Verbindung abräumen“);
-- `disconnectDevice(device)`: ein eigenes Gerät abhängen (Kabel, Transfernetz, wie „Verbindung
-  abräumen“). Das Gerät bleibt in NetBox und gehört ihm weiter;
-- `setDeviceUplink(device, port)`: der Port des eigenen Geräts, an dem das Kabel steckt
-  („Anschluss“), etwa nachdem der Provisioner ihn anders erkannt hat;
-- `setDeviceRoom(device, location)`: der Raum (`location`) eines eigenen Geräts, wenn ein
-  Patchkabel von der Dose in einen anderen Raum führt; leer heisst „wie die Dose“. Erlaubt sind
-  alle Locations der Sites, in denen er Ports oder Geräte hat;
-- `leases(vlan)`, `wlanClients(wlan)`: lesen, nur seine Netze und WLANs.
-
-Jede schreibt nach NetBox (Plan, Vorschau, Rückgängig wie bei den [Helfern](../config-helper.md)).
-Ein Anwohner sieht die Vorschau als Liste in Worten („Port e05 ins VLAN Gast“), nicht als
-Skript. Auf die Geräte kommt die Änderung über ein **automatisches Rollout** der NetBox-Änderungen
-(C20), nicht über ein Anwenden, das der Anwohner auslöst: Ohne das ergibt Self-Service keinen
-Sinn, denn seine Änderung betrifft oft mehrere Geräte, auch fremde.
+Mit Keycloak auch das Login von NetBox selbst (2026-11-20): Der neue Benutzer kommt in
+„Anwohner“ und sieht mit seinem Owner nur dessen WLAN. Offen: die Berechtigungen in der
+produktiven NetBox, dasselbe mit Pocket-ID, und ob für Ports und WLAN-Gruppen eine ähnliche
+Bedingung nötig wird.
 
 ## Anwohner-UI
 
@@ -140,98 +68,42 @@ Eine Kopie liegt in [self-service-ui.dc.html](self-service-ui.dc.html): eine Des
 (Vorlage mit `{{…}}` und der Logik in `class Component`); dargestellt wird sie mit der Runtime
 der Design-Canvas (`support.js`), die nicht im Repository liegt. Die Tweaks `rolle`, `stoerung`
 und `rolloutFails` spielen Admin, Störungen und ein gescheitertes Ausrollen durch.
-Was er festlegt:
 
-- **Ersteinrichtung macht der Admin** (vorerst): Gerät übergeben, Besitz setzen, WLAN-Gruppe.
-- **Netz = ein VLAN mit höchstens einem WLAN.** VLAN, WLAN und Netz sind für einen Anwohner
-  dasselbe: ein Netz mit Namen (dem des VLANs) und, wenn eingeschaltet, einer SSID, in Klammern
-  hinter dem Namen, wenn sie abweicht. Ein Server-Netz hat meist kein WLAN.
-- **Drei Tabs:**
-  - **Dosen und Geräte**, nach Raum gruppiert, die Räume in der Reihenfolge des Gebäudes.
-    Pro Zeile links ein Port (eine Dose aus NetBox, ein Interface oder ein Front-Port, oder ein
-    Port eines eigenen Geräts), eine Kabel-Linie, rechts das angeschlossene Gerät oder das Netz
-    mit den Geräten, die hinter dem Port eine Adresse bezogen haben (Name aus dem Lease, leer
-    ohne; MAC als Tooltip auf der IP). Ports eines eigenen Geräts (ausser dem Anschluss) sehen
-    aus wie Dosen. Auf dem Telefon stapeln sich die Karten, das Kabel wird senkrecht.
-  - **Netze:** WLAN-Schalter, SSID und Passwort (zeigen, ändern, zufällig erzeugen), QR-Code zum
-    Verbinden (`WIFI:T:WPA;S:…;P:…;;`), die Anzahl Access Points, die Ports per Kabel und die
-    verbundenen Geräte mit Adresse, „Verbunden über“, Band und Signal.
-  - **Änderungen:** jede gespeicherte Änderung mit Fortschritt und dem Stand pro Gerät.
-- **Anschluss:** Der Provisioner erkennt den Port, an dem das Kabel des Geräts steckt, über die
-  Nachbarn des Geräts davor (`neighbors.rs`, `OtherFarPort`). Steckt es anders als in NetBox,
-  zeigt er „Kabel an e03“ mit einem Knopf „e03 übernehmen“; nichts geschieht von selbst. Von Hand
-  wählen bleibt möglich. „Anschluss“ statt „Uplink-Port“, weil ein Gerät auch an einem anderen
-  Gerät hängen kann.
-- **Raum:** ein Gerät steht normalerweise im Raum seiner Dose; ein Popup neben dem Gerätenamen
-  stellt einen anderen ein (Patchkabel durch die Wand). Dann zeigt die Dose nur einen Verweis,
-  das Gerät mit seinen Ports erscheint im anderen Raum.
-- **Entwürfe:** Was der Anwohner ändert, sammelt sich als Entwurf; das Element trägt
-  „ungespeichert“ und „Zurücksetzen“, oben steht „n ungespeicherte Änderungen“ mit „Vorschau und
-  speichern“ und „Alle verwerfen“. Die Vorschau sagt in Worten, was sich ändert, warnt (Kabel
-  umstecken, Geräte verlieren das WLAN) und nennt die betroffenen Geräte.
+Gebaut sind die Tabs „Dosen und Geräte“ und „Netze“ mit Entwürfen, Vorschau, Anschluss und Raum.
+Offen nach dem Prototyp:
+
+- **Dosen und Geräte:** rechts neben einem Port das Netz mit den Geräten, die dahinter eine
+  Adresse bezogen haben (Name aus dem Lease, leer ohne; MAC als Tooltip auf der IP), siehe
+  [Leases](#leases).
+- **Netze:** QR-Code zum Verbinden (`WIFI:T:WPA;S:…;P:…;;`), die Ports per Kabel („Per Kabel
+  an“) und bei den verbundenen Geräten das Band, siehe [Clients](#clients).
+- **Änderungen:** ein dritter Tab, jede gespeicherte Änderung mit Fortschritt und dem Stand pro
+  Gerät (aus dem automatischen Rollout, C20).
 - **Zurücknehmen** einer ausgerollten Änderung macht aus dem Stand davor neue Entwürfe (auch
   SSID und Passwort), die wie jede Änderung über die Vorschau gespeichert werden. Ein
   gescheitertes Ausrollen wird nicht zurückgenommen: Es bleibt als Abweichung sichtbar, bis das
   Gerät die Konfiguration hat.
 - **Zustand, wahrheitsgemäss:** Jedes Element (Port, Gerät, Netz) hat genau ein Label:
-  „ungespeichert“, sonst der Stand des Ausrollens („wird ausgerollt“, „wartet“ bei einem nicht
-  erreichbaren Gerät, „nicht ausgerollt“), sonst der Live-Zustand („Ok“, „aus“, „gestört“,
-  „Problem“, etwa ein WLAN nur auf 4 von 5 APs). Ein Text steht nur, wenn etwas nicht Ok ist. Ein
-  Gerät zeigt seinen eigenen Stand auch, wenn die Änderung ein Netz betraf. Oben fasst eine
-  Meldung zusammen („Alles ok“ oder was nicht stimmt). Live-Zustände kommen aus den Live-Reads
-  des Provisioners und pflanzen sich fort (Gerät aus → sein Anschluss gestört, die Geräte
-  dahinter nicht erreichbar, das WLAN „Problem“, seine Clients weg).
-- **Support-Ansicht:** Ein Admin wählt einen Anwohner und sieht dessen UI, wie er es sieht; er
-  darf dort ändern, der Verlauf nennt beide („koa (Admin) für Familie Meier“). Damit das stimmt,
-  filtert der Provisioner selbst nach Besitz und wendet die Regeln des Anwohners an, auch für
-  echte Anwohner; die Berechtigungen in NetBox bleiben die zweite Sicherung. Später vielleicht
-  Stufen (Supporter, die nur sehen).
-
-Was es dafür braucht, steht in [todo.md](../todo.md) (C7, C20, C21, E27–E29).
+  „ungespeichert“ (gebaut), sonst der Stand des Ausrollens („wird ausgerollt“, „wartet“ bei
+  einem nicht erreichbaren Gerät, „nicht ausgerollt“), sonst der Live-Zustand („Ok“, „aus“,
+  „gestört“, „Problem“, etwa ein WLAN nur auf 4 von 5 APs). Ein Text steht nur, wenn etwas nicht
+  Ok ist. Ein Gerät zeigt seinen eigenen Stand auch, wenn die Änderung ein Netz betraf. Oben
+  fasst eine Meldung zusammen („Alles ok“ oder was nicht stimmt). Live-Zustände kommen aus den
+  Live-Reads des Provisioners und pflanzen sich fort (Gerät aus → sein Anschluss gestört, die
+  Geräte dahinter nicht erreichbar, das WLAN „Problem“, seine Clients weg).
+- **Badges** an den Tabs mit der Zahl ihrer Entwürfe.
 
 ## Leases
 
-`/ip/dhcp-server/lease` auf dem Router des Netzes, live gelesen (das Modell gibt es,
-`IpDhcpServerLease`). Nur Leases von Servern auf Interfaces in seinen eigenen VLANs/Netzen. IPv6 hat keine
-Leases (SLAAC); dafür ginge `/ipv6/neighbor`, als Ergänzung. Hinter welchem Port ein Lease
-steckt (Geräte pro Dose im UI), sagt die Host-Tabelle der Bridge (`/interface/bridge/host`)
-des Switches oder Geräts: welche MAC an welchem Port gelernt wurde.
+Gebaut ist das Lesen der Leases eines Netzes (`networkDevices`). Offen: hinter welchem Port ein
+Lease steckt (Geräte pro Dose im UI). Das sagt die Host-Tabelle der Bridge
+(`/interface/bridge/host`) des Switches oder Geräts: welche MAC an welchem Port gelernt wurde
+(E29). IPv6 hat keine Leases (SLAAC); dafür ginge `/ipv6/neighbor`, als Ergänzung.
 
 ## Clients
 
-Die Registrierungstabellen von `/interface/wifi` (am Controller, auch die Clients der CAPs) und
-`/caps-man` liest `device::metrics` schon (`WlanClient`, mit SSID, AP, Signal, Name und Adresse
-aus den Leases); der Anwohner sieht die Clients mit der SSID eines seiner WLANs. Das Band
-(2.4/5 GHz, Standard) fehlt `WlanClient` noch.
-
-## Risiken
-
-- **OSPF am Port des Anwohners.** Sein Gerät hat er in der Hand: Nach einem Reset, oder mit
-  einem anderen Gerät am Port, spräche er OSPF ins Netz und könnte Routen einspeisen (auch einen
-  Default). Deshalb **OSPF-Authentisierung pro Link** (A10): Ein Gerät ohne den Schlüssel wird
-  kein Nachbar. Den Schlüssel kennt nur der Provisioner, er steht nicht in NetBox.
-- Ein Anwohner, der einen Port umstellt, schneidet ab, was dahinter hängt. An seinen eigenen
-  Ports trifft es nur seine Geräte; den Port, über den sein Gerät selbst angebunden ist, stellt
-  er über `connectDevice` um, nicht über `setPortVlan`.
-- Ein eigenes Gerät, über das ein fremdes erreicht wird (es speist es per PoE, oder es hängt an
-  ihm), darf nicht abgehängt werden, und seine Ports dorthin nicht geändert. Der Plan prüft das
-  über den Management-Baum und die PoE-Beziehungen.
-- **Zugangsdaten:** Sie bleiben am Tenant (Gerät, Location, Site), getrennt vom Besitz. Der
-  Anwohner kennt sie nicht und ändert sein Gerät nur über den Provisioner; ein Tenant am Gerät ist
-  Sache der Admins.
-- Rechte im Frontend nur ausblenden; geprüft wird im Backend.
-
-## Reihenfolge
-
-1. NetBox über Pocket-ID mit der Standardgruppe „Anwohner“ und ihren zwei Berechtigungen;
-   Rollen im Provisioner (Admin aus dem Token, Anwohner über seine Owner), Besitz gesetzt und
-   abgeleitet, Anwohner sieht seine Objekte.
-2. Leases und Clients lesen (nur lesen, kein Risiko).
-3. Passwort der WLANs ändern.
-4. Ports einem VLAN zuordnen.
-5. Geräte anschliessen und abhängen (braucht A10).
-
-Das automatische Rollout (C20) braucht es ab Schritt 3, damit eine Änderung die Geräte erreicht.
+Die Clients der WLANs liest `networkDevices` beim Controller. Das Band (2.4/5 GHz, Standard)
+fehlt `WlanClient` noch (E28).
 
 ## Entschieden (2026-10-23)
 
@@ -257,7 +129,7 @@ Das automatische Rollout (C20) braucht es ab Schritt 3, damit eine Änderung die
   den Provisioner.
 - Die Mutationen regeln nur, was ein Anwohner **in NetBox** eintragen darf; Auswirkungen auf
   fremde Geräte sind erlaubt. Die Geräte erreicht es über ein **automatisches Rollout** (C20,
-  [Konzept](auto-rollout.md)).
+  [auto-rollout.md](../auto-rollout.md)).
 - Ein Anwohner **legt keine WLANs an**; er ändert Ports und das Passwort bestehender WLANs.
   Ergänzt nach dem Prototyp: auch SSID (eindeutig in der WLAN-Gruppe) und ein/aus.
 

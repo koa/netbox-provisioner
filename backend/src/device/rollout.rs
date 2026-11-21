@@ -1,7 +1,7 @@
 //! Scope: Planning updates across the network: which devices, in what order, with which packages;
 //! not carrying the plan out (`rollout::run`).
 //!
-//! Updates across the network (`docs/concepts/network-update.md`): a rollout brings the
+//! Updates across the network (`docs/network-update.md`): a rollout brings the
 //! RouterOS devices of the sites chosen to the newest release of a channel, one ordinary update
 //! job per device. This part plans it, reading only: per device what it runs, what an update
 //! would install, whether it has a way back and room for the packages, and where it comes in

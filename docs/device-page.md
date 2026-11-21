@@ -37,7 +37,8 @@ Von oben nach unten:
      (Partitionieren, Device-Mode anpassen, von einer Partition starten) brauchen eine
      Bestätigung.
    - **Änderungen:** die Warnungen zum Anwenden, das Skript und „Anwenden“, daneben „Gemeinsam
-     anwenden“ für die Geräte einer Funkstrecke; dort zeigt jedes Gerät der Auswahl, dieses
+     anwenden“ mit den anderen Enden der Funkstrecken vorgewählt und den Geräten der Sites zum
+     Dazunehmen (`DeviceAccess.batchCandidates`); dort zeigt jedes Gerät der Auswahl, dieses
      zuerst, die Änderungen, die es mit den anderen bekäme (`generateCfg(together:)`: OSPF-Segmente
      mit allen Enden in der Auswahl wechseln die Credentials, [OSPF-Authentisierung](ospf-auth.md)),
      neu geladen bei jeder Änderung der Auswahl. Ist das Skript leer: „Gerät entspricht NetBox“.

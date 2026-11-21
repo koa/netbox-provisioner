@@ -182,6 +182,10 @@ Der Verwender entscheidet; die Werte stehen bei ihm als Konstanten mit ihrem Gru
 | Ersteinrichtung | Portnamen des Nachbarn (`PORT_NAMES_AGE`) | 10 min | ändern sich nur mit einem Apply dort |
 | „Vergleich mit den Geräten“ | was das Gerät sieht (`NEIGHBORS_AGE`) | 10 min | ein Kabel wandert selten |
 | Live-Prüfung der Interfaces (`INTERFACE_LIVE_AGE`) | | 1 min | mit „Stand“; Jobs verwerfen |
+| Netz-Ansicht | LSDB (`LSDB_AGE`) | 5 s | die Karte fragt alle paar Sekunden, 500 LSAs lesen sich in 0,04 s |
+| Netz-Ansicht, Metriken | Health, Ressourcen, PoE (`DEVICE_DATA_AGE`) | 30 s | ändern sich langsam; alle paar Sekunden wären über den Proxy rund 4 Anfragen pro Sekunde |
+| Metriken | alles eines Scrapes | `Since(scrape)` | nichts älter als der Scrape |
+| Anwohner | Leases, WLAN-Clients, gesehener Anschluss (`MAX_AGE`) | 10 s | auf Klick; ein zweiter Klick kurz danach teilt |
 | Log, PoE-Beobachtung | | live, ohne Cache | der Moment |
 
 GraphQL nimmt `maxAge` (Sekunden) an `access(maxAge:)`; es darf die Vorgabe des Resolvers nur

@@ -19,6 +19,7 @@ Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
 - [Interfaces nach Aufgabe](interface-view.md): die Karte „Interfaces“, Aufgaben, Prüfungen, Aktionen pro Port.
 - [Config-Helper](config-helper.md): Befunde über NetBox und gegen das Gerät, die Helfer, die NetBox ergänzen, Pools.
 - [Update-Fallback](update-fallback.md): Partitionen, Rettung über den Nachbarn, Downgrade, Device-Mode, Strom aus und ein.
+- [Updates im ganzen Netz](network-update.md): Wegegraph und Regel beim Neustart, Plan mit Piloten, Rollout über mehrere Sites.
 - [Automatisches Rollout](auto-rollout.md): Sites, deren Geräte NetBox-Änderungen ohne Anwenden von Hand bekommen, Runden, Fehlerzustand, Webhook.
 - [Protokoll](protocol.md): ein Eintrag pro Job im Journal des Geräts in NetBox, Beobachtungen ohne Job, der Verlauf auf der Geräteseite.
 - [Self-Service](self-service.md): Anwohner als NetBox-Owner, Rollen, die Schnittstelle der Anwohner.
@@ -40,33 +41,45 @@ Was noch nicht umgesetzt ist, steht als Konzept in [concepts/](concepts/), die A
    `CCR1009-7G-1C-1S+`) bestimmt die erwartete Ethernet-Port-Liste (`hw_facts.rs`,
    siehe [interface-naming.md](interface-naming.md)).
 2. **Generate (Soll)**: `DeviceCfg::generate_from` baut den **Ziel-Zustand**
-   (`BaseDeviceDataTarget` + optional `WirelessDeviceDataTarget`/`WifiDeviceDataTarget`) rein aus
-   der NetBox-Topologie (`DeviceAccess` und die anderen `topology::access::*`-Typen). Das passiert
-   in diesen Schritten, in dieser Reihenfolge, weil spätere Schritte auf dem Ergebnis früherer
-   aufbauen:
+   (`BaseDeviceDataTarget` + optional `WirelessDeviceDataTarget`/`W60GDeviceDataTarget`/
+   `WifiDeviceDataTarget`/`CapsManDeviceDataTarget`) aus der NetBox-Topologie (`DeviceAccess`
+   und die anderen `topology::access::*`-Typen). Das passiert in diesen Schritten, in dieser
+   Reihenfolge, weil spätere Schritte auf dem Ergebnis früherer aufbauen:
    - `set_name_and_loopback` — Identity + Loopback-IP.
    - `L2Setup::new` — die komplette Schicht-2-Topologie (Bridges, VLANs, welche physischen Ports
-     wohin gehören), inklusive VXLAN-Transport der WLAN-VLANs auf Access Points. Siehe
+     wohin gehören), inklusive VXLAN-Transport der WLAN-VLANs auf Access Points, danach
+     `for_switch_chips` für das, was die Switch-Chips des Boards können. Siehe
      [l2-generation.md](l2-generation.md) und [vxlan-generation.md](vxlan-generation.md).
-   - `setup_ip_addresses` / `setup_ospf` — IP-Adressen, DHCP-Server/-Client, OSPF — operieren auf
-     `L2Setup::logical_interfaces()`, einer vereinheitlichten Sicht über alle drei L2-Domänen-Arten,
-     und müssen daher selbst nicht wissen, ob eine logische Schnittstelle ein Einzelport, eine
-     flache Bridge oder ein VLAN auf einer getaggten Bridge ist. Siehe
+   - `setup_addressing` — IP-Adressen, DHCP-Server/-Client, DNS, Router Advertisements, die
+     Perimeter-Firewall an den Interfaces zum Internet (Liste `uplink`,
+     [firewall.md](firewall.md)) und OSPF. Adressen und OSPF arbeiten auf
+     `L2Setup::logical_interfaces()`, einer vereinheitlichten Sicht über alle drei
+     L2-Domänen-Arten, und müssen daher selbst nicht wissen, ob eine logische Schnittstelle ein
+     Einzelport, eine flache Bridge oder ein VLAN auf einer getaggten Bridge ist. Siehe
      [ospf-generation.md](ospf-generation.md).
-   - `setup_perimeter` — die Perimeter-Firewall an den Interfaces zum Internet (Liste `uplink`),
-     siehe [firewall.md](firewall.md); den Zugang des Provisioners fügt `generate_for` dazu.
-   - Funk-Ports von Funkbrücken (`WirelessDeviceDataTarget`/`W60GDeviceDataTarget`), siehe
-     [radio-bridge-generation.md](radio-bridge-generation.md); Funkbrücken ohne RouterOS
-     (Wave Nano) in [foreign-radio-bridge.md](foreign-radio-bridge.md).
-   - `setup_l2` — realisiert den bereits berechneten `L2Setup` als tatsächliche
-     Bridge-/Bridge-Port-/Bridge-VLAN-/Interface-VLAN-Einträge und benennt dabei jeden physischen
-     Ethernet-Port auf seinen generierten Namen um. Legt außerdem die geplanten VXLAN-Interfaces
-     samt VTEPs an (siehe [vxlan-generation.md](vxlan-generation.md)).
+   - Die Funk-Stacks: Funkbrücken (`WirelessDeviceDataTarget`/`W60GDeviceDataTarget`, siehe
+     [radio-bridge-generation.md](radio-bridge-generation.md); ohne RouterOS in
+     [foreign-radio-bridge.md](foreign-radio-bridge.md)), WLAN mit CAPsMAN
+     (`WifiDeviceDataTarget`, der klassische `CapsManDeviceDataTarget`, siehe
+     [wlan-generation.md](wlan-generation.md)), auf einem CRS1xx/2xx die Switch-Tabellen.
+   - `setup_ports` — realisiert den bereits berechneten `L2Setup` als tatsächliche
+     Bridge-/Bridge-Port-/Bridge-VLAN-/Interface-VLAN-Einträge (`setup_l2`) und benennt dabei
+     jeden physischen Ethernet-Port auf seinen generierten Namen um; legt die geplanten
+     VXLAN-Interfaces samt VTEPs an. Dazu die Wartungs-Ports (mac-telnet), MTU, Speed, PoE und
+     die Watchdogs.
+   - Was das Gerät von Hand hat und bleiben soll: Adressen auf Interfaces, die der Provisioner
+     nicht verwaltet, DHCPv6-Clients, die OSPF-Zugangsdaten ([ospf-auth.md](ospf-auth.md)).
+
+   `generate_for` legt die Bedürfnisse des Provisioners darüber: die Watchdogs zu seinen
+   Wurzeln, den SOCKS-Proxy des Management-Geräts, Syslog, `/ip/service` und seinen Zugang durch
+   die Perimeter-Firewall. `generate_live` passt das an, was nur das Gerät live sagt (stumme
+   Watchdog-Ziele, API-Verbindungen von ausserhalb, das WebFig-Zertifikat).
 3. **Diff**: `DeviceCfg::generate_mutations` vergleicht Ist (Schritt 1) gegen Soll (Schritt 2) und
    erzeugt eine Liste von `ResourceMutation`s (Add/Set/Remove pro RouterOS-Pfad). Das ist generischer
    `mikrotik-model`-Mechanismus, nicht spezifisch für diese Pipeline.
-4. **Apply**: siehe `mikrotik-model`-Repo (`apply_mutation`/`apply_mutations_via_script`) — nicht
-   Teil dieses docs-Ordners, da es keine NetBox-spezifische Logik enthält.
+4. **Apply**: der Diff als Skript auf dem Gerät, im Hintergrund gestartet, mit Fallback und
+   Marken des Fortschritts, danach ein neuer Diff; siehe [Anwenden](jobs.md#anwenden). Das
+   Skript erzeugt `mikrotik-model` (`apply_mutations_via_script`).
 
 ## Zentrale Idee: drei unabhängige L2-Domänen-Arten
 
@@ -91,11 +104,7 @@ Siehe [interface-naming.md](interface-naming.md).
 
 ## Bekannte Lücken (Stand dieser Dokumentation)
 
-- **WLAN/CAPsMAN-Konfiguration selbst ist nicht implementiert**: `WifiDeviceDataTarget::generate_from`
-  ist ein `todo!()`. Nur die VXLAN-Transport-Seite (siehe [vxlan-generation.md](vxlan-generation.md))
-  und die L2-Klassifizierung der WLAN-VLANs (`L2Port::CapsMan`/`Cap`/`CapsManMgmt`/`CapMgmt`) sind
-  bereits fertig. Siehe [wlan-generation.md](wlan-generation.md) für den genauen Stand.
 - Patch-Panel-Ketten (`FrontPort`/`RearPort`) und Circuits (eine Leitung, z.B. Glasfaser zwischen
   Gebäuden: der Pfad geht am anderen Ende des Circuits weiter, wie NetBox' Trace) werden von
-  `InterfaceAccess::connected_interfaces` (cable walk) zwar generisch aufgelöst, aber der Multi-CHR-Testharness verkabelt bisher nur direkte
-  Interface-zu-Interface-Kabel.
+  `InterfaceAccess::connected_interfaces` (cable walk) zwar generisch aufgelöst, aber der
+  Multi-CHR-Testharness verkabelt bisher nur direkte Interface-zu-Interface-Kabel.

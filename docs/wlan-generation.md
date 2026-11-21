@@ -22,7 +22,7 @@ RouterOS hat zwei unabhängige, sich gegenseitig ausschließende WLAN-Stacks, da
 - **`WifiDeviceData`** (`interface/wifi/{cap,capsman,datapath,configuration,provisioning}`) — der
   neuere WiFiWave2-Stack (Paket `wifi-qcom` bzw. `wifi-qcom-ac`), für Geräte wie
   `C52iG-5HaxD2HaxD` oder den wAP ac. Die Radios übernimmt die Generierung vom Gerät
-  (`hw_facts.rs::build_wifi_ports` ist noch ungenutzt).
+  (`hw_facts.rs::build_wifi_ports` brauchen nur die Tests).
 
 Welches Paket die Radios eines Boards brauchen, steht in `hw_facts.rs::radio_package` (dort gehört
 alles Modellspezifische hin). `needed_radio_package` (`device/ros/radio/mod.rs`) gibt es nur zurück,

@@ -1,8 +1,10 @@
 # OSPF-Authentisierung pro Segment
 
 Aufgabe A10 (Frage Z44). Vor allem für die Ports von Anwohnern
-([Self-Service](concepts/self-service.md#risiken)): Ein Gerät ohne den Schlüssel wird kein
-OSPF-Nachbar und kann keine Routen einspeisen. Code: `device::ospf_auth` (die Entscheidung),
+([Self-Service](self-service.md)): Sein Gerät hat der Anwohner in der Hand. Nach einem Reset,
+oder mit einem anderen Gerät am Port, spräche es OSPF ins Netz und könnte Routen einspeisen,
+auch einen Default. Ein Gerät ohne den Schlüssel wird kein OSPF-Nachbar. Den Schlüssel kennt
+nur der Provisioner, er steht nicht in NetBox. Code: `device::ospf_auth` (die Entscheidung),
 `device::ros::ospf` (die Templates), `device::batch` (Lesen vor dem Planen, Prüfung danach).
 
 ## Grundsatz

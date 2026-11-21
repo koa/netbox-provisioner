@@ -1,5 +1,5 @@
 //! Scope: Who a logged-in user is to the provisioner, an admin or a resident with its owners
-//! (`docs/concepts/self-service.md`, „Wer ist wer“); not checking the token (`binary`), nor
+//! (`docs/self-service.md`, „Rollen“); not checking the token (`binary`), nor
 //! what an owner has (`topology::ownership`).
 use crate::{config::CONFIG, context::UserInfo, lock::LockAnyway, netbox, topology::OwnerId};
 use log::warn;

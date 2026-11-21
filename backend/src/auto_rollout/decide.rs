@@ -1,7 +1,7 @@
 //! Scope: What a round of the automatic rollout applies, from what it read of the devices; no
 //! reading, applying or keeping (`auto_rollout`).
 //!
-//! The rules (`docs/concepts/auto-rollout.md`):
+//! The rules (`docs/auto-rollout.md`):
 //! - an automatic device not reached is passed over and gets its changes later, the other ends
 //!   of its radio links too: a change to one end can cut the link;
 //! - a site seen automatic for the first time with changes goes into its error state instead:

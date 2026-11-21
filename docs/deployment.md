@@ -19,6 +19,15 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   Umgebungsvariablen mit `__` als Trenner der Ebenen, etwa `APP_SETTINGS__NETBOX_TOKEN` für
   `settings.netbox_token` (Schlüssel kommen kleingeschrieben an). In der Datei stehen
   Geheimnisse: NetBox-Tokens, `mikrotik_credentials`, das Passwort des Management-Proxys.
+- **NetBox:** `netbox_url` und `netbox_token` (lesend) braucht es immer. Schreiben dürfen die
+  Helfer und Anwohner nur mit `allow_netbox_write` und `netbox_write_token`; das Journal der
+  Geräte schreibt der Provisioner, sobald `netbox_write_token` gesetzt ist
+  ([Protokoll](protocol.md)).
+- **Updates:** `routeros_channel` wählt den Kanal vor, den die Geräteseite und der Rollout
+  anbieten (`long-term`, `stable`, `testing`, `development`; ohne: `long-term`).
+- **Syslog der Geräte:** `device_syslog` mit `remote` (IP), `port` (ohne: 514, UDP) und
+  `topics` (eine Regel pro Topic; ohne: `info`, `warning`, `error`, `critical`). Jedes Gerät
+  loggt dann im CEF-Format dorthin; ohne bleibt es bei den lokalen Regeln.
 - **Passwortwechsel der Geräte (A9):** ein Eintrag von `mikrotik_credentials` hat neben
   `password` ein `previous_password` (im Chart ebenfalls `value` oder `secretKeyRef`). Für einen
   Wechsel kommt das neue nach `password`, das alte nach `previous_password`. Der Provisioner

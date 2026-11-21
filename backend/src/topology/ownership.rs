@@ -1,5 +1,5 @@
 //! Scope: What a resident has, from the NetBox owners of devices, ports and VLANs
-//! (`docs/concepts/self-service.md`); not who logs in as which resident, nor what they may
+//! (`docs/self-service.md`); not who logs in as which resident, nor what they may
 //! change.
 use crate::topology::{
     CablePort, DeviceId, FrontPortId, InterfaceId, OwnerData, OwnerId, Topology, VlanId,

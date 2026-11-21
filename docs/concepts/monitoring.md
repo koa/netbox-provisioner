@@ -14,9 +14,12 @@ Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](../network-map.md
 
 ## Ausgangslage
 
-- Der Provisioner liest Geräte nur, wenn jemand eine Seite öffnet oder einen Job startet.
-  Dauerhaft fragt er nichts ab.
-- Er hat schon `/metrics` (Prometheus) am Management-Port, heute nur mit HTTP-Metriken.
+- Der Provisioner liest Geräte, wenn jemand eine Seite öffnet, ein Job läuft, Prometheus
+  `/metrics` abfragt oder eine Runde des automatischen Rollouts die Diffs liest.
+- `/metrics` am Management-Port hat die Gerätemetriken ([Gerätemetriken](../device-metrics.md)):
+  System, Health, PoE, Interfaces und Ethernet-Links, Funk-Radios mit Frequenz und
+  Rauschen, WLAN-Clients mit Signal, gebundene Leases. Verlauf und Grafana-Dashboards gibt es
+  damit schon.
 - Die [Netz-Karte](../network-map.md) beschreibt Ist-Zustand aus der OSPF-LSDB eines Routers (ca.
   alle 5 s), Farben für Knoten und Kanten, Health (Spannung, Temperatur) und PoE.
 - Aus der Konfiguration kennt der Provisioner Sollwerte: OSPF-Nachbarn aus NetBox, Watchdogs,
@@ -24,7 +27,11 @@ Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](../network-map.md
 
 ## Vorschlag
 
-**Ein Sammler im Backend**, der periodisch liest und den letzten Zustand hält:
+**Ein Sammler im Backend**, der periodisch liest und den letzten Zustand hält. Health, Uptime,
+die WLAN-Clients und das Signal der 5-GHz-Funkstrecken (beim AP-Ende) liefert `/metrics` schon,
+pro Scrape gelesen statt vom Sammler. Offen sind die Strecken aus der LSDB als Metriken, die
+60-GHz-Strecken (`w60g` monitor), die Radios von `/interface/wifi` in
+`mikrotik_wireless_radio_*` und der Uplink-Ping:
 
 | Was | woher | wie oft |
 |---|---|---|
@@ -64,7 +71,17 @@ Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
 1. Sammler mit LSDB und Prometheus-Metriken (Grundlage der Netz-Karte).
 2. Seite „Zustand“ für Admins.
 3. Funk, Health, Uplink-Ping.
-4. Anwohner-Ansicht, sobald es [Self-Service](self-service.md) gibt.
+4. Anwohner-Ansicht im [Anwohner-UI](../self-service.md#anwohner-ui).
+
+## Historie über Syslog
+
+Eine Idee aus der [Netz-Ansicht](../network-map.md), nicht geplant: Alle Router schicken ihre
+OSPF-Meldungen per Syslog (`/system/logging action` mit `remote`, Topic `ospf`) an den
+Provisioner. Vorteil: Ereignisse im Moment, in dem sie passieren, und eine Historie
+(„Funkbrücke 3-mal in der letzten Stunde weggefallen“). Nachteile: Syslog über UDP geht genau
+dann verloren, wenn die Strecke dazwischen ausfällt, und den aktuellen Zustand muss man
+trotzdem abfragen. Die Netz-Ansicht fragt deshalb ab. Das Logging der Geräte an einen Server
+(`device_syslog`) generiert der Provisioner schon; ob er selbst einer wird, ist offen.
 
 ## Entschieden (2026-10-23)
 

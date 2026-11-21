@@ -252,7 +252,7 @@ impl DeviceAccess {
         self.data().and_then(|d| d.site).map(self.create_access())
     }
     /// Whether NetBox' changes reach it without an apply by hand
-    /// (`docs/concepts/auto-rollout.md`): RouterOS, at a site with `auto_rollout`, and not
+    /// (`docs/auto-rollout.md`): RouterOS, at a site with `auto_rollout`, and not
     /// left to the operator by its own `auto_rollout: false`.
     pub fn rolls_out_automatically(&self) -> bool {
         self.has_routeros()

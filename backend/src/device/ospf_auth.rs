@@ -1,5 +1,5 @@
 //! Scope: Which OSPF segments an apply may move to new credentials, and to which (A10,
-//! `docs/concepts/ospf-auth.md`): a segment's key, what each device of the apply reads for it,
+//! `docs/ospf-auth.md`): a segment's key, what each device of the apply reads for it,
 //! the decision over all of them and what is in doubt; not placing the credentials in the
 //! config (`device::ros::ospf`).
 //!
@@ -113,7 +113,7 @@ struct End {
 }
 
 /// Decides for every device of an apply which of its segments go to the provisioner's
-/// credentials: those where every condition holds (`docs/concepts/ospf-auth.md`, Freigabe),
+/// credentials: those where every condition holds (`docs/ospf-auth.md`, Freigabe),
 /// shown for all ends together; the others stay, with what is in doubt. Without `settings`
 /// nothing moves and nothing is said.
 pub fn decide(

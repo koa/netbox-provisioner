@@ -5,8 +5,8 @@ Gebaut als C9 (2026-11-01 bis 2026-11-13), alle fünf Schritte der
 `Query.topology.networkState(siteId)`, SVG-Karte, Health und Ressourcen im Popup
 (`backend/src/network_state/`, `components::network_map`), PSE→PD-Pfeile mit Soll-gegen-Ist und
 die Last der PoE-Gruppen gegen ihre Grenzen, Drag, `localStorage`, `publishLayout`. Nicht
-gebaut: der Klick auf eine Kante (keine Seitenleiste, entschieden) und der Log-Aggregator
-(spätere Stufe, unten).
+gebaut: der Klick auf eine Kante (keine Seitenleiste, entschieden); die Idee eines
+Log-Aggregators steht im Konzept [Überwachung](concepts/monitoring.md#historie-über-syslog).
 
 Eine Seite pro Site, und eine über alle Sites (`/network-map`, im Site-Menü der Breadcrumb; die
 Karte einer Site im Geräte-Menü): das Netz als Graph, Soll aus
@@ -79,7 +79,8 @@ Port B):
 |---|---|
 | grün | Die Router beider Enden stehen im selben Network-LSA, und zwar in dem, dessen Netz die Adresse von A enthält. |
 | rot | Ein Ende meldet für das Netz `stub` oder gar nichts, oder ein Router fehlt ganz im LSDB. |
-| orange | OSPFv2 ist oben, OSPFv3 nicht (siehe unten), oder Fehlerzähler oder `link-downs` des Ports steigen (Gerätedaten, siehe unten). |
+| orange | OSPFv2 ist oben, OSPFv3 nicht (siehe unten). |
+| grau | Ein Ende ist kein OSPF-Router mit einer Adresse dort (das Brückengerät einer Funkbrücke auf L2, ein Kunden-Port, ein Gerät ohne RouterOS): Die LSAs sagen nichts darüber. |
 
 Umgesetzt in `network_state::edges` (`EdgeState`: `Up`, `V3Down`, `Down` mit Grund, `NotOspf`).
 Dabei gelernt:
@@ -104,9 +105,9 @@ lab-sxt-a, lab-sxt-b und lab-np2, weil die Funkbrücke auf L2 durchgeht. Alle dr
 sind grün. Fällt die Funkbrücke, zerfällt das Segment in zwei Network-LSAs, und nur die
 Funkbrücken-Kante wird rot.
 
-Ein Port ohne OSPF (ein Kunden-Port wie `e04-kunde` auf lab-np2) erscheint nicht in den LSAs.
-Seine Kante bekommt den Zustand aus den Gerätedaten des Switches: `running` und bei PoE
-`poe-out-status`.
+Ein Port ohne OSPF (ein Kunden-Port wie `e04-kunde` auf lab-np2) erscheint nicht in den LSAs;
+seine Kante bleibt grau (`NotOspf`). Fehlerzähler, `link-downs` oder `running` der Ports gehen
+nicht in den Zustand ein.
 
 ### OSPFv3 als zweite Meinung
 
@@ -126,17 +127,17 @@ Ansicht nicht davon an, die Produktion ist nicht ihr Gegenstand.
 
 ### Gerätedaten (Health, Ressourcen, PoE)
 
-Pro Gerät alle 30 s, nur lesend, über denselben Weg wie heute (`DeviceAccess::connect`):
+Eine eigene Abfrage (`networkStateDetails`, alle 5 s vom Frontend), nur lesend, für jedes Gerät
+mit eigenem OSPF, die Tabellen bis 30 s alt (`DEVICE_DATA_AGE`, `network_state::device_data`):
 
 - `/system/health/print`: alle Zeilen, generisch als `(name, value, unit)`;
 - `/system/resource/print`: `uptime`, `cpu-load`, `free-memory`/`total-memory`,
   `free-hdd-space`, `version`;
-- `/interface/ethernet/poe/monitor … once` auf Geräten mit PoE-Ausgang (aus `hw_facts.rs`);
-- `/interface/print`: `running`, `link-downs`, `rx-error`/`tx-error` für die Kanten ohne OSPF und
-  für „orange“.
+- die PoE-fähigen Ports (`device::poe::read_ports`), und wo ein Port speist,
+  `/system/routerboard` für die Grenzen der PoE-Gruppen.
 
-Bei 30 Geräten sind das etwa 4 Anfragen pro Sekunde über den Management-Proxy. Ein Gerät, das
-nicht antwortet, wird nicht schneller wiederholt als die anderen.
+Ein Gerät, das nicht antwortet, fehlt in der Antwort; sein Knoten behält den Zustand aus der
+LSDB.
 
 ### Zustand eines Knotens
 
@@ -325,19 +326,9 @@ keine Warnung. So leuchtet auch ein absichtlich nicht angeschlossenes Netzteil
 
 ## Rollout
 
-Während ein Rollout läuft ([Updates im ganzen Netz](concepts/network-update.md)), hat jeder
+Während ein Rollout läuft ([Updates im ganzen Netz](network-update.md)), hat jeder
 Knoten, den er aktualisiert, einen Ring in der Farbe seines Stands (`NetworkState.rollout`);
 die Füllung bleibt die Erreichbarkeit. **Umgesetzt** 2026-11-13.
-
-## Alternative: Log-Aggregator (spätere Stufe)
-
-Die ursprüngliche Idee: Alle Router schicken ihre OSPF-Meldungen per Syslog
-(`/system/logging action` mit `remote`, Topic `ospf`) an den Provisioner. Vorteil: Ereignisse im
-Moment, in dem sie passieren, und eine Historie („Funkbrücke 3-mal in der letzten Stunde
-weggefallen“). Nachteile: Logging muss in die generierte Konfiguration jedes Geräts, Syslog über
-UDP geht genau dann verloren, wenn die Strecke dazwischen ausfällt, und den aktuellen Zustand
-muss man trotzdem abfragen. Vorschlag: zuerst Polling wie oben. Syslog später nur für die
-Historie, ergänzend.
 
 ## Reihenfolge der Umsetzung
 

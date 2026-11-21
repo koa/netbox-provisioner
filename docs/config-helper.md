@@ -595,6 +595,12 @@ der Plan des Controllers der WLAN-Gruppe. Gerufen wird er vom Anwohner-UI
 ([Self-Service](self-service.md#ändern)); im Admin-Schema ist er `Helper.wlan`, ein Formular
 der Admins gibt es dafür nicht. Die Passwörter stehen weder im Fingerprint noch im Job-Log.
 
+Ebenso nur aus dem Anwohner-UI kommen „Gerät anschliessen“ (`helper::connect_device`) und „Raum
+eines Geräts“ (`helper::device_location`), beschrieben in [Self-Service](self-service.md#ändern).
+Mehrere Helfer zusammen plant `helper::sequence`: jeden auf der Vorschau der vorherigen, ihre
+Schritte zu einem Plan aneinandergehängt (`NetboxPlan::append`); geschrieben wird dieser Plan
+in einem Job (`helper::write` nimmt die Teile).
+
 ### Brückengeräte mit fester Adresse
 
 Ohne feste Adresse holte sich ein Brückengerät seine per DHCP-Client von einem der beiden Router
@@ -661,8 +667,8 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
 - **Reihenfolge im Pool.** Die Prefixe werden nacheinander gefüllt (aufsteigend nach Adresse).
   Ist eines voll, kommt das nächste dran. Ein neues Prefix mit dem Tag erweitert den Pool, ohne
   dass sich am Provisioner etwas ändert.
-- **Netzweit.** Die Pools haben keinen Scope; Pools pro Standort oder Mandant gehören zum
-  [Self-Service](concepts/self-service.md).
+- **Netzweit.** Die Pools haben keinen Scope; Pools pro Standort oder Mandant gibt es nicht
+  (auch keine Aufgabe dafür).
 - **Befund.** Gibt es für eine IP-Version keinen Pool oder ist ein Pool fast voll, meldet das der
   Befund (`PoolMissing`, `PoolNearlyFull`). Der Helfer vergibt dann nur, was noch geht.
 
@@ -672,8 +678,9 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
   (reqwest) liest und schreibt unter `api/`; GraphQL kann auch keine freien Adressen auflisten.
 - **Eigene Freigabe.** `allow_netbox_write` (wie `allow_apply`) und ein eigenes Token
   `netbox_write_token` mit Schreibrechten (`NetboxWritesAllowed`). Ohne beide läuft der
-  Provisioner nur lesend, die Befunde gehen trotzdem. Jeder angemeldete Benutzer darf schreiben,
-  wie in NetBox selbst; Abstufungen gehören zum [Self-Service](concepts/self-service.md).
+  Provisioner nur lesend, die Befunde gehen trotzdem. An `/graphql` kommen nur Admins, und jeder
+  darf jeden Helfer. Anwohner schreiben über ihr eigenes Schema, nur an eigenen Objekten
+  ([Self-Service](self-service.md#ändern)).
 - **Wer war es.** Jedes Schreiben trägt `changelog_message` mit Aktion und Benutzer aus dem
   OIDC-Token (z.B. „Verbindung np1–np2 (koa)“). Im Changelog von NetBox steht so, wer im
   Provisioner was ausgelöst hat, auch wenn alle Änderungen mit demselben Token laufen.

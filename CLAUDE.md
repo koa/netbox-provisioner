@@ -28,7 +28,7 @@ checked/tested independently.
 against musl, and the CA certificates, no libc or shell; `nix flake check`: tests, the three clippy
 runs, `cargo fmt --check`, nothing but the binary in its closure) and is what CI runs (`.github/workflows/ci.yaml`, with the store kept between
 runs by `magic-nix-cache-action`). It builds with crane: the crates' dependencies are
-derivations of their own (`deps`, from `dummyWorkspace`: this repository's crates dummied, the
+derivations of their own (`deps`, from `dummySrc`: this repository's crates dummied, the
 two libraries whole), one for dev (tests, clippy), release (binary) and wasm (frontend), and the
 frontend is one derivation (`packages.frontend`) the binary and its clippy run copy in; a new
 check takes the fitting deps as `cargoArtifacts` and runs the same cargo command (profile,
@@ -143,7 +143,7 @@ NetBox' trace does, so a fiber between buildings connects the devices at both en
 exports lack `circuit_list` and the ids of the circuit ends; `example_topology` drops those
 ends, so their cables end there as before.
 
-A resident (C7, `docs/concepts/self-service.md`) is a NetBox owner: `owner` is read at
+A resident (C7, `docs/self-service.md`) is a NetBox owner: `owner` is read at
 devices, interfaces, front ports (sockets in the flat: the front side takes the resident's
 device, the rear port leads to the switch whose port's network the socket has) and VLANs
 (`Topology.owners`, what NetBox gives each directly), and `topology::ownership` derives the
@@ -170,9 +170,9 @@ tabs „Dosen und Geräte“ and „Netze“), nobody a hint; its queries are in
 one per element, edited right in the tabs `ports` and `networks`) and previews and saves them
 together (`save_dialog`); the backend plans them one after the other, each on the preview of
 the ones before (`helper::sequence`, `NetboxPlan::append`; `helper::write` takes the parts),
-and checks each there. Allowed only on what
-`owned_by` gives its owner (an admin: any owner), written as the plan device's `NetboxWrite`
-job like the admins' helpers (`helper::wlan`, step `UpdateWirelessLan`, keys kept out of the
+and checks each there for what it may touch. Allowed only on what
+`owned_by` gives its owner (an admin: any owner), written as the first change's device's
+`NetboxWrite` job like the admins' helpers (`helper::wlan`, step `UpdateWirelessLan`, keys kept out of the
 fingerprint and the job's log; also on/off, NetBox `status` `disabled`: `wlan()` of a group or
 VLAN gives only the WLANs on, which the generator uses, `all_wlans()` also those off, for the
 resident's view and unique SSIDs). A port's or socket's network (`ResidentChange.portVlan`) is `helper::port_vlan`
@@ -187,9 +187,9 @@ is linked to the resident's port, socket or another own device's port by
 `ResidentChange.connectDevice` (`helper::connect_device`: what is in the way cleared, the port's
 VLAN off, the socket's cable, then „Verbindung“ and „Loopback“; its Anschluss is
 `connect_device::uplink_port`, the cabled port towards its `ManagementTree` parent) and taken
-off by `disconnectDevice` (`helper::disconnect` at the Anschluss); both are checked on the
-preview: no other's RouterOS device, and on connecting none of the resident's, may lose its way
-to a management root (`keeps_reached`), and a port with a RouterOS device linked takes no
+off by `disconnectDevice` (`helper::disconnect` at the Anschluss); the whole plan is checked on
+its preview: no other's RouterOS device, and none of the resident's but those taken off and
+behind them (`behind`), may lose its way to a management root (`keeps_reached`), and a port with a RouterOS device linked takes no
 network (`DEVICE_AT_PORT`). Changing the Anschluss is
 `connectDevice` to the same port with `devicePort`; `seenUplinks` (`resident::live`) reads the
 router at the far end of the Anschluss' cable (`neighbors::evaluate`) and names the device's
@@ -236,7 +236,8 @@ the segment it shares with the routers (they keep RouterOS's 128); CHR test
 shared segment (the harness's cables are point to point). RouterOS names the state `dr-other`. Pool ranges are written as RouterOS reports them
 (`pool_range`: one address alone, a range covering exactly one network as that network, CHR
 7.24.5), else the diff never gets empty. The prefix tags
-`loopback`/`transfer` (`IpPrefixData::pool`) are only used here so far. One L3 gateway per VLAN
+`loopback`/`transfer` (`IpPrefixData::pool`) are used by the findings, the interface view and
+the helpers' pools, never by the generator. One L3 gateway per VLAN
 counts per domain (`topology/vlan_domain.rs`): with a VNI every RouterOS device with the VLAN,
 without one the devices that cables carrying it join, so the same VLAN local on two devices is
 two networks. Two gateways are an error (`VlanWithSeveralGateways`), none a warning
@@ -690,7 +691,7 @@ abgelaufen“ with a login button on top (`components::frame::login_expired`, `a
 redirect by itself) once `graphql::post` gets `401`/`403` or the WebSocket's `connection_init`
 is refused (async-graphql closes it with `1002` and the error, `token …`); not for a user
 outside `auth_users`, logging in again changes nothing there; with errors async-graphql may leave a failed non-null root
-field out of `data`, so `graphql::post_graphql` then gives only the errors) (`docs/login.md`:
+field out of `data`, so `graphql::decode` then gives only the errors) (`docs/login.md`:
 the `auth_*` settings and how to set up Pocket-ID; keep it in line with them). biscuit checks
 a claim only where the token has it, so `validation_options_for` requires `exp`, `iss`, `aud`
 and `sub` (a token without `exp` would never expire). The WebSocket checks its token once, at
@@ -1098,9 +1099,10 @@ the board must advertise it there. A port going back to negotiation has its
 `speed` left out of the `set` (`speed::after_negotiation_on`, like
 `l2::after_vlan_filtering_off`): RouterOS refuses `speed=""`, `!speed` is a syntax error in a
 script (lab-hex, 7.24.6), and a negotiating port doesn't report it.
-`DeviceCfg::generate_from` (the real path) calls the target's steps itself, not
-`BaseDeviceDataTarget::generate_from` (which only tests use): a step added to one must be in the
-other too. PoE out (`setup_poe`) was only in the latter, so the real path never set it before.
+`DeviceCfg::generate_from` (the real path) and `BaseDeviceDataTarget::generate_from` (tests
+only) share the base config's steps: `setup_addressing` before the radios, `setup_ports` after
+them; a new step goes into one of those. PoE out (`setup_poe`) was once only in the tests' path,
+so the real path never set it.
 
 A DHCP server's static leases come from NetBox (`device::ros::dhcp::static_leases`): every
 device without RouterOS with an interface whose primary MAC (`Interface.mac`, upper case) and
@@ -1299,7 +1301,7 @@ don't reach at all holds nothing back. `rolloutPlan` (`device::rollout`, page `/
 plans an update across sites, reading only: per RouterOS device the step, the download against
 `free-hdd-space` (`free-memory` where the root directory is in RAM, `progress::root_in_ram`:
 16 MiB of flash, the uploads take memory), the way back, leftovers; a pilot per architecture, then the farthest from a
-root first, a CAPsMAN controller after its APs (`docs/concepts/network-update.md`).
+root first, a CAPsMAN controller after its APs (`docs/network-update.md`).
 `startRollout` (`device::rollout::run`, `JobKind::Rollout`, `JobSubject::Network`, one at a
 time) plans again and starts an ordinary update job per device (`start_update`, the suppliers'
 watchdogs suspended), up to `PARALLEL` (4) at once but never two related ones

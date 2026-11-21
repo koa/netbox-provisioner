@@ -2,8 +2,8 @@
 //! (`graphql::resident`).
 //!
 //! Helper „WLAN ändern“: a new SSID or WPA personal key for a WLAN, or switching it on or off
-//! (NetBox `status` `active` or `disabled`), the resident's `setWlanSsid`, `setWlanPsk` and
-//! `setWlanEnabled` (`docs/concepts/self-service.md`). The plan is the WLAN
+//! (NetBox `status` `active` or `disabled`), the resident's `ResidentChange.wlan`
+//! (`docs/self-service.md`). The plan is the WLAN
 //! group's controller's: it and all APs of the group get the change. Security type and VLAN
 //! stay the admins', so only a WLAN with a WPA personal key gets a new one.
 use super::{NetboxPlan, PlanStep, UpdateWirelessLan};

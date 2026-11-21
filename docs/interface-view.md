@@ -171,7 +171,7 @@ Entscheidung, was ein Vorschlag tut, im Backend.
   später) und zum Entfernen („Kein PoE“). Ob das Board dort PoE-out hat, weiss NetBox nicht; die
   Live-Prüfung vergleicht den Modus mit dem Gerät und schlägt bei einem Widerspruch „PoE-Eintrag
   entfernen“ vor.
-- **Flags** zeigt nur die vier Schalter dieses Interfaces.
+- **Flags** zeigt nur die fünf Schalter dieses Interfaces (`ospf`, `dhcp`, `dhcp-client`, `nat`, `internet`).
 - **Funkbrücke vom Router-Port:** Die Richtfunk-Zeile eines Routers bettet den Helfer des
   verkabelten Brückengeräts ein (`HelperPreset::RadioFrom`, Router und Router-Port vorbelegt).
   „Als Richtfunk“ von einem freien Router-Port fragt zuerst nach dem Brückengerät (genau ein Radio,

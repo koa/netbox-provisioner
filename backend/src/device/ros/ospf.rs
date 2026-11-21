@@ -2,7 +2,7 @@
 //!
 //! OSPF on the interfaces tagged `ospf`, v2 and v3, and where each port's credentials go: the
 //! shared template of an area, or one of its own per segment (A10,
-//! `docs/concepts/ospf-auth.md`). Which segments get new credentials is decided outside
+//! `docs/ospf-auth.md`). Which segments get new credentials is decided outside
 //! (`device::ospf_auth`); here they are only placed.
 use super::{BaseDeviceDataCurrent, BaseDeviceDataTarget};
 use crate::{

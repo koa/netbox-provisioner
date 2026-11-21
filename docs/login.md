@@ -35,7 +35,7 @@ settings:
   auth_issuer: https://id.example.ch
   # angeforderte Scopes, mit Leerzeichen getrennt (ohne Angabe: openid profile email offline_access)
   # auth_scopes: "openid profile email"
-  # wer hinein darf: der Claim "sub" der Benutzer
+  # wer Admin ist (neben der Gruppe "admin"): der Claim "sub" der Benutzer
   auth_users:
     - 8b1d6e2a-....-....-....-............
 ```
@@ -46,10 +46,11 @@ settings:
 - **`auth_client_id`**: Das Frontend meldet sich mit dieser Client ID an, und das Backend
   verlangt sie in `aud` des Tokens (beim ID-Token immer so). So kommen Tokens, die der Provider für andere Apps
   ausstellt, nicht durch.
-- **`auth_users`**: Verglichen wird `sub`, nicht der Benutzername. Wer angemeldet ist, aber nicht in
-  der Liste steht, bekommt bei jeder Abfrage `403` („Kein Zugriff“ im UI); das Serverlog nennt
-  das `sub` (`user refused, no admin`). Statt der Liste macht auch die Gruppe `admin` im Claim
-  `groups` zum Admin; die Liste bleibt als Notschalter.
+- **`auth_users`**: die Admins, verglichen wird `sub`, nicht der Benutzername. Statt der Liste
+  macht auch die Gruppe `admin` im Claim `groups` zum Admin; die Liste bleibt als Notschalter.
+  Wer angemeldet, aber kein Admin ist, bekommt an `/graphql` `403`, und das Serverlog nennt das
+  `sub` (`user refused, no admin`). Das UI fragt ihn gar nicht dort: Er sieht die Ansicht des
+  Anwohners oder den Hinweis, dass ihn ein Admin eintragen muss ([Rollen](self-service.md#rollen)).
 - **`auth_scopes`**: `offline_access` (Refresh-Token) kennt nicht jeder Provider; dann die Scopes
   ohne ihn angeben. Ohne Refresh-Token erneuert das UI das Token nicht: Ist es abgelaufen,
   antwortet der Server `403` (und schliesst den WebSocket bei `connection_init`), bis man sich
@@ -57,8 +58,8 @@ settings:
   (`components::frame::login_expired`, Z34): Der Login führt über den Provider zurück auf dieselbe
   Seite, von selbst leitet nichts um, ein offenes Formular bleibt, bis man klickt. Die Job-Ansicht
   fragt
-  weiter und nimmt den Job danach wieder auf. Wer angemeldet ist, aber nicht in `auth_users`
-  steht, bekommt den Hinweis nicht: neu anmelden änderte nichts. Im Lab mit Keycloak ohne
+  weiter und nimmt den Job danach wieder auf. Wer angemeldet, aber kein Admin ist, bekommt den
+  Hinweis an `/graphql` nicht: neu anmelden änderte nichts. Im Lab mit Keycloak ohne
   Refresh-Token und 20 s Laufzeit geprüft, über HTTP-Abfragen und über den WebSocket allein.
 
 ## Pocket-ID

@@ -166,8 +166,8 @@ Locations, in denen sie liegt („1. OG › Wohnung Meier“). Die Wand einer Do
 die Location ihrer Wohnung oder ihres Raums.
 
 Was ihm gehört, berechnet `topology::ownership`. Auf die Konfiguration der Geräte hat der
-Besitz keinen Einfluss. Wer sich als welcher Anwohner anmeldet, steht im
-[Konzept](concepts/self-service.md#wer-ist-wer).
+Besitz keinen Einfluss. Wer sich als welcher Anwohner anmeldet, steht unter
+[Rollen](self-service.md#rollen).
 
 ## Zugangsdaten
 
@@ -683,8 +683,10 @@ reicht also nicht, sie zu setzen:
   Router und Switch unterscheiden sich nur durch ihre Interfaces.
 - **Device Type**: wird gelesen (für den Config-Helper und den Abgleich mit dem Board), das
   Board kommt aber live vom Gerät.
-- **Prefixe**: Beschreibung und Scope (Site) werden gelesen, aber noch nicht ausgewertet; die
-  Tags `loopback`/`transfer` nur für die Befunde.
+- **Prefixe**: Die Beschreibung wird gelesen, aber nicht ausgewertet. Die Tags
+  `loopback`/`transfer` (die Pools) brauchen nur die Befunde und die Helfer, nicht die
+  Generierung. Der Scope (Site) zählt dagegen: für die Router eines Port-Forwardings
+  ([Freigaben](firewall.md#freigaben)) und als Eltern eines Kunden-Netzes.
 - **802.1Q Mode**: siehe oben; nur die VLAN-Zuweisungen zählen.
 - **Tags an Bridge-Ports**: bei Bridges zählen die Tags des Bridge-Interfaces und des
   VLAN-Interfaces, das die IP trägt, nicht die der Mitgliedsports.

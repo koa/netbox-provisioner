@@ -1,4 +1,4 @@
-//! Scope: The automatic rollout (C20, `docs/concepts/auto-rollout.md`): when a round runs, what
+//! Scope: The automatic rollout (C20, `docs/auto-rollout.md`): when a round runs, what
 //! it reads, its state per site, kept in `state_dir`; not what a round applies (`decide`) nor
 //! applying (`device::batch`).
 //!

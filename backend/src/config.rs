@@ -36,7 +36,7 @@ pub struct Settings {
     /// with it, WebFig goes over HTTPS with a certificate of this CA on every device, and plain
     /// HTTP (`www`) off (A7)
     pub www_ca: Option<WwwCa>,
-    /// OSPF authentication of the segments (A10, `docs/concepts/ospf-auth.md`); without, no
+    /// OSPF authentication of the segments (A10, `docs/ospf-auth.md`); without, no
     /// credentials on a device are touched.
     pub ospf_auth: Option<OspfAuth>,
 
@@ -76,7 +76,7 @@ pub struct Settings {
     /// keeps a second provisioner off them (default `state`, next to `config.yaml`).
     state_dir: Option<std::path::PathBuf>,
     /// What a device pings to see whether it reaches the internet, IPv4 and IPv6 (the
-    /// automatic rollout, `docs/concepts/auto-rollout.md`): a family is reached when one of
+    /// automatic rollout, `docs/auto-rollout.md`): a family is reached when one of
     /// its targets answers. Default: the anycast DNS resolvers of Cloudflare, Quad9 and Google.
     internet_targets: Option<Box<[IpAddr]>>,
 }

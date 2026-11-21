@@ -6,7 +6,7 @@ Hintergrund und meldet typisierte Events (`job::Event`), die das Frontend auf De
 (`components/job.rs`, `i18n::job`). Ein Gerät hat höchstens einen Job zur Zeit; ein Job einer
 Site (`SiteDiff`) liest nur und sperrt keines ihrer Geräte, ebenso der Job des Netzes
 (`Rollout`): Er startet für jedes Gerät einen eigenen Update-Job
-([Updates im ganzen Netz](concepts/network-update.md)). Jede Art hat eine State-Machine
+([Updates im ganzen Netz](network-update.md)). Jede Art hat eine State-Machine
 (`backend::device_state`), die sagt, welcher Zustand auf welchen folgen darf, was Abbrechen in
 einem Zustand tut und was ein Neustart des Servers mit dem Job macht.
 
@@ -143,15 +143,18 @@ stateDiagram-v2
     FallbackSetzen --> SkriptSchreiben: Backup und Scheduler da, oder gesperrt (Device-Mode) ohne Fallback (G)
     SkriptSchreiben --> SkriptStarten: Skript auf dem Gerät (G)
     SkriptStarten --> SkriptLäuft: im Script-Job gesehen (G)
+    FallbackSetzen --> Zurücknehmen: gemeinsam, ein anderes Gerät scheitert vor dem Start
     SkriptSchreiben --> Zurücknehmen: Fehler
     SkriptStarten --> Zurücknehmen: nach 10 s nicht gesehen (Z)
     Zurücknehmen --> [*]: Skript und Fallback weg → fehlgeschlagen
     SkriptLäuft --> SkriptLäuft: Marke gelesen (G)
     SkriptLäuft --> FallbackWegnehmen: Marke Ende oder Fehler, erreicht (G)
     SkriptLäuft --> Nachprüfen: dito, ohne Fallback
+    SkriptLäuft --> Nacharbeit: dito, ohne Fallback, gemeinsam (die Diffs liefen schon)
     SkriptLäuft --> NichtErreicht: Frist bis Fallback (Z)
     SkriptLäuft --> [*]: Fallback-Eintrag weg (G) → fertig, Event „Fallback ausgelöst“ mit Marken
     FallbackWegnehmen --> Nachprüfen: entfernt (G)
+    FallbackWegnehmen --> Nacharbeit: entfernt, gemeinsam (die Diffs liefen schon) (G)
     FallbackWegnehmen --> SkriptLäuft: noch nicht entfernt, oder schon ausgelöst (G)
     FallbackWegnehmen --> NichtErreicht: fällig in < 10 s, oder bis zur Frist nicht entfernt (G, Z)
     NichtErreicht --> [*]: Fallback ausgelöst und zurück (G) → fertig, mit Marken
@@ -199,7 +202,7 @@ NetBox braucht, und danach die RouterBOARD-Firmware (`updateRouteros`).
   Auftrag sie nicht rechtzeitig wegnimmt.
 - Die Watchdogs der Geräte, die dieses überwachen, werden ausgesetzt; ihr Sicherheitsnetz setzt
   sie nach 2 h selbst wieder.
-- PoE-Kette: siehe [Bedingungen](#poe-kette).
+- PoE-Kette: siehe [Bedingungen](#poe-kette-und-wege).
 - Alte Geräte: MD5-Login vor 6.43, v6-SSH-Algorithmen, Board-Namen ohne `RB`.
 
 **Bewusst nicht:**
@@ -463,8 +466,9 @@ Device-Mode-Änderung (die bleibt nie liegen).
 
 ### NetBox schreiben, zurücknehmen
 
-**Wofür:** schreibt den Plan eines Helfers nach NetBox (`writeNetboxPlan`) oder nimmt ein solches
-Schreiben zurück (`undoNetboxWrite`).
+**Wofür:** schreibt den Plan eines Helfers nach NetBox (`writeNetboxPlan`), die Änderungen
+eines Anwohners als ein Plan aus mehreren Helfern (`saveChange`, [Self-Service](self-service.md#ändern)),
+oder nimmt ein solches Schreiben zurück (`undoNetboxWrite`).
 
 **Beachtet:**
 - Der Plan wird neu berechnet und abgelehnt, wenn sein Fingerabdruck sich geändert hat; vor jedem

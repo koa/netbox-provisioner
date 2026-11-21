@@ -103,7 +103,7 @@ pub struct JSON {
     /// an IPv4 (`topology::WatchdogTarget`).
     pub watchdog_target: Option<Box<str>>,
     /// On a site: its RouterOS devices get NetBox' changes without an apply by hand
-    /// (`docs/concepts/auto-rollout.md`). On a device: `false` leaves it to the operator in
+    /// (`docs/auto-rollout.md`). On a device: `false` leaves it to the operator in
     /// such a site.
     pub auto_rollout: Option<bool>,
 }

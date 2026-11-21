@@ -311,7 +311,7 @@ pub struct Vlan {
     pub owner: Option<OwnerRef>,
 }
 
-/// The NetBox owner of an object: a resident, household or company (`docs/concepts/self-service.md`).
+/// The NetBox owner of an object: a resident, household or company (`docs/self-service.md`).
 #[derive(cynic::QueryFragment, Serialize, Debug, Clone)]
 #[cynic(graphql_type = "OwnerType", rename_all = "None")]
 pub struct OwnerRef {

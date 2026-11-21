@@ -229,8 +229,8 @@ impl Guard for WritesAllowed {
 }
 
 /// Lets a helper's write to NetBox through only with `allow_netbox_write` and
-/// `netbox_write_token`. Who may use which helper isn't told apart yet (`docs/config-helper.md`,
-/// the roles of `docs/concepts/self-service.md`): every user of `auth_users` may.
+/// `netbox_write_token`. Who may is decided before: `/graphql` lets only admins in (`binary`),
+/// and residents write through their own schema (`graphql::resident::change`).
 struct NetboxWritesAllowed;
 impl Guard for NetboxWritesAllowed {
     async fn check(&self, _ctx: &Context<'_>) -> async_graphql::Result<()> {
@@ -510,7 +510,7 @@ impl MutationAuthenticated {
             without_fallback == Some(true),
         )?)
     }
-    /// Starts a rollout (`docs/concepts/network-update.md`): the RouterOS devices of the sites
+    /// Starts a rollout (`docs/network-update.md`): the RouterOS devices of the sites
     /// to the newest release of `channel` (the config's without), an update job each, as
     /// `rolloutPlan` plans it when the job starts; `pilots` (device ids) instead of the pilots
     /// it proposes. The watchdogs of the suppliers are suspended for each update. The job pauses
