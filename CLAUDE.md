@@ -165,18 +165,21 @@ support view), a resident only `pages::residents` (`components::resident`, the p
 tabs „Dosen und Geräte“ and „Netze“), nobody a hint; its queries are in
 `graphql::resident`, a third cynic schema "resident" (`frontend/build.rs`), sent by
 `graphql::request_resident`. What a resident changes is a helper's plan too
-(`graphql::resident::change`: `changePlan`, `saveChange` of a `ResidentChange` `@oneOf`,
-`savedChange`), allowed only on what
+(`graphql::resident::change`: `changePlan`, `saveChange` of a list of `ResidentChange`
+`@oneOf`, `savedChange`): the frontend collects them as drafts (`components::resident::drafts`,
+one per element, edited right in the tabs `ports` and `networks`) and previews and saves them
+together (`save_dialog`); the backend plans them one after the other, each on the preview of
+the ones before (`helper::sequence`, `NetboxPlan::append`; `helper::write` takes the parts),
+and checks each there. Allowed only on what
 `owned_by` gives its owner (an admin: any owner), written as the plan device's `NetboxWrite`
 job like the admins' helpers (`helper::wlan`, step `UpdateWirelessLan`, keys kept out of the
 fingerprint and the job's log; also on/off, NetBox `status` `disabled`: `wlan()` of a group or
 VLAN gives only the WLANs on, which the generator uses, `all_wlans()` also those off, for the
-resident's view and unique SSIDs); the frontend's „WLAN ändern“ is `components::resident::
-wlan_edit`. A port's or socket's network (`ResidentChange.portVlan`) is `helper::port_vlan`
+resident's view and unique SSIDs). A port's or socket's network (`ResidentChange.portVlan`) is `helper::port_vlan`
 (also `vlan: null`) on the port, or for a socket the switch port behind it
 (`FrontPortAccess::interface_behind`), refused when a device not the resident's hangs at its
-cable; the plan's devices are the RouterOS ones whose config changes, VXLAN peers too (`vtep_peers`);
-the frontend's „Netz ändern“ is `port_vlan_edit`, both sharing `change_flow`. What hangs in a
+cable; the plan's devices are the RouterOS ones whose config changes, VXLAN peers too
+(`vtep_peers`; an approximation, E33). What hangs in a
 network is read live (`graphql::resident::live`, `networkDevices`: leases of the VLAN's DHCP
 routers, WLAN clients at the group's controller, `AccessibleDevice::leases`/`wlan_clients` of
 `device::metrics`, the devices not answering named), shown by `network_devices`. A device
@@ -187,7 +190,7 @@ VLAN off, the socket's cable, then „Verbindung“ and „Loopback“; its Ansc
 off by `disconnectDevice` (`helper::disconnect` at the Anschluss); both are checked on the
 preview: no other's RouterOS device, and on connecting none of the resident's, may lose its way
 to a management root (`keeps_reached`), and a port with a RouterOS device linked takes no
-network (`DEVICE_AT_PORT`); the frontend's `device_link_edit`. Changing the Anschluss is
+network (`DEVICE_AT_PORT`). Changing the Anschluss is
 `connectDevice` to the same port with `devicePort`; `seenUplinks` (`resident::live`) reads the
 router at the far end of the Anschluss' cable (`neighbors::evaluate`) and names the device's
 NetBox port it is seen on, where that isn't the Anschluss, for „übernehmen“. The lab has two residents (`meier`, `huber`: Keycloak

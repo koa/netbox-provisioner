@@ -1,32 +1,31 @@
 //! Scope: What a resident sees of its network, in tabs: its sockets and devices, its networks;
-//! not loading it (`pages::residents`, `app`), nor the admins' choice of a resident.
+//! its drafts, collected over both tabs until they are previewed and saved together. Not
+//! loading it (`pages::residents`, `app`), nor the admins' choice of a resident.
 use crate::graphql::{
     request_resident,
     resident::{
         live::{SeenUplink, SeenUplinksQuery, SeenUplinksVariables},
-        residents::{FarEnd, Named, PortKind, Resident, ResidentNetwork, ResidentPort},
+        residents::Resident,
     },
 };
 use cynic::QueryBuilder;
-use device_link_edit::DeviceLinkEdit;
-use device_room_edit::DeviceRoomEdit;
+use drafts::{Drafts, PortKey, current_link};
 use i18n::resident as t;
-use network_devices::NetworkDevicesView;
-use port_vlan_edit::PortVlanEdit;
-use wlan_edit::WlanEdit;
-
-mod change_flow;
-mod device_link_edit;
-mod device_room_edit;
-mod network_devices;
-mod port_vlan_edit;
-mod wlan_edit;
-use patternfly_yew::prelude::{
-    Card, CardBody, CardHeader, CardSize, CardTitle, Content, Level, Tab, Tabs, Title,
-};
+use networks::WlanEdit;
+use patternfly_yew::prelude::{Alert, AlertType, Button, ButtonVariant, Color, Label, Tab, Tabs};
+use ports::{PortEdit, PortsTab};
+use room_dialog::RoomDialog;
+use save_dialog::SaveDialog;
 use yew::{
-    Callback, Component, Context, Html, Properties, html, html_nested, platform::spawn_local,
+    Callback, Component, Context, Html, MouseEvent, Properties, html, platform::spawn_local,
 };
+
+mod drafts;
+mod network_devices;
+mod networks;
+mod ports;
+mod room_dialog;
+mod save_dialog;
 
 #[derive(Debug, Clone, PartialEq, Properties)]
 pub struct ResidentViewProps {
@@ -41,18 +40,30 @@ pub enum View {
     Networks,
 }
 
-/// A resident's sockets and devices, and its networks; where the routers see its devices
-/// plugged in, read once the view is shown and again with each loaded resident.
+/// A resident's sockets and devices, and its networks, with its drafts; where the routers see
+/// its devices plugged in, read once the view is shown and again with each loaded resident.
 pub struct ResidentView {
     view: View,
     /// the devices whose cable is in another port than their Anschluss; empty while read or
     /// where the routers didn't answer (the view offers nothing then)
     seen: Vec<SeenUplink>,
+    drafts: Drafts,
+    /// the device whose room is being chosen
+    room_of: Option<i32>,
+    /// the drafts' preview is open
+    previewing: bool,
 }
 
 pub enum ResidentViewMsg {
     Show(View),
     Seen(Vec<SeenUplink>),
+    Port(PortEdit),
+    Wlan(WlanEdit),
+    Room(i32),
+    CloseRoom,
+    DiscardAll,
+    Preview(bool),
+    Saved,
 }
 
 impl Component for ResidentView {
@@ -64,13 +75,79 @@ impl Component for ResidentView {
         ResidentView {
             view: View::Ports,
             seen: Vec::new(),
+            drafts: Drafts::default(),
+            room_of: None,
+            previewing: false,
         }
     }
 
-    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        let resident = &ctx.props().resident;
+        let drafts = &mut self.drafts;
         match msg {
             ResidentViewMsg::Show(view) => self.view = view,
             ResidentViewMsg::Seen(seen) => self.seen = seen,
+            ResidentViewMsg::Port(PortEdit::Vlan { port, vlan }) => {
+                let now = resident
+                    .ports
+                    .iter()
+                    .find(|row| PortKey::of(row) == port)
+                    .filter(|row| !row.foreign_network)
+                    .map(|row| row.network.as_ref().map(|network| network.id));
+                match now == Some(vlan) {
+                    true => drafts.port_vlans.remove(&port),
+                    false => drafts.port_vlans.insert(port, vlan),
+                };
+            }
+            ResidentViewMsg::Port(PortEdit::ResetPort(port)) => {
+                drafts.port_vlans.remove(&port);
+            }
+            ResidentViewMsg::Port(PortEdit::Link { device, link }) => {
+                let now = resident
+                    .devices
+                    .iter()
+                    .find(|own| own.id == device)
+                    .and_then(|own| current_link(resident, own));
+                match now.is_some_and(|now| link.is(&now)) {
+                    true => drafts.links.remove(&device),
+                    false => drafts.links.insert(device, link),
+                };
+            }
+            ResidentViewMsg::Port(PortEdit::ResetLink(device)) => {
+                drafts.links.remove(&device);
+            }
+            ResidentViewMsg::Port(PortEdit::ResetDevice(device)) => {
+                drafts.links.remove(&device);
+                drafts.rooms.remove(&device);
+            }
+            ResidentViewMsg::Port(PortEdit::Room(device)) => self.room_of = Some(device),
+            ResidentViewMsg::Room(location) => {
+                if let Some(device) = self.room_of.take() {
+                    let now = resident
+                        .devices
+                        .iter()
+                        .find(|own| own.id == device)
+                        .and_then(|own| own.location);
+                    match now == Some(location) {
+                        true => drafts.rooms.remove(&device),
+                        false => drafts.rooms.insert(device, location),
+                    };
+                }
+            }
+            ResidentViewMsg::CloseRoom => self.room_of = None,
+            ResidentViewMsg::Wlan(WlanEdit { wlan, draft }) => {
+                match draft.is_empty() {
+                    true => drafts.wlans.remove(&wlan),
+                    false => drafts.wlans.insert(wlan, draft),
+                };
+            }
+            ResidentViewMsg::DiscardAll => *drafts = Drafts::default(),
+            ResidentViewMsg::Preview(open) => self.previewing = open,
+            // in NetBox now: the resident loaded again shows them
+            ResidentViewMsg::Saved => {
+                *drafts = Drafts::default();
+                ctx.props().on_saved.emit(());
+            }
         }
         true
     }
@@ -84,19 +161,89 @@ impl Component for ResidentView {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
         let props = ctx.props();
         let resident = &props.resident;
-        let onselect = ctx.link().callback(ResidentViewMsg::Show);
+        let onselect = link.callback(ResidentViewMsg::Show);
+        let ports = PortsTab {
+            resident,
+            drafts: &self.drafts,
+            seen: &self.seen,
+            edit: &link.callback(ResidentViewMsg::Port),
+        };
+        let networks = networks::networks(
+            resident,
+            &self.drafts,
+            &link.callback(ResidentViewMsg::Wlan),
+        );
+        let bar = (!self.drafts.is_empty()).then(|| {
+            html! {
+                <div class="resident-drafts">
+                    <Alert
+                        inline=true
+                        r#type={AlertType::Warning}
+                        title={t::unsaved_changes(self.drafts.len())}
+                    >
+                        <p>{t::UNSAVED_HINT}</p>
+                        <div class="resident-edit-actions">
+                            <Button
+                                variant={ButtonVariant::Primary}
+                                label={t::PREVIEW_AND_SAVE}
+                                onclick={link.callback(|_| ResidentViewMsg::Preview(true))}
+                            />
+                            <Button
+                                variant={ButtonVariant::Link}
+                                label={t::DISCARD_ALL}
+                                onclick={link.callback(|_| ResidentViewMsg::DiscardAll)}
+                            />
+                        </div>
+                    </Alert>
+                </div>
+            }
+        });
+        let room = self
+            .room_of
+            .and_then(|id| resident.devices.iter().find(|device| device.id == id))
+            .map(|device| {
+                let location = self
+                    .drafts
+                    .rooms
+                    .get(&device.id)
+                    .copied()
+                    .or(device.location);
+                html! {
+                    <RoomDialog
+                        device={device.name.clone()}
+                        {location}
+                        locations={resident.locations.clone()}
+                        on_apply={link.callback(ResidentViewMsg::Room)}
+                        on_close={link.callback(|()| ResidentViewMsg::CloseRoom)}
+                    />
+                }
+            });
+        let preview = self.previewing.then(|| {
+            html! {
+                <SaveDialog
+                    resident={resident.clone()}
+                    drafts={self.drafts.clone()}
+                    on_close={link.callback(|()| ResidentViewMsg::Preview(false))}
+                    on_saved={link.callback(|()| ResidentViewMsg::Saved)}
+                />
+            }
+        });
         html! {
             <div class="resident-view">
+                {bar}
                 <Tabs<View> selected={self.view} {onselect}>
                     <Tab<View> index={View::Ports} title={t::TAB_PORTS}>
-                        {ports(resident, &self.seen, &props.on_saved)}
+                        {ports.view()}
                     </Tab<View>>
                     <Tab<View> index={View::Networks} title={t::TAB_NETWORKS}>
-                        {networks(resident, &props.on_saved)}
+                        {networks}
                     </Tab<View>>
                 </Tabs<View>>
+                {room}
+                {preview}
             </div>
         }
     }
@@ -117,273 +264,22 @@ fn read_seen(ctx: &Context<ResidentView>) {
     });
 }
 
-/// The ports of one site and location, as the backend sorts them (site, location, device,
-/// port).
-struct Group<'a> {
-    site: Option<&'a str>,
-    location: &'a [String],
-    ports: Vec<&'a ResidentPort>,
-}
-
-/// The ports by site, and in it by location (a floor, a flat, a room).
-fn ports(resident: &Resident, seen: &[SeenUplink], on_saved: &Callback<()>) -> Html {
-    let ports: &[ResidentPort] = &resident.ports;
-    if ports.is_empty() {
-        return html!(<Content><p>{t::NO_PORTS}</p></Content>);
-    }
-    let mut groups: Vec<Group> = Vec::new();
-    for port in ports {
-        let site = port.site.as_ref().map(|site| site.name.as_str());
-        match groups.last_mut() {
-            Some(last) if last.site == site && last.location == port.location.as_slice() => {
-                last.ports.push(port)
-            }
-            _ => groups.push(Group {
-                site,
-                location: &port.location,
-                ports: vec![port],
-            }),
-        }
-    }
-    let mut shown_site = None;
-    groups
-        .into_iter()
-        .map(|group| {
-            // the site once, above its first location
-            let site = (shown_site != Some(group.site)).then(|| {
-                shown_site = Some(group.site);
-                group
-                    .site
-                    .map(|site| html!(<Title level={Level::H3}>{site}</Title>))
-            });
-            let location = (!group.location.is_empty()).then(|| {
-                let path = t::location_path(group.location);
-                html!(<Title level={Level::H4}>{path}</Title>)
-            });
-            // keyed: a device moving to another room moves its rows, the rest keeps its state
-            let key = format!("{:?}\0{}", group.site, group.location.join("\0"));
-            html! {
-                <section class="resident-site" {key}>
-                    {site.flatten()}
-                    {location}
-                    { for group.ports.into_iter().map(|port| {
-                        port_row(resident, port, seen, on_saved)
-                    }) }
-                </section>
-            }
-        })
-        .collect()
-}
-
-/// A socket: left the port, a cable, right what is at the cable's other end, or its network.
-/// Its network can change where nothing but the resident's devices hangs at it.
-fn port_row(
-    resident: &Resident,
-    port: &ResidentPort,
-    seen: &[SeenUplink],
-    on_saved: &Callback<()>,
-) -> Html {
-    let socket = port.kind == PortKind::Socket;
-    let title = match &port.label {
-        Some(label) => label.clone(),
-        // a socket's device is the wall it is in, named after the room
-        None if socket => t::socket_name(&port.device.name, &port.name),
-        None => port.name.clone(),
-    };
-    let sub = match port.kind {
-        PortKind::Socket if port.label.is_none() => t::SOCKET.to_string(),
-        PortKind::Socket => t::socket_at(&port.device.name, &port.name),
-        _ if port.on_own_device => t::own_port(&port.name, &port.device.name),
-        _ => t::port_of(&port.name, &port.device.name),
-    };
-    // a socket's network is behind the wall, whatever is plugged in: shown with the socket
-    let network = (socket && !port.far_ends.is_empty())
-        .then(|| html!(<><br/><small>{network_text(port)}</small></>));
-    // a device the provisioner links hangs there: its link, not a network (`DeviceLinkEdit`)
-    let linked = port.far_ends.iter().any(|end| {
-        resident
-            .devices
-            .iter()
-            .any(|device| device.id == end.device.id && device.routeros)
-    });
-    let edit = (!linked && port.far_ends.iter().all(|end| end.own_device)).then(|| {
+/// A card's header: its title, and where it has a draft the label saying so and resetting it.
+fn card_header(title: Html, changed: bool, reset: Callback<MouseEvent>) -> Html {
+    let actions = changed.then(|| {
         html! {
-            <PortVlanEdit
-                resident={resident.id}
-                port={port.clone()}
-                networks={resident.networks.clone()}
-                on_saved={on_saved.clone()}
-            />
-        }
-    });
-    // the resident's devices at the port stand in a room it chooses
-    let rooms = port
-        .far_ends
-        .iter()
-        .filter(|end| end.own_device && !resident.locations.is_empty())
-        .filter_map(|end| {
-            resident
-                .devices
-                .iter()
-                .find(|device| device.id == end.device.id)
-        })
-        .map(|device| {
-            let named = Named {
-                id: device.id,
-                name: device.name.clone(),
-            };
-            html! {
-                <DeviceRoomEdit
-                    key={device.id}
-                    resident={resident.id}
-                    device={named}
-                    location={device.location}
-                    locations={resident.locations.clone()}
-                    on_saved={on_saved.clone()}
-                />
-            }
-        });
-    let link = html! {
-        <DeviceLinkEdit
-            resident={resident.id}
-            port={port.clone()}
-            devices={resident.devices.clone()}
-            seen={seen.to_vec()}
-            on_saved={on_saved.clone()}
-        />
-    };
-    let left = html! {
-        <Card size={CardSize::Compact} class="sock-card">
-            <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
-            <CardBody><small>{sub}</small>{network}</CardBody>
-        </Card>
-    };
-    let right = if port.far_ends.is_empty() {
-        network_card(port)
-    } else {
-        port.far_ends
-            .iter()
-            .map(|end| far_end_card(resident, port, end))
-            .collect()
-    };
-    let cable = (!port.far_ends.is_empty()).then(|| {
-        html! {
-            <div class="sock-conn">
-                <div class="sock-line"></div>
-                <div class="sock-text"><small>{t::CABLE}</small></div>
+            <div class="pf-v6-c-card__actions">
+                <Button variant={ButtonVariant::InlineLink} label={t::RESET} onclick={reset}/>
+                <Label label={t::UNSAVED} color={Color::Orange} compact=true/>
             </div>
         }
     });
-    let gap = port
-        .far_ends
-        .is_empty()
-        .then(|| html!(<div class="sock-conn"></div>));
     html! {
-        <div class="sock-item" key={format!("{:?}-{}", port.kind, port.id)}>
-            <div class="sock-row">
-                <div class="sock-side">{left}</div>
-                {cable}{gap}
-                <div class="sock-side">{right}</div>
+        <div class="pf-v6-c-card__header">
+            {actions}
+            <div class="pf-v6-c-card__header-main">
+                <div class="pf-v6-c-card__title resident-card-title">{title}</div>
             </div>
-            {edit}
-            {link}
-            { for rooms }
         </div>
     }
-}
-
-/// The device at the other end of the port's cable; one of the resident's in another room than
-/// the port says where it stands.
-fn far_end_card(resident: &Resident, port: &ResidentPort, end: &FarEnd) -> Html {
-    let own = end
-        .own_device
-        .then(|| html!(<><br/><small>{t::YOUR_DEVICE}</small></>));
-    let room = resident
-        .devices
-        .iter()
-        .find(|device| end.own_device && device.id == end.device.id)
-        .and_then(|device| device.location)
-        .and_then(|id| resident.locations.iter().find(|location| location.id == id))
-        .filter(|location| location.path != port.location)
-        .map(|location| {
-            let path = t::location_path(&location.path);
-            html!(<><br/><small>{t::stands_in(&path)}</small></>)
-        });
-    html! {
-        <Card size={CardSize::Compact} class="sock-card">
-            <CardHeader><CardTitle>{end.device.name.clone()}</CardTitle></CardHeader>
-            <CardBody><small>{t::far_port(&end.port)}</small>{own}{room}</CardBody>
-        </Card>
-    }
-}
-
-/// A port without cable: its network, the operator's, or none (dashed).
-fn network_card(port: &ResidentPort) -> Html {
-    let class = if port.network.is_none() && !port.foreign_network {
-        "sock-net sock-none"
-    } else {
-        "sock-net"
-    };
-    html!(<div class={class}>{network_text(port)}</div>)
-}
-
-/// The port's network: the resident's by name, the operator's, or none.
-fn network_text(port: &ResidentPort) -> String {
-    match (&port.network, port.foreign_network) {
-        (Some(network), _) => network.name.clone(),
-        (None, true) => t::FOREIGN_NETWORK.to_string(),
-        (None, false) => t::NO_NETWORK.to_string(),
-    }
-}
-
-/// The networks, each with its addresses and WLAN.
-fn networks(resident: &Resident, on_saved: &Callback<()>) -> Html {
-    let networks: &[ResidentNetwork] = &resident.networks;
-    if networks.is_empty() {
-        return html!(<Content><p>{t::NO_NETWORKS}</p></Content>);
-    }
-    let cards = networks.iter().map(|network| {
-        let ssid = network.wlans.first().map(|wlan| wlan.ssid.as_str());
-        let title = t::network_title(&network.name, ssid);
-        let subnets = if network.subnets.is_empty() {
-            t::NO_SUBNET.to_string()
-        } else {
-            network.subnets.join(", ")
-        };
-        let wlans = if network.wlans.is_empty() {
-            html!(<li>{t::NO_WLAN}</li>)
-        } else {
-            network
-                .wlans
-                .iter()
-                .map(|wlan| {
-                    let text = t::wlan(&wlan.ssid, wlan.access_points, wlan.enabled);
-                    html! {
-                        <li key={wlan.id}>
-                            {text}
-                            <WlanEdit
-                                resident={resident.id}
-                                wlan={wlan.clone()}
-                                on_saved={on_saved.clone()}
-                            />
-                        </li>
-                    }
-                })
-                .collect()
-        };
-        html_nested! {
-            <Card key={network.id}>
-                <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
-                <CardBody>
-                    <ul class="resident-facts">
-                        <li>{t::vid(network.vid)}</li>
-                        <li>{subnets}</li>
-                        {wlans}
-                    </ul>
-                    <NetworkDevicesView resident={resident.id} vlan={network.id}/>
-                </CardBody>
-            </Card>
-        }
-    });
-    html!(<div class="resident-networks">{ for cards }</div>)
 }

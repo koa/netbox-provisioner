@@ -8,6 +8,7 @@
 //   goto:/path              open a page of the provisioner
 //   click:Text              click the button (or else the element) with this text
 //   clicklast:Text          click the last element with this text (a card title after links)
+//   pick:Text               click the entry with this text of the open menu (a select's choice)
 //   clickrow:Text=Label     click the button with this label in the table row containing Text
 //   expand:Text             click the first button (a table's toggle) in the row containing Text
 //   check:Label             click the element with this label (a checkbox without text)
@@ -65,6 +66,9 @@ for (const step of args) {
       await ((await button.count()) ? button.first() : page.getByText(value, { exact: true }).first()).click();
       break;
     }
+    case 'pick':
+      await page.getByRole('menuitem', { name: value, exact: true }).first().click();
+      break;
     case 'clicklast':
       await page.getByText(value, { exact: true }).last().click();
       break;

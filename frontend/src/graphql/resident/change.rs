@@ -1,5 +1,5 @@
-//! Scope: The queries and mutations of a resident's change: its plan for the preview, saving it,
-//! how saving went; not what a resident sees (`residents`).
+//! Scope: The queries and mutations of a resident's changes: their plan for the preview, saving
+//! them, how saving went; not what a resident sees (`residents`).
 use super::{residents::Named, schema::schema};
 use crate::error::ServerProblem;
 
@@ -41,7 +41,7 @@ pub struct PortVlanChange {
 }
 
 /// The kind of a port row, as input (the output's has a fallback).
-#[derive(cynic::Enum, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(cynic::Enum, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cynic(schema = "resident", graphql_type = "PortKind")]
 pub enum PortKindInput {
     Interface,
@@ -60,10 +60,10 @@ pub struct WlanInput {
 #[derive(cynic::QueryVariables, Debug)]
 pub struct ChangePlanVariables {
     pub resident: i32,
-    pub change: ResidentChange,
+    pub changes: Vec<ResidentChange>,
 }
 
-/// What a change would write, for the preview.
+/// What changes would write together, for the preview.
 #[derive(cynic::QueryFragment, Debug)]
 #[cynic(
     schema = "resident",
@@ -71,7 +71,7 @@ pub struct ChangePlanVariables {
     variables = "ChangePlanVariables"
 )]
 pub struct ChangePlanQuery {
-    #[arguments(resident: $resident, change: $change)]
+    #[arguments(resident: $resident, changes: $changes)]
     pub change_plan: ResidentPlan,
 }
 
@@ -156,11 +156,11 @@ pub struct UpdateWirelessLan {
 #[derive(cynic::QueryVariables, Debug)]
 pub struct SaveChangeVariables {
     pub resident: i32,
-    pub change: ResidentChange,
+    pub changes: Vec<ResidentChange>,
     pub fingerprint: String,
 }
 
-/// Saves a change, if its plan is still the one previewed.
+/// Saves changes together, if their plan is still the one previewed.
 #[derive(cynic::QueryFragment, Debug)]
 #[cynic(
     schema = "resident",
@@ -168,7 +168,7 @@ pub struct SaveChangeVariables {
     variables = "SaveChangeVariables"
 )]
 pub struct SaveChange {
-    #[arguments(resident: $resident, change: $change, fingerprint: $fingerprint)]
+    #[arguments(resident: $resident, changes: $changes, fingerprint: $fingerprint)]
     pub save_change: SavedChange,
 }
 

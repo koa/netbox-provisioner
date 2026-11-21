@@ -463,8 +463,9 @@ div.pf-v6-c-card.interfaces {
     }
 }
 
-/* a helper in a modal (`components::helper_flow`), above the page; on a phone full width */
-div.pf-v6-c-backdrop:is(.helper-flow, .diff-details) {
+/* a modal above the page (a helper `components::helper_flow`, a diff, a resident's preview and
+   room); on a phone full width */
+div.pf-v6-c-backdrop:is(.helper-flow, .diff-details, .resident-preview, .resident-room) {
     position: fixed;
     inset: 0;
 
@@ -507,7 +508,7 @@ div.pf-v6-c-backdrop:is(.helper-flow, .diff-details) {
 }
 
 @media (max-width: 576px) {
-    div.pf-v6-c-backdrop:is(.helper-flow, .diff-details) .pf-v6-c-modal-box {
+    div.pf-v6-c-backdrop:is(.helper-flow, .diff-details, .resident-preview, .resident-room) .pf-v6-c-modal-box {
         width: 100vw;
         max-width: 100vw;
         max-height: 100vh;
@@ -779,7 +780,41 @@ dl.site-diff > dd > .pf-v6-c-button {
     gap: var(--pf-t--global--spacer--sm);
     margin-block: var(--pf-t--global--spacer--md);
 }
-.sock-item {
+/* a room's frame and its rows */
+.resident-rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-t--global--spacer--lg);
+}
+/* the bar of the drafts: in sight while scrolling through the rooms */
+.resident-drafts {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin-bottom: var(--pf-t--global--spacer--md);
+}
+/* an inline alert lets the page through: over the rooms it needs ground */
+.resident-drafts .pf-v6-c-alert {
+    background-color: var(--pf-t--global--background--color--primary--default);
+}
+/* a card's title with an action behind it (a device's room) */
+.resident-card-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--pf-t--global--spacer--sm);
+}
+/* a shown value with its buttons (a WLAN's name, its password) */
+.resident-field {
+    display: flex;
+    gap: var(--pf-t--global--spacer--xs);
+}
+.resident-network {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-t--global--spacer--md);
+}
+.resident-wlan {
     display: flex;
     flex-direction: column;
     gap: var(--pf-t--global--spacer--sm);
@@ -818,7 +853,7 @@ dl.site-diff > dd > .pf-v6-c-button {
 }
 .resident-networks {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
     gap: var(--pf-t--global--spacer--md);
     margin-top: var(--pf-t--global--spacer--md);
 }
@@ -827,7 +862,7 @@ dl.site-diff > dd > .pf-v6-c-button {
     padding: 0;
     margin: 0;
 }
-/* a change's form, preview and saving (components::resident::change_flow) */
+/* a draft's form and the preview (components::resident) */
 .resident-edit {
     display: flex;
     flex-direction: column;

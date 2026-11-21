@@ -86,7 +86,7 @@ pub async fn plan(
         mtu: None,
     };
     let connection = connection::plan(&now(&plan)?, &connect).await?;
-    append(&mut plan, connection);
+    plan.append(connection);
     // its loopback, where it lacks one: the router ID and management address
     let topology = now(&plan)?;
     let device = topology
@@ -96,7 +96,7 @@ pub async fn plan(
     let mut lo = NetboxPlan::new(&device, "");
     let mut routes: Option<Routes> = None;
     loopback::add_to(&mut lo, &device, &mut routes).await?;
-    append(&mut plan, lo);
+    plan.append(lo);
     if plan.steps.is_empty() {
         return Err(Error::NothingToChange);
     }
@@ -174,7 +174,7 @@ fn prepare(topology: &Arc<Topology>, input: &ConnectDeviceInput) -> Result<Netbo
                 interface: end.id().0,
             };
             match disconnect::plan(&topology, &input) {
-                Ok(cleared) => append(&mut plan, cleared),
+                Ok(cleared) => plan.append(cleared),
                 Err(Error::NothingToDisconnect(_)) => {}
                 Err(error) => return Err(error),
             }
@@ -218,24 +218,6 @@ fn prepare(topology: &Arc<Topology>, input: &ConnectDeviceInput) -> Result<Netbo
         }
     }
     Ok(plan)
-}
-
-/// `part`'s steps behind `plan`'s, their references to steps moved along.
-fn append(plan: &mut NetboxPlan, part: NetboxPlan) {
-    let offset = plan.steps.len();
-    plan.steps.extend(part.steps.into_iter().map(|mut step| {
-        step.shift(offset);
-        step
-    }));
-    plan.undocumented.extend(part.undocumented);
-    for cut in part.cut_off {
-        if !plan.cut_off.iter().any(|known| known.id == cut.id) {
-            plan.cut_off.push(cut);
-        }
-    }
-    if part.checked_with.is_some() {
-        plan.checked_with = part.checked_with;
-    }
 }
 
 #[cfg(test)]

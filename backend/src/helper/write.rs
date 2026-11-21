@@ -60,17 +60,18 @@ pub struct NetboxUndone {
     pub recreated: bool,
 }
 
-/// Writes `plan`, after computing it again from NetBox as it is now: it must still have
-/// `fingerprint`. Each step checks NetBox once more right before writing.
+/// Writes the plan of `parts` (`sequence::plan`), after computing it again from NetBox as it is
+/// now: it must still have `fingerprint`. Each step checks NetBox once more right before
+/// writing.
 pub async fn write(
-    helper: &Helper,
+    parts: &[Helper],
     topology: &Arc<Topology>,
     fingerprint: &str,
     user: &str,
     log: &Log,
 ) -> Result<(), Error> {
     log.enter(NetboxState::Planning);
-    let plan = helper.plan(topology).await?;
+    let plan = super::sequence::plan(parts, topology).await?;
     if plan.fingerprint_value() != fingerprint {
         return Err(Error::PlanOutdated);
     }

@@ -203,32 +203,53 @@ Nach dem Login fragt das UI zuerst `me { role }` am Endpunkt der Anwohner (`app:
   Routen der Admins. Hat er mehrere Owner, steht jeder mit seinem Namen da.
 - **Niemand** bekommt den Hinweis, dass ein Admin ihn bei seinem Haushalt eintragen muss.
 
-Die Ansicht (`components::resident`) hat zwei Tabs nach dem Prototyp:
+Die Ansicht (`components::resident`) hat zwei Tabs nach dem Prototyp. Geändert wird direkt
+in den Karten; jede Änderung ist ein **Entwurf** (`drafts`, einer pro Element): Die Karte trägt
+„ungespeichert“ und „Zurücksetzen“, oben steht mitscrollend „n ungespeicherte Änderungen“ mit
+„Vorschau und speichern“ und „Alle verwerfen“. Eine Auswahl, die dem gespeicherten Stand
+entspricht, ist kein Entwurf.
 
-- **Dosen und Geräte:** nach Site gruppiert, darin nach der Location des Geräts samt ihren
-  übergeordneten Locations („1. OG › Wohnung Meier“). Jede Zeile zeigt links die Dose oder den Port:
-  das Label, sonst Wand und Buchse („Büro Ecke links“) oder den Port-Namen, darunter „Dose …“,
-  „Port … von …“ oder „Port … an …“. Dann folgt das Kabel, rechts das Gerät am anderen Ende mit
-  seinem Port (bei einer Dose: was eingesteckt ist). Ohne Kabel steht rechts das Netz des
-  Ports, „Netz des Betreibers“ oder gestrichelt „Kein Netz“; eine Dose mit eingestecktem Gerät
-  nennt ihr Netz in der eigenen Karte. Ein Port eines eigenen Geräts, der in einer eigenen Dose
-  steckt, erscheint nur bei der Dose. Auf dem Telefon stapeln sich die Karten, das Kabel
-  steht senkrecht.
-- **Netze:** eine Karte pro VLAN mit VID, Adressen und WLAN (SSID, Zahl der APs). Am WLAN
-  „WLAN ändern“ (`wlan_edit`): Name und Passwort (zeigen, zufällig erzeugen: 16 Zeichen aus
-  der Zufallsquelle des Browsers, ohne 0, O, 1, l und I) und der Schalter „Eingeschaltet“,
-  „Vorschau“ erst nach einer Änderung. Ein ausgeschaltetes WLAN steht als „ausgeschaltet“ da.
-  Die Vorschau sagt in Worten, was sich ändert, welche Geräte eine neue Konfiguration bekommen
-  und dass verbundene Geräte kurz das WLAN verlieren (ausgeschaltet: bis es wieder an ist);
-  Vorschau und Speichern teilen sich die WLANs mit „Netz ändern“ (`change_flow`); „Speichern“ wartet auf den Job und sagt
-  dann „In NetBox gespeichert“, ohne zu behaupten, dass es schon ausgerollt ist.
+- **Dosen und Geräte:** nach Site gruppiert, darin ein Rahmen pro Raum (die Location samt
+  ihren übergeordneten, „1. OG › Wohnung Meier“). Jede Zeile zeigt links die Dose oder den
+  Port: das Label, sonst Wand und Buchse („Büro Ecke links“) oder den Port-Namen, darunter
+  „Dose …“, „Port … von …“ oder „Port … an …“. Dann folgt das Kabel, rechts das Gerät am
+  anderen Ende (bei einer Dose: was eingesteckt ist). Ohne Kabel steht rechts das Netz des
+  Ports, „Netz des Betreibers“ oder gestrichelt „Kein Netz“. Links lässt sich wählen:
+  - „Netz“ (eines seiner Netze oder „Kein Netz“), wo nur eigene Geräte ohne Anbindung am
+    Kabel hängen;
+  - „Oder Gerät anschliessen“ an einem freien Port;
+  - „Gerät entfernen“, wo ein angebundenes eigenes Gerät hängt.
 
-Unter jeder Zeile von „Dosen und Geräte“, an deren Kabel nur eigene Geräte hängen, steht „Netz
-ändern“ (`port_vlan_edit`): eines seiner Netze oder „Kein Netz“, „Vorschau“ erst bei einem
-anderen als dem jetzigen; die Vorschau sagt „Kunde: lab-wlan statt Kein Netz“ (ein fremdes
-VLAN als „Netz des Betreibers“), die Geräte und was Geräte daran merken.
+  Die Karte eines eigenen Geräts hat neben dem Namen „Raum ändern“ (ein Dialog „Wo steht …?“;
+  steht es woanders als die Dose: „in …“). Ein RouterOS-Gerät zeigt dort „Angeschlossen an“
+  (die freien Ports und Dosen, „Nicht angeschlossen“) und seinen „Anschluss“ (seine Ports).
+  Sieht der Router das Kabel an einem anderen Port, kommt eine Warnung mit „… übernehmen“.
 
-Noch nicht gebaut sind Geräte pro Port aus den Leases, Status-Labels, Geräte anschliessen und Entwürfe über mehrere Elemente (C21).
+  Steht ein Gerät in einem anderen Raum als die Dose, verweist die Dose nur dorthin („Steht in
+  …, siehe dort“). Das Gerät hat dann im eigenen Raum eine Zeile („Patchkabel von …“, bei einem
+  Port „Kabel von …“). Eine eigene Zeile hat auch ein RouterOS-Gerät ohne Anbindung („Nicht
+  angeschlossen“) oder eines am Port des Betreibers. Der Port seines Anschlusses entfällt
+  dann, ebenso ein Port eines eigenen Geräts, der in einer eigenen Dose steckt. Auf dem
+  Telefon stapeln sich die Karten, das Kabel steht senkrecht.
+- **Netze:** eine Karte „Netz …“ pro VLAN (mit der SSID in Klammern, wo sie abweicht), darin
+  der Schalter „WLAN „…““ und, eingeschaltet:
+  - Name und Passwort, je mit „Ändern“ und „Übernehmen“ (geprüft wie im Backend);
+  - das Passwort zeigen oder „Zufällig erzeugen“ (16 Zeichen aus der Zufallsquelle des
+    Browsers, ohne 0, O, 1, l und I);
+  - die Zahl der Access Points.
+
+  Ausgeschaltet steht „Aus: Das Netz gibt es nur per Kabel.“ Darunter die „Geräte im Netz“.
+
+Die **Vorschau** („Das ändert sich“, `save_dialog`) plant alle Entwürfe zusammen (`changePlan`
+mit einer Liste). Sie sagt in Worten, was sich ändert, warnt vor Geräten, die bis zum
+Ausrollen weg sind, nennt die Geräte mit neuer Konfiguration und sagt, was Geräte daran
+merken. „Speichern“ schreibt alles in einem Job, wartet darauf und sagt dann „In NetBox
+gespeichert“, ohne zu behaupten, dass es schon ausgerollt ist. Der Server plant die
+Änderungen in dieser Reihenfolge, jede auf dem Stand nach den vorherigen, und prüft sie dort:
+erst Geräte abhängen, dann Netze von Ports, Geräte anschliessen, Räume, WLANs.
+
+Noch nicht gebaut sind Geräte pro Port aus den Leases, Status-Labels und der Tab
+„Änderungen“ (C21).
 Status-Labels kommen erst mit einer verlässlichen Quelle: Ein Label, das „ausgerollt“ behauptet, ohne es zu wissen, wäre falsch. Geprüft mit
 Playwright im Lab (2026-11-18) als `meier` (auch in Telefonbreite), `huber`, `reader` und
 `admin`; die Dosen (`wohnung-meier`, `wohnung-huber` hinter `lab-keller-switch`, Geräte ohne
@@ -250,3 +271,10 @@ rollte es beide zusammen aus (lab-wap bekam Bridge und VXLAN zu lab-np2), danach
 Diffs leer. Für Meiers Dose (hinter `lab-keller-switch` ohne RouterOS) sagt die Vorschau, dass
 sich nur NetBox ändert. `ether3` von lab-crs125 blieb ungetestet: Dort baute `lab-wlan` mit
 seinem VXLAN die Switch-Tabellen des CRS125 auf VLAN-Filtering der Bridge um.
+
+Die Entwürfe im Lab geprüft (2026-11-21) als `meier`, auch in Telefonbreite: meier-pc in
+einen anderen Raum und Meiers Dose auf „Kein Netz“, zusammen in einem Job gespeichert und
+zusammen wieder zurück. Dazwischen zeigte die Ansicht meier-pc als „Patchkabel von
+Wohnzimmer“ im anderen Raum; lab-np2 hatte einen Diff (die Bridge-VLAN zum Switch), danach
+wieder keinen. Raum-Dialog, „Gerät entfernen“, ein Netz an „Kunde“ und der WLAN-Name sind nur
+bis zur Vorschau geprüft.

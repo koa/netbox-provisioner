@@ -375,7 +375,14 @@ impl MutationAuthenticated {
             JobKind::NetboxWrite,
             Started::By(user_label(ctx)),
             |log| async move {
-                let result = helper::write(&helper, &current, &fingerprint, &user, &log).await;
+                let result = helper::write(
+                    std::slice::from_ref(&helper),
+                    &current,
+                    &fingerprint,
+                    &user,
+                    &log,
+                )
+                .await;
                 log.enter(NetboxState::Refetching);
                 refetch(&topology).await;
                 result

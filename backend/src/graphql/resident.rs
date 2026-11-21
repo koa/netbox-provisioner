@@ -16,7 +16,6 @@ use crate::{
     },
 };
 use async_graphql::{Context, EmptySubscription, Enum, MergedObject, Object, Schema, SimpleObject};
-use ipnet::IpNet;
 use std::{collections::BTreeSet, sync::Arc};
 
 pub mod change;
@@ -164,8 +163,6 @@ pub struct ResidentNetwork {
     id: u32,
     name: Box<str>,
     vid: u16,
-    /// the networks of its addresses in NetBox (`192.168.5.0/24`)
-    subnets: Box<[Box<str>]>,
     wlans: Box<[ResidentWlan]>,
 }
 
@@ -499,17 +496,6 @@ fn named_device(device: &DeviceAccess) -> Named {
 fn network(owned: &Owned, vlan: &VlanAccess) -> Option<ResidentNetwork> {
     let id = AccessTopology::id(vlan);
     let data = vlan.data()?;
-    // the addresses of the interfaces that are this VLAN (its VLAN interfaces, a port with it
-    // untagged), not of a trunk carrying it tagged
-    let subnets: BTreeSet<IpNet> = data
-        .terminations
-        .iter()
-        .map(|interface| InterfaceAccess::create(vlan.topology(), *interface))
-        .filter(|interface| interface.data().is_some_and(|data| data.vlan == Some(id)))
-        .flat_map(|interface| interface.ips())
-        .filter_map(|address| address.net())
-        .map(|net| net.trunc())
-        .collect();
     let wlans = vlan
         .all_wlans()
         .filter(|wlan| owned.wlans.contains(&AccessTopology::id(wlan)))
@@ -530,7 +516,6 @@ fn network(owned: &Owned, vlan: &VlanAccess) -> Option<ResidentNetwork> {
         id: id.0,
         name: data.name.clone(),
         vid: data.vlan_id,
-        subnets: subnets.iter().map(|net| net.to_string().into()).collect(),
         wlans,
     })
 }

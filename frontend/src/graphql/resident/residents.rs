@@ -109,8 +109,6 @@ pub struct FarEnd {
 pub struct ResidentNetwork {
     pub id: i32,
     pub name: String,
-    pub vid: i32,
-    pub subnets: Vec<String>,
     pub wlans: Vec<ResidentWlan>,
 }
 

@@ -1,7 +1,9 @@
 //! Scope: What a resident changes in NetBox: the plan for its preview, saving it and how saving
 //! went; not computing a plan (the helpers), nor what a resident sees (`graphql::resident`).
 //!
-//! Every change is a helper's plan (`helper`), allowed only on the resident's own objects
+//! A resident saves its changes together (its drafts): one plan, each change computed on
+//! NetBox as the ones before it leave it (`helper::sequence`), and checked there too. Every
+//! change is a helper's plan (`helper`), allowed only on the resident's own objects
 //! (`Topology::owned_by`): a resident for its owners, an admin for any (the support view,
 //! `docs/concepts/self-service.md`). A WLAN's name, key and on/off (`helper::wlan`), the VLAN
 //! of a port or socket (`helper::port_vlan`; a socket's is the switch port's behind the wall,
@@ -25,6 +27,7 @@ use crate::{
         device_location::DeviceLocationInput,
         disconnect::DisconnectInput,
         port_vlan::PortVlanInput,
+        sequence,
         wlan::WlanInput,
     },
     job::{self, JobKind, JobState},
@@ -208,31 +211,51 @@ fn room_helper(
     }))
 }
 
-/// `owner`'s plan of `change`, refused for what isn't its own or would cut off a device it
-/// mustn't.
+/// `owner`'s plan of `changes`, one after the other, each refused for what isn't its own on
+/// NetBox as the ones before leave it; refused too if it would cut off a device it mustn't.
 async fn checked_plan(
     topology: &Arc<Topology>,
     owner: OwnerId,
-    change: ResidentChange,
+    changes: Vec<ResidentChange>,
 ) -> Result<Checked, Error> {
-    let owned = topology.owned_by(owner);
     // a resident connecting keeps its devices reached, one disconnecting cuts its own off
-    let own_may_go = matches!(change, ResidentChange::DisconnectDevice(_));
-    let helper = helper_for(topology, &owned, change)?;
-    let plan = helper.plan(topology).await?;
+    let own_may_go = changes
+        .iter()
+        .any(|change| matches!(change, ResidentChange::DisconnectDevice(_)));
+    let mut helpers = Vec::with_capacity(changes.len());
+    let mut configured = Vec::new();
+    let mut plan = None;
+    for change in changes {
+        let now = sequence::after(plan.as_ref(), topology)?;
+        let helper = helper_for(&now, &now.owned_by(owner), change)?;
+        // a room is NetBox's only: the device's configuration stays
+        if !matches!(helper, Helper::DeviceLocation(_)) {
+            configured.push(helper.device(&now)?);
+        }
+        plan = sequence::then(plan, &now, &helper).await?;
+        helpers.push(helper);
+    }
+    let plan = plan.ok_or(Error::NothingToChange)?;
     let cuts_cables = plan
         .steps
         .iter()
         .any(|step| matches!(step, PlanStep::DeleteCable(_) | PlanStep::DeleteAddress(_)));
     if cuts_cables {
-        keeps_reached(topology, &owned, &plan, own_may_go)?;
+        keeps_reached(topology, &topology.owned_by(owner), &plan, own_may_go)?;
     }
-    Ok(Checked { helper, plan })
+    Ok(Checked {
+        helpers,
+        configured,
+        plan,
+    })
 }
 
-/// A resident's change with its plan.
+/// A resident's changes with their plan.
 struct Checked {
-    helper: Helper,
+    helpers: Vec<Helper>,
+    /// the devices the changes are for whose configuration they change (a WLAN's controller,
+    /// a port's device), not those a room is changed of
+    configured: Vec<DeviceAccess>,
     plan: NetboxPlan,
 }
 
@@ -456,7 +479,7 @@ fn port_vlan_helper(
     }))
 }
 
-fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
+fn resident_plan(plan: &NetboxPlan, configured: &[DeviceAccess]) -> ResidentPlan {
     let mut wlans = Vec::new();
     let mut ports = Vec::new();
     let mut cables_added = Vec::new();
@@ -507,30 +530,33 @@ fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
             | PlanStep::DeletePrefix(_) => {}
         }
     }
-    let device = plan.device();
-    let topology = device.topology();
+    let topology = plan.device().topology();
     let touched = touched
         .into_iter()
         .filter_map(|id| topology.get_device_by_id(&DeviceId(id)));
     let aps = wlans
         .iter()
-        .find_map(|update| helper::wlan::wlan(topology, update.id).ok())
-        .and_then(|wlan| wlan.wlan_group())
-        .map(|group| group.aps())
-        .unwrap_or_default();
-    // a port's VLAN tunneled over VXLAN: the device joining or leaving it changes the VTEPs
-    // of every other device with it
-    let vteps = ports
-        .iter()
-        .flat_map(|update| update.vlan.iter().chain(&update.vlan_before))
-        .flat_map(|vlan| vtep_peers(plan, VlanId(vlan.id)))
-        .collect::<Vec<_>>();
+        .filter_map(|update| helper::wlan::wlan(topology, update.id).ok())
+        .filter_map(|wlan| wlan.wlan_group())
+        .flat_map(|group| group.aps());
+    // a port's VLAN tunneled over VXLAN: a device joining or leaving it changes the VTEPs of
+    // every other device with it
+    let preview = plan.preview_topology().ok();
+    let vteps = preview.iter().flat_map(|after| {
+        ports.iter().flat_map(move |update| {
+            let device = DeviceId(update.interface.device.id);
+            update
+                .vlan
+                .iter()
+                .chain(&update.vlan_before)
+                .flat_map(move |vlan| vtep_peers(topology, after, VlanId(vlan.id), device))
+        })
+    });
     // only those the provisioner configures: a switch without RouterOS changes in NetBox only
     let mut seen = BTreeSet::new();
-    let configured = rooms.len() < plan.steps.len();
     let devices = configured
-        .then(|| device.clone())
-        .into_iter()
+        .iter()
+        .cloned()
         .chain(touched)
         .chain(aps)
         .chain(vteps)
@@ -559,13 +585,15 @@ fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
     }
 }
 
-/// The other devices with `vlan` over its VXLAN, when the plan's device joins or leaves it:
-/// before and after the plan.
-fn vtep_peers(plan: &NetboxPlan, vlan: VlanId) -> Vec<DeviceAccess> {
-    let device = plan.device();
-    let Ok(preview) = plan.preview_topology() else {
-        return Vec::new();
-    };
+/// The other devices with `vlan` over its VXLAN, when `device` joins or leaves it: before
+/// (`topology`) and `after` the plan. Where `device` is no VTEP (a switch without RouterOS)
+/// that names more devices than change, along with the one whose trunk to it does.
+fn vtep_peers(
+    topology: &Arc<Topology>,
+    after: &Arc<Topology>,
+    vlan: VlanId,
+    device: DeviceId,
+) -> Vec<DeviceAccess> {
     let devices = |topology: &Arc<Topology>| {
         topology
             .list_vlans()
@@ -573,16 +601,16 @@ fn vtep_peers(plan: &NetboxPlan, vlan: VlanId) -> Vec<DeviceAccess> {
             .map(|other| other.devices().into_vec())
             .unwrap_or_default()
     };
-    let before = devices(device.topology());
-    let after = devices(&preview);
-    let has = |devices: &[DeviceAccess]| devices.iter().any(|d| d.id() == device.id());
+    let before = devices(topology);
+    let after = devices(after);
+    let has = |devices: &[DeviceAccess]| devices.iter().any(|other| other.id() == device);
     if has(&before) == has(&after) {
         return Vec::new();
     }
     before
         .into_iter()
         .chain(after)
-        .filter(|other| other.id() != device.id())
+        .filter(|other| other.id() != device)
         .collect()
 }
 
@@ -624,17 +652,19 @@ impl QueryChange {
 
 #[Object]
 impl QueryChange {
-    /// What `resident`'s change would write, for the preview.
+    /// What `resident`'s changes would write together, one after the other, for the preview.
     async fn change_plan(
         &self,
         context: &Context<'_>,
         resident: u32,
-        change: ResidentChange,
+        changes: Vec<ResidentChange>,
     ) -> Result<ResidentPlan, ApiError> {
         let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
         let owner = acting_for(context, &topology, resident)?;
-        let Checked { plan, .. } = checked_plan(&topology, owner, change).await?;
-        Ok(resident_plan(&plan))
+        let Checked {
+            plan, configured, ..
+        } = checked_plan(&topology, owner, changes).await?;
+        Ok(resident_plan(&plan, &configured))
     }
     /// How saving the change of job `job` went, for its resident or an admin.
     async fn saved_change(
@@ -663,13 +693,13 @@ impl MutationResident {
 
 #[Object]
 impl MutationResident {
-    /// Saves `resident`'s change to NetBox, if its plan is still the one shown
+    /// Saves `resident`'s changes to NetBox together, if their plan is still the one shown
     /// (`ResidentPlan.fingerprint`); `savedChange` tells how it went.
     async fn save_change(
         &self,
         context: &Context<'_>,
         resident: u32,
-        change: ResidentChange,
+        changes: Vec<ResidentChange>,
         fingerprint: String,
     ) -> Result<SavedChange, ApiError> {
         if !(CONFIG.allow_netbox_write && CONFIG.netbox_write_token.is_some()) {
@@ -678,8 +708,12 @@ impl MutationResident {
         let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
         let owner = acting_for(context, &topology, resident)?;
         // the checks on the plan as previewed; the write refuses a plan changed since
-        let Checked { helper, .. } = checked_plan(&topology, owner, change).await?;
-        let device = helper.device(&topology)?;
+        let Checked { helpers, .. } = checked_plan(&topology, owner, changes).await?;
+        // the first change's device runs the job
+        let device = helpers
+            .first()
+            .ok_or(Error::NothingToChange)?
+            .device(&topology)?;
         let user = started_by(context, &topology, owner);
         let holder = self.topology.clone();
         let current: Arc<Topology> = topology.clone();
@@ -688,7 +722,7 @@ impl MutationResident {
             JobKind::NetboxWrite,
             Started::By(user.clone()),
             |log| async move {
-                let result = helper::write(&helper, &current, &fingerprint, &user, &log).await;
+                let result = helper::write(&helpers, &current, &fingerprint, &user, &log).await;
                 log.enter(crate::device_state::NetboxState::Refetching);
                 refetch(&holder).await;
                 result

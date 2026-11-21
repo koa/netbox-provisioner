@@ -30,6 +30,7 @@ pub mod port_vlan;
 pub mod radio_bridge;
 pub mod radio_disconnect;
 pub mod routes;
+pub mod sequence;
 pub mod wlan;
 mod write;
 
@@ -270,6 +271,42 @@ impl NetboxPlan {
     }
     pub fn device(&self) -> &DeviceAccess {
         &self.device
+    }
+    /// `part`'s steps behind this plan's, their references to steps moved along, with what
+    /// it found.
+    pub fn append(&mut self, part: NetboxPlan) {
+        let offset = self.steps.len();
+        self.steps.extend(part.steps.into_iter().map(|mut step| {
+            step.shift(offset);
+            step
+        }));
+        if !part.description.is_empty() {
+            self.description = match self.description.is_empty() {
+                true => part.description,
+                false => format!("{}; {}", self.description, part.description).into(),
+            };
+        }
+        self.undocumented.extend(part.undocumented);
+        for cut in part.cut_off {
+            if !self.cut_off.iter().any(|known| known.id == cut.id) {
+                self.cut_off.push(cut);
+            }
+        }
+        if part.checked_with.is_some() {
+            self.checked_with = part.checked_with;
+        }
+        if !part.apply_together.is_empty() {
+            let mut together = std::mem::take(&mut self.apply_together).into_vec();
+            for device in part.apply_together {
+                if !together.iter().any(|known| known.id == device.id) {
+                    together.push(device);
+                }
+            }
+            self.apply_together = together.into();
+        }
+        if self.emptied_bridge.is_none() {
+            self.emptied_bridge = part.emptied_bridge;
+        }
     }
     pub fn fingerprint_value(&self) -> String {
         let mut hasher = DefaultHasher::new();

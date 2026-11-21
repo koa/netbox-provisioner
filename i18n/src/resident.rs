@@ -2,7 +2,8 @@
 
 /// the title of a resident's own page
 pub const MY_NETWORK: &str = "Mein Netz";
-pub const INTRO: &str = "Deine Dosen und Geräte, und welches deiner Netze darauf läuft.";
+pub const INTRO: &str = "Deine Dosen und Geräte, und welches deiner Netze darauf läuft. Änderungen \
+    sammelst du und speicherst sie zusammen.";
 pub const TAB_PORTS: &str = "Dosen und Geräte";
 pub const TAB_NETWORKS: &str = "Netze";
 pub const NO_PORTS: &str = "Dir ist noch keine Dose und kein Gerät zugeordnet.";
@@ -14,7 +15,6 @@ pub const FOREIGN_NETWORK: &str = "Netz des Betreibers";
 pub const CABLE: &str = "Kabel";
 pub const YOUR_DEVICE: &str = "dein Gerät";
 pub const NO_WLAN: &str = "Kein WLAN";
-pub const NO_SUBNET: &str = "Keine Adressen in NetBox";
 pub const NOBODY: &str = "Du bist angemeldet, aber weder Admin noch Anwohner. Ein Admin trägt dich bei deinem Haushalt ein.";
 
 /// a port of the resident's own device
@@ -22,21 +22,14 @@ pub fn own_port(port: &str, device: &str) -> String {
     format!("Port {port} von {device}")
 }
 
-pub const CHANGE_WLAN: &str = "WLAN ändern";
-pub const SSID: &str = "WLAN-Name";
+pub const SSID: &str = "WLAN-Name (SSID)";
 pub const PSK: &str = "Passwort";
-pub const SSID_PLACEHOLDER: &str = "Name des WLANs";
-pub const PSK_PLACEHOLDER: &str = "Neues Passwort";
-pub const ENABLED: &str = "Eingeschaltet";
 pub const PSK_HINT: &str = "12 bis 63 Zeichen, ohne Umlaute";
 pub const SHOW_PSK: &str = "Zeigen";
 pub const HIDE_PSK: &str = "Verbergen";
 pub const RANDOM_PSK: &str = "Zufällig erzeugen";
-pub const PREVIEW: &str = "Vorschau";
-pub const DISCARD: &str = "Verwerfen";
 pub const PLANNING: &str = "Vorschau wird berechnet …";
 pub const SAVE: &str = "Speichern";
-pub const BACK: &str = "Zurück";
 pub const CLOSE: &str = "Schliessen";
 pub const SAVING: &str = "Wird gespeichert …";
 pub const SAVED: &str = "In NetBox gespeichert";
@@ -65,33 +58,12 @@ pub fn wlan_connection(access_point: &str, signal: i32) -> String {
     }
 }
 
-pub const CONNECT_DEVICE: &str = "Gerät anschliessen";
-pub const CHOOSE_DEVICE: &str = "Gerät wählen";
-
-/// the button taking one of the resident's devices off its link
-pub fn disconnect_device(device: &str) -> String {
-    format!("{device} abhängen")
-}
-
-/// the button choosing another port of a device as its Anschluss
-pub const CHANGE_UPLINK: &str = "Anschluss ändern";
 pub const CHOOSE_PORT: &str = "Port wählen";
-
-/// the router sees the device's cable in another port than NetBox's Anschluss
-pub fn uplink_seen(device: &str, port: &str) -> String {
-    format!("Das Kabel von {device} steckt an {port}")
-}
 
 /// the button taking the port the cable is in as the Anschluss
 pub fn take_uplink(port: &str) -> String {
     format!("{port} übernehmen")
 }
-
-/// the button choosing the room one of the resident's devices stands in
-pub fn change_room(device: &str) -> String {
-    format!("Raum von {device}")
-}
-pub const CHOOSE_ROOM: &str = "Raum wählen";
 
 /// a device moved to another room, in the preview
 pub fn room_moved(device: &str, room: &str, before: Option<&str>) -> String {
@@ -99,11 +71,6 @@ pub fn room_moved(device: &str, room: &str, before: Option<&str>) -> String {
         Some(before) => format!("{device} steht neu in {room} (vorher {before})"),
         None => format!("{device} steht neu in {room}"),
     }
-}
-
-/// a device standing in another room than the socket it is plugged in
-pub fn stands_in(room: &str) -> String {
-    format!("steht in {room}")
 }
 
 /// A port of a device, by name.
@@ -144,8 +111,6 @@ pub fn cut_off(devices: &[&str]) -> String {
     )
 }
 
-pub const CHANGE_NETWORK: &str = "Netz ändern";
-pub const CHOOSE_NETWORK: &str = "Netz wählen";
 pub const PORT_CLIENTS_MOVE: &str =
     "Geräte daran verlieren kurz die Verbindung und bekommen danach eine Adresse im neuen Netz.";
 pub const PORT_CLIENTS_CUT: &str = "Geräte daran haben danach kein Netz mehr.";
@@ -216,10 +181,6 @@ pub fn far_port(port: &str) -> String {
     format!("an {port}")
 }
 
-pub fn vid(vid: i32) -> String {
-    format!("VLAN {vid}")
-}
-
 /// a network by its name, with the SSID of its WLAN behind it where that differs
 pub fn network_title(name: &str, ssid: Option<&str>) -> String {
     match ssid {
@@ -228,14 +189,100 @@ pub fn network_title(name: &str, ssid: Option<&str>) -> String {
     }
 }
 
-/// a WLAN and how many access points send it
-pub fn wlan(ssid: &str, access_points: i32, enabled: bool) -> String {
-    if !enabled {
-        return format!("WLAN {ssid}: ausgeschaltet");
+// drafts: changes collected until they are saved together
+
+/// the label of an element with a draft
+pub const UNSAVED: &str = "ungespeichert";
+pub const RESET: &str = "Zurücksetzen";
+
+/// the bar above the tabs while there are drafts
+pub fn unsaved_changes(count: usize) -> String {
+    match count {
+        1 => "1 ungespeicherte Änderung".into(),
+        count => format!("{count} ungespeicherte Änderungen"),
     }
-    match access_points {
-        1 => format!("WLAN {ssid}: 1 Access Point"),
-        count => format!("WLAN {ssid}: {count} Access Points"),
+}
+pub const UNSAVED_HINT: &str = "Erst nach dem Speichern wird es ausgerollt.";
+pub const PREVIEW_AND_SAVE: &str = "Vorschau und speichern";
+pub const DISCARD_ALL: &str = "Alle verwerfen";
+
+// a row of „Dosen und Geräte“
+
+pub const NETWORK: &str = "Netz";
+pub const OR_CONNECT_DEVICE: &str = "Oder Gerät anschliessen";
+pub const CHOOSE_DEVICE: &str = "Gerät wählen";
+/// a device a draft links to this port row
+pub fn comes_here(device: &str) -> String {
+    format!("{device} kommt hierher")
+}
+pub const REMOVE_DEVICE: &str = "Gerät entfernen";
+pub const NOT_CONNECTED: &str = "Nicht angeschlossen";
+pub const NOT_CONNECTED_HINT: &str = "Wähle rechts beim Gerät, wo du es anschliesst.";
+/// a device standing in another room than the socket its cable comes from
+pub fn patched_from(socket: &str) -> String {
+    format!("Patchkabel von {socket}")
+}
+/// a device standing in another room than the port its cable comes from
+pub fn cable_from(port: &str) -> String {
+    format!("Kabel von {port}")
+}
+pub const PATCHED_HINT: &str = "In einem anderen Raum; das Kabel führt hierher.";
+/// at the socket: its device stands in another room, shown there
+pub fn see_room(room: &str) -> String {
+    format!("Steht in {room}, siehe dort.")
+}
+/// a device linked to a port that isn't the resident's (the operator's router)
+pub const OPERATOR_PORT: &str = "Port des Betreibers";
+pub const CONNECTED_TO: &str = "Angeschlossen an";
+pub const UPLINK: &str = "Anschluss";
+pub const UPLINK_HINT: &str = "Der Port des Geräts, in dem das Kabel steckt.";
+/// the router sees the device's cable in another port than NetBox's Anschluss
+pub fn uplink_misplugged(seen: &str, uplink: &str) -> String {
+    format!("Das Kabel steckt an {seen}, nicht an {uplink}")
+}
+pub fn uplink_misplugged_hint(seen: &str, uplink: &str) -> String {
+    format!("Übernimm {seen} als Anschluss, oder steck das Kabel an {uplink} um.")
+}
+/// the room action at a device standing in its socket's room
+pub const CHANGE_ROOM: &str = "Raum ändern";
+/// the room action at a device standing elsewhere
+pub fn in_room(room: &str) -> String {
+    format!("in {room}")
+}
+/// the room dialog
+pub fn room_title(device: &str) -> String {
+    format!("Wo steht {device}?")
+}
+pub const ROOM_HINT: &str =
+    "Nur nötig, wenn ein Patchkabel von der Dose in einen anderen Raum führt.";
+pub const ROOM: &str = "Raum";
+pub const APPLY: &str = "Übernehmen";
+pub const CANCEL: &str = "Abbrechen";
+
+// the preview of the drafts
+
+pub const PREVIEW_TITLE: &str = "Das ändert sich";
+pub const PREVIEW_DESCRIPTION: &str = "Noch nichts gespeichert.";
+pub const KEEP_EDITING: &str = "Weiter bearbeiten";
+
+// a network's card
+
+pub fn network_card(title: &str) -> String {
+    format!("Netz {title}")
+}
+/// the WLAN's switch
+pub fn wlan_switch(ssid: &str) -> String {
+    format!("WLAN „{ssid}“")
+}
+pub const WLAN_OFF_HINT: &str = "Aus: Das Netz gibt es nur per Kabel.";
+pub const CHANGE: &str = "Ändern";
+pub const SSID_HINT: &str =
+    "1 bis 32 Zeichen (Umlaute zählen doppelt), ohne Leerzeichen am Anfang und Ende";
+/// how many access points send the WLAN
+pub fn access_points(count: i32) -> String {
+    match count {
+        1 => "1 Access Point".into(),
+        count => format!("{count} Access Points"),
     }
 }
 
