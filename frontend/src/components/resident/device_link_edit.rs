@@ -2,7 +2,7 @@
 //! device at it to another of the device's ports (its Anschluss, also the one a router sees its
 //! cable in), and taking a device at it off its link: the choice, the preview in words,
 //! saving; not the row it sits in (`components::resident`).
-use super::change_flow::{ask_plan, devices_alert, save, saving};
+use super::change_flow::{self, ask_plan, devices_alert, save, saving};
 use crate::{
     components::widgets::popup::Select,
     error::FrontendError,
@@ -237,7 +237,7 @@ impl Component for DeviceLinkEdit {
                 html! {
                     <>
                         { for seen }
-                        <div class="wlan-edit-actions">
+                        <div class="resident-edit-actions">
                             {connect}{ for uplink }{ for disconnect }
                         </div>
                     </>
@@ -246,14 +246,14 @@ impl Component for DeviceLinkEdit {
             DeviceLinkEdit::Choosing(choice) => {
                 let chosen = choice.clone();
                 html! {
-                    <div class="wlan-edit">
+                    <div class="resident-edit">
                         <Select<DeviceChoice>
                             placeholder={t::CHOOSE_DEVICE}
                             selected={choice.clone()}
                             entries={choices(props)}
                             onselect={link.callback(DeviceLinkEditMsg::Choose)}
                         />
-                        <div class="wlan-edit-actions">
+                        <div class="resident-edit-actions">
                             <Button
                                 variant={ButtonVariant::Primary}
                                 label={t::PREVIEW}
@@ -280,14 +280,14 @@ impl Component for DeviceLinkEdit {
                     seen: false,
                 });
                 html! {
-                    <div class="wlan-edit">
+                    <div class="resident-edit">
                         <Select<DeviceChoice>
                             placeholder={t::CHOOSE_PORT}
                             selected={port.clone()}
                             entries={other_ports(props, device)}
                             onselect={link.callback(DeviceLinkEditMsg::Choose)}
                         />
-                        <div class="wlan-edit-actions">
+                        <div class="resident-edit-actions">
                             <Button
                                 variant={ButtonVariant::Primary}
                                 label={t::PREVIEW}
@@ -314,7 +314,7 @@ impl Component for DeviceLinkEdit {
                 saving(saved.as_ref(), link.callback(|_| DeviceLinkEditMsg::Close))
             }
             DeviceLinkEdit::Failed { error, .. } => html! {
-                <div class="wlan-edit">
+                <div class="resident-edit">
                     {error.to_html()}
                     <Button
                         variant={ButtonVariant::Secondary}
@@ -461,25 +461,15 @@ fn preview(ctx: &Context<DeviceLinkEdit>, change: &LinkChange, plan: &ResidentPl
             .collect::<Vec<_>>();
         html!(<Alert inline=true r#type={AlertType::Warning} title={t::cut_off(&names)}/>)
     });
-    html! {
-        <div class="wlan-edit">
-            <ul class="resident-facts">
-                { for removed.chain(added).map(|line| html!(<li>{line}</li>)) }
-            </ul>
-            {cut_off}
-            {devices_alert(plan, Some(hint))}
-            <div class="wlan-edit-actions">
-                <Button
-                    variant={ButtonVariant::Primary}
-                    label={t::SAVE}
-                    onclick={link.callback(|_| DeviceLinkEditMsg::Save)}
-                />
-                <Button
-                    variant={ButtonVariant::Link}
-                    label={t::BACK}
-                    onclick={link.callback(|_| DeviceLinkEditMsg::Back)}
-                />
-            </div>
-        </div>
-    }
+    change_flow::preview(
+        removed.chain(added),
+        html! {
+            <>
+                {cut_off}
+                {devices_alert(plan, Some(hint))}
+            </>
+        },
+        link.callback(|_| DeviceLinkEditMsg::Save),
+        link.callback(|_| DeviceLinkEditMsg::Back),
+    )
 }

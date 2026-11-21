@@ -1,6 +1,6 @@
-//! Scope: What every change of a resident shares: asking its plan, saving it, asking how saving
-//! goes and showing that; not a change's form nor the wording of its plan (`wlan_edit`,
-//! `port_vlan_edit`).
+//! Scope: What every change of a resident shares: asking its plan, its preview, saving it,
+//! asking how saving goes and showing that; not a change's form nor the wording of its plan
+//! (`wlan_edit`, `port_vlan_edit`, `device_link_edit`, `device_room_edit`).
 use crate::{
     error::{FrontendError, ServerProblem},
     graphql::{
@@ -87,6 +87,28 @@ pub fn devices_alert(plan: &ResidentPlan, clients: Option<&str>) -> Html {
         <Alert inline=true r#type={AlertType::Info} {title}>
             { for clients.map(|text| html!(<p>{text}</p>)) }
         </Alert>
+    }
+}
+
+/// The preview of a plan: what it changes (`changes`, one line each), the alerts about it,
+/// and saving it or going back to the form.
+pub fn preview(
+    changes: impl IntoIterator<Item = String>,
+    alerts: Html,
+    save: Callback<MouseEvent>,
+    back: Callback<MouseEvent>,
+) -> Html {
+    html! {
+        <div class="resident-edit">
+            <ul class="resident-facts">
+                { for changes.into_iter().map(|change| html!(<li>{change}</li>)) }
+            </ul>
+            {alerts}
+            <div class="resident-edit-actions">
+                <Button variant={ButtonVariant::Primary} label={t::SAVE} onclick={save}/>
+                <Button variant={ButtonVariant::Link} label={t::BACK} onclick={back}/>
+            </div>
+        </div>
     }
 }
 

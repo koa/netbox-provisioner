@@ -1,6 +1,6 @@
 //! Scope: The room one of a resident's devices stands in: the choice of the rooms of its sites,
 //! the preview in words, saving; not the row it sits in (`components::resident`).
-use super::change_flow::{ask_plan, devices_alert, save, saving};
+use super::change_flow::{self, ask_plan, devices_alert, save, saving};
 use crate::{
     components::widgets::popup::Select,
     error::FrontendError,
@@ -153,14 +153,14 @@ impl Component for DeviceRoomEdit {
             DeviceRoomEdit::Choosing(room) => {
                 let chosen = room.clone();
                 html! {
-                    <div class="wlan-edit">
+                    <div class="resident-edit">
                         <Select<RoomChoice>
                             placeholder={t::CHOOSE_ROOM}
                             selected={room.clone()}
                             entries={choices(props)}
                             onselect={link.callback(DeviceRoomEditMsg::Choose)}
                         />
-                        <div class="wlan-edit-actions">
+                        <div class="resident-edit-actions">
                             <Button
                                 variant={ButtonVariant::Primary}
                                 label={t::PREVIEW}
@@ -186,7 +186,7 @@ impl Component for DeviceRoomEdit {
                 saving(saved.as_ref(), link.callback(|_| DeviceRoomEditMsg::Close))
             }
             DeviceRoomEdit::Failed { error, .. } => html! {
-                <div class="wlan-edit">
+                <div class="resident-edit">
                     {error.to_html()}
                     <Button
                         variant={ButtonVariant::Secondary}
@@ -240,24 +240,10 @@ fn preview(ctx: &Context<DeviceRoomEdit>, plan: &ResidentPlan) -> Html {
         let before = room.location_before.as_ref().map(path);
         t::room_moved(&room.device.name, &to, before.as_deref())
     });
-    html! {
-        <div class="wlan-edit">
-            <ul class="resident-facts">
-                { for lines.map(|line| html!(<li>{line}</li>)) }
-            </ul>
-            {devices_alert(plan, None)}
-            <div class="wlan-edit-actions">
-                <Button
-                    variant={ButtonVariant::Primary}
-                    label={t::SAVE}
-                    onclick={link.callback(|_| DeviceRoomEditMsg::Save)}
-                />
-                <Button
-                    variant={ButtonVariant::Link}
-                    label={t::BACK}
-                    onclick={link.callback(|_| DeviceRoomEditMsg::Back)}
-                />
-            </div>
-        </div>
-    }
+    change_flow::preview(
+        lines,
+        devices_alert(plan, None),
+        link.callback(|_| DeviceRoomEditMsg::Save),
+        link.callback(|_| DeviceRoomEditMsg::Back),
+    )
 }

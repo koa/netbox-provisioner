@@ -1,7 +1,7 @@
 //! Scope: Changing a resident's WLAN: its name and password, on or off, and the preview in
 //! words; not planning and saving (`change_flow`), nor the network card it sits in
 //! (`components::resident`).
-use super::change_flow::{ask_plan, devices_alert, save, saving};
+use super::change_flow::{self, ask_plan, devices_alert, save, saving};
 use crate::{
     error::FrontendError,
     graphql::resident::{
@@ -174,7 +174,7 @@ impl Component for WlanEdit {
                 saving(saved.as_ref(), link.callback(|_| WlanEditMsg::Close))
             }
             WlanEdit::Failed { error, .. } => html! {
-                <div class="wlan-edit">
+                <div class="resident-edit">
                     {error.to_html()}
                     <Button
                         variant={ButtonVariant::Secondary}
@@ -211,7 +211,7 @@ impl WlanEdit {
                         value={draft.psk.clone()}
                         onchange={link.callback(WlanEditMsg::Psk)}
                     />
-                    <div class="wlan-edit-actions">
+                    <div class="resident-edit-actions">
                         <Button
                             variant={ButtonVariant::Link}
                             label={show_label}
@@ -229,7 +229,7 @@ impl WlanEdit {
         let input = Self::input(ctx, draft);
         let unchanged = input.ssid.is_none() && input.psk.is_none() && input.enabled.is_none();
         html! {
-            <div class="wlan-edit">
+            <div class="resident-edit">
                 <Form>
                     <FormGroup label={t::SSID}>
                         <TextInput
@@ -245,7 +245,7 @@ impl WlanEdit {
                         onchange={link.callback(WlanEditMsg::Enabled)}
                     />
                 </Form>
-                <div class="wlan-edit-actions">
+                <div class="resident-edit-actions">
                     <Button
                         variant={ButtonVariant::Primary}
                         label={t::PREVIEW}
@@ -318,26 +318,12 @@ fn preview(ctx: &Context<WlanEdit>, plan: &ResidentPlan) -> Html {
     } else {
         None
     };
-    html! {
-        <div class="wlan-edit">
-            <ul class="resident-facts">
-                { for changes.map(|change| html!(<li>{change}</li>)) }
-            </ul>
-            {devices_alert(plan, clients)}
-            <div class="wlan-edit-actions">
-                <Button
-                    variant={ButtonVariant::Primary}
-                    label={t::SAVE}
-                    onclick={link.callback(|_| WlanEditMsg::Save)}
-                />
-                <Button
-                    variant={ButtonVariant::Link}
-                    label={t::BACK}
-                    onclick={link.callback(|_| WlanEditMsg::Back)}
-                />
-            </div>
-        </div>
-    }
+    change_flow::preview(
+        changes,
+        devices_alert(plan, clients),
+        link.callback(|_| WlanEditMsg::Save),
+        link.callback(|_| WlanEditMsg::Back),
+    )
 }
 
 /// A password of 16 characters from the browser's random source, without characters one

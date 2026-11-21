@@ -827,6 +827,17 @@ dl.site-diff > dd > .pf-v6-c-button {
     padding: 0;
     margin: 0;
 }
+/* a change's form, preview and saving (components::resident::change_flow) */
+.resident-edit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pf-t--global--spacer--sm);
+}
+.resident-edit-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--pf-t--global--spacer--sm);
+}
 @media (max-width: 767px) {
     .resident-site {
         gap: var(--pf-t--global--spacer--xl);

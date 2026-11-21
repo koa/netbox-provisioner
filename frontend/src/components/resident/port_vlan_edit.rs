@@ -1,6 +1,6 @@
 //! Scope: Changing the network of a resident's port or socket: the choice of its networks or
 //! none, the preview in words, saving; not the row it sits in (`components::resident`).
-use super::change_flow::{ask_plan, devices_alert, save, saving};
+use super::change_flow::{self, ask_plan, devices_alert, save, saving};
 use crate::{
     components::widgets::popup::Select,
     error::FrontendError,
@@ -159,14 +159,14 @@ impl Component for PortVlanEdit {
             PortVlanEdit::Choosing(choice) => {
                 let unchanged = choice.is_none() || *choice == current(ctx.props());
                 html! {
-                    <div class="wlan-edit">
+                    <div class="resident-edit">
                         <Select<NetworkChoice>
                             placeholder={t::CHOOSE_NETWORK}
                             selected={choice.clone()}
                             entries={choices(ctx.props())}
                             onselect={link.callback(PortVlanEditMsg::Choose)}
                         />
-                        <div class="wlan-edit-actions">
+                        <div class="resident-edit-actions">
                             <Button
                                 variant={ButtonVariant::Primary}
                                 label={t::PREVIEW}
@@ -190,7 +190,7 @@ impl Component for PortVlanEdit {
                 saving(saved.as_ref(), link.callback(|_| PortVlanEditMsg::Close))
             }
             PortVlanEdit::Failed { error, .. } => html! {
-                <div class="wlan-edit">
+                <div class="resident-edit">
                     {error.to_html()}
                     <Button
                         variant={ButtonVariant::Secondary}
@@ -274,24 +274,10 @@ fn preview(ctx: &Context<PortVlanEdit>, plan: &ResidentPlan) -> Html {
     } else {
         t::PORT_CLIENTS_MOVE
     };
-    html! {
-        <div class="wlan-edit">
-            <ul class="resident-facts">
-                { for changes.map(|change| html!(<li>{change}</li>)) }
-            </ul>
-            {devices_alert(plan, Some(clients))}
-            <div class="wlan-edit-actions">
-                <Button
-                    variant={ButtonVariant::Primary}
-                    label={t::SAVE}
-                    onclick={link.callback(|_| PortVlanEditMsg::Save)}
-                />
-                <Button
-                    variant={ButtonVariant::Link}
-                    label={t::BACK}
-                    onclick={link.callback(|_| PortVlanEditMsg::Back)}
-                />
-            </div>
-        </div>
-    }
+    change_flow::preview(
+        changes,
+        devices_alert(plan, Some(clients)),
+        link.callback(|_| PortVlanEditMsg::Save),
+        link.callback(|_| PortVlanEditMsg::Back),
+    )
 }

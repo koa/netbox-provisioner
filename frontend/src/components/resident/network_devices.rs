@@ -110,10 +110,10 @@ impl Component for NetworkDevicesView {
                     }
                 };
                 html! {
-                    <div class="wlan-edit">
+                    <div class="resident-edit">
                         {unreachable}
                         {list}
-                        <div class="wlan-edit-actions">
+                        <div class="resident-edit-actions">
                             {again}
                             <Button
                                 variant={ButtonVariant::Link}
