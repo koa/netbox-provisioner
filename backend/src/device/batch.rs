@@ -748,20 +748,21 @@ pub(crate) async fn run<M: Planning>(
             }),
     )
     .await;
-    if let Some(first) = read.iter().position(Result::is_err) {
-        let mut first_error = None;
-        for (index, read) in read.into_iter().enumerate() {
-            match read {
-                Err(error) if index == first => first_error = Some(error),
-                // its own reason, not the first one's
-                Err(error) => results[index] = Some(Err(error)),
-                Ok(_) => {}
-            }
+    // the first failed (its index and error) stops all; a later one keeps its own reason
+    let mut first_failed = None;
+    let mut fine = Vec::new();
+    for (index, read) in read.into_iter().enumerate() {
+        match read {
+            Ok(read) => fine.push(read),
+            Err(error) if first_failed.is_none() => first_failed = Some((index, error)),
+            Err(error) => results[index] = Some(Err(error)),
         }
-        stop(&mut results, first, first_error.expect("the first failed"));
+    }
+    if let Some((first, error)) = first_failed {
+        stop(&mut results, first, error);
         return finish(results);
     }
-    let read = read.into_iter().flatten().collect::<Vec<_>>();
+    let read = fine;
     let mut decisions = {
         let members = read.iter().filter_map(Reading::ospf).collect::<Vec<_>>();
         ospf_auth::decide_together(&members)

@@ -152,7 +152,7 @@ pub fn decide(
         match proven(network, members) {
             Ok(ends) => {
                 for (member, port) in &at {
-                    let decision = decisions.get_mut(&member.device.id()).expect("a member");
+                    let decision = decisions.entry(member.device.id()).or_default();
                     decision.switch.insert(network, target.clone());
                     let mut expected = decision.expected.to_vec();
                     expected.push(ExpectedNeighbors {
@@ -171,7 +171,7 @@ pub fn decide(
                     if port.v2 == target && port.v3 == target {
                         continue;
                     }
-                    let decision = decisions.get_mut(&member.device.id()).expect("a member");
+                    let decision = decisions.entry(member.device.id()).or_default();
                     let mut kept = decision.kept.to_vec();
                     kept.push(OspfAuthKept {
                         port: port.port.to_string().into(),
@@ -207,22 +207,22 @@ pub fn decide_together(members: &[&MemberRead]) -> BTreeMap<DeviceId, Decision> 
 /// others and has the same credentials; else what is in doubt, the first condition failing.
 fn proven(network: Ipv4Net, members: &[&MemberRead]) -> Result<Box<[End]>, OspfAuthDoubt> {
     let ends = netbox_ends(network, members)?;
-    let outside = ends
-        .iter()
-        .filter(|end| !members.iter().any(|m| m.device.id() == end.device.id()))
-        .map(|end| Box::<str>::from(end.device.name()))
-        .collect::<Box<[_]>>();
+    // each end with its member, or the names of those outside
+    let mut inside = Vec::new();
+    let mut outside = Vec::new();
+    for end in &ends {
+        match members.iter().find(|m| m.device.id() == end.device.id()) {
+            Some(member) => inside.push((end, member)),
+            None => outside.push(Box::<str>::from(end.device.name())),
+        }
+    }
     if !outside.is_empty() {
         return Err(OspfAuthDoubt::EndsOutside(OspfEndsOutside {
-            devices: outside,
+            devices: outside.into(),
         }));
     }
     let mut credentials = Vec::new();
-    for end in &ends {
-        let member = members
-            .iter()
-            .find(|m| m.device.id() == end.device.id())
-            .expect("every end a member");
+    for (end, member) in inside {
         let mut ports = member.ports.iter().filter(|port| port.network == network);
         let (Some(port), None) = (ports.next(), ports.next()) else {
             return Err(OspfAuthDoubt::EndNotOspf(OspfEndNotOspf {
