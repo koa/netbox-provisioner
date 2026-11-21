@@ -16,9 +16,8 @@ use super::{Named, PortKind, interfaces_at, switch_port};
 use crate::{
     Error,
     config::CONFIG,
-    context::UserInfo,
     error_info::{ApiError, ErrorInfo},
-    graphql::refetch,
+    graphql::{refetch, user_label},
     helper::{
         self, CreateCable, DeleteCable, Helper, NetboxPlan, PlanStep, UpdateDeviceLocation,
         UpdatePortVlan, UpdateWirelessLan,
@@ -60,7 +59,8 @@ pub enum ResidentChange {
     /// the network of its port or socket (`setPortVlan`)
     PortVlan(PortVlanChange),
     /// one of its devices linked to its port or socket, or to a port of another of its devices
-    /// (`connectDevice`; with `devicePort` the device's port it goes out of, `setDeviceUplink`)
+    /// (`connectDevice`; with `devicePort` the device's port it goes out of, also to change its
+    /// Anschluss: the same port with another `devicePort`)
     ConnectDevice(ConnectDeviceChange),
     /// one of its devices, by id, taken off its link (`disconnectDevice`)
     DisconnectDevice(u32),
@@ -101,7 +101,7 @@ pub struct PortVlanChange {
 #[derive(SimpleObject, Debug, Clone)]
 pub struct ResidentPlan {
     /// identifies the plan: saving refuses one that has become another by then
-    fingerprint: String,
+    fingerprint: Box<str>,
     /// the WLANs it changes
     wlans: Box<[UpdateWirelessLan]>,
     /// the ports whose VLAN it changes (a socket's: the switch port behind it)
@@ -518,7 +518,7 @@ fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
         })
         .collect();
     ResidentPlan {
-        fingerprint: plan.fingerprint_value(),
+        fingerprint: plan.fingerprint_value().into(),
         wlans,
         ports,
         cables_added,
@@ -580,18 +580,10 @@ fn vtep_peers(plan: &NetboxPlan, vlan: VlanId) -> Vec<DeviceAccess> {
         .collect()
 }
 
-/// The user and whom it acts for, for NetBox' changelog and the job: „meier for Familie
-/// Meier“.
+/// The user (`user_label`, as the admins' jobs name it) and whom it acts for, for NetBox'
+/// changelog and the job: „Hans Meier for Familie Meier“.
 fn started_by(context: &Context<'_>, topology: &Topology, owner: OwnerId) -> Box<str> {
-    let user = context
-        .data_opt::<UserInfo>()
-        .and_then(|user| {
-            user.preferred_username
-                .as_deref()
-                .map(str::to_string)
-                .or_else(|| user.name.clone())
-        })
-        .unwrap_or_else(|| "unknown user".into());
+    let user = user_label(context);
     let name = topology
         .owners()
         .find(|(id, _)| *id == owner)
@@ -696,7 +688,10 @@ impl MutationResident {
                 result
             },
         )?;
-        SAVED_FOR.lock_anyway().insert(job.job_id(), owner);
+        let mut saved_for = SAVED_FOR.lock_anyway();
+        // a job the jobs no longer keep is asked for in vain
+        saved_for.retain(|id, _| job::get(*id).is_some());
+        saved_for.insert(job.job_id(), owner);
         Ok(saved_change(&job))
     }
 }

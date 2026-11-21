@@ -340,11 +340,10 @@ fn start_update(
 }
 
 /// Who asked, for NetBox' changelog: the name or email of the login.
-fn user_label(ctx: &Context<'_>) -> Box<str> {
+pub(crate) fn user_label(ctx: &Context<'_>) -> Box<str> {
     ctx.data_opt::<UserInfo>()
-        .and_then(|user| user.name.clone().or_else(|| user.email.clone()))
+        .and_then(UserInfo::label)
         .unwrap_or_else(|| "unknown user".into())
-        .into()
 }
 
 /// One device's position for `MutationAuthenticated.publishLayout`.

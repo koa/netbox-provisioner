@@ -18,6 +18,18 @@ pub struct UserInfo {
     pub groups: Box<[Box<str>]>,
 }
 
+impl UserInfo {
+    /// Who the user is in a journal and NetBox' changelog: its name, else its login name, else
+    /// its email.
+    pub fn label(&self) -> Option<Box<str>> {
+        self.name
+            .as_deref()
+            .or(self.preferred_username.as_deref())
+            .or(self.email.as_deref())
+            .map(Box::from)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::UserInfo;

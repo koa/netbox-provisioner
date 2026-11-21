@@ -1,3 +1,4 @@
+//! Scope: Tests of `helper::wlan`; nothing else.
 use super::{WlanInput, plan};
 use crate::{
     Error,

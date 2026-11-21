@@ -296,7 +296,7 @@ async fn seen_by(router: &DeviceAccess) -> Result<BTreeMap<u32, Vec<SeenNeighbor
     let accessible = router
         .connect(DeviceTarget::default())
         .await?
-        .ok_or(Error::UnknownDevice(router.id().0))?;
+        .ok_or(Error::MissingCredentials)?;
     let table = neighbors::read_table(&accessible.reader().at(Freshness::MaxAge(MAX_AGE))).await?;
     Ok(neighbors::evaluate(router, &table).seen)
 }
@@ -323,7 +323,7 @@ async fn read(device: &DeviceAccess, leases: bool, clients: bool) -> Result<Tabl
     let accessible = device
         .connect(DeviceTarget::default())
         .await?
-        .ok_or(Error::UnknownDevice(device.id().0))?;
+        .ok_or(Error::MissingCredentials)?;
     let freshness = Freshness::MaxAge(MAX_AGE);
     // one after the other: a device's tables are never read at once
     let leases = match leases {

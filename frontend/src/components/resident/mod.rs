@@ -166,7 +166,9 @@ fn ports(resident: &Resident, seen: &[SeenUplink], on_saved: &Callback<()>) -> H
                 <section class="resident-site" {key}>
                     {site.flatten()}
                     {location}
-                    { for group.ports.into_iter().map(|port| port_row(resident, port, seen, on_saved)) }
+                    { for group.ports.into_iter().map(|port| {
+                        port_row(resident, port, seen, on_saved)
+                    }) }
                 </section>
             }
         })
