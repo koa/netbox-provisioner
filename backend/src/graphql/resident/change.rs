@@ -5,15 +5,16 @@
 //! NetBox as the ones before it leave it (`helper::sequence`), and checked there too. Every
 //! change is a helper's plan (`helper`), allowed only on the resident's own objects
 //! (`Topology::owned_by`): a resident for its owners, an admin for any (the support view,
-//! `docs/concepts/self-service.md`). A WLAN's name, key and on/off (`helper::wlan`), the VLAN
+//! `docs/self-service.md`). A WLAN's name, key and on/off (`helper::wlan`), the VLAN
 //! of a port or socket (`helper::port_vlan`; a socket's is the switch port's behind the wall,
 //! and nothing but the resident's devices may hang at it). One of its devices linked to its
 //! port, socket or another of its devices (`helper::connect_device`, also to move the link to
 //! another port of the device), or taken off its link (`helper::disconnect` at its Anschluss);
 //! what is in the way at the port has to be its own, and no other's device may lose its way to
-//! the management roots (`ManagementTree` before and after the plan), nor its own when it
-//! connects. Saving writes the plan as a `NetboxWrite` job of the plan's device, as the admins'
-//! helpers do; the devices get it from the automatic rollout.
+//! the management roots (`ManagementTree` before and after the whole plan), nor its own but
+//! those taken off their link and behind them. Saving writes the plan as a `NetboxWrite` job of
+//! the first change's device, as the admins' helpers do; the devices get it from the automatic
+//! rollout.
 use super::{Named, PortKind};
 use crate::{
     Error,
@@ -57,17 +58,17 @@ static SAVED_FOR: LazyLock<Mutex<HashMap<u32, OwnerId>>> = LazyLock::new(Mutex::
 /// A change of a resident.
 #[derive(Debug, Clone, PartialEq, Eq, OneofObject)]
 pub enum ResidentChange {
-    /// name, key or on/off of its WLAN (`setWlanSsid`, `setWlanPsk`, `setWlanEnabled`)
+    /// name, key or on/off of its WLAN
     Wlan(WlanInput),
-    /// the network of its port or socket (`setPortVlan`)
+    /// the network of its port or socket
     PortVlan(PortVlanChange),
     /// one of its devices linked to its port or socket, or to a port of another of its devices
-    /// (`connectDevice`; with `devicePort` the device's port it goes out of, also to change its
-    /// Anschluss: the same port with another `devicePort`)
+    /// (with `devicePort` the device's port it goes out of, also to change its Anschluss: the
+    /// same port with another `devicePort`)
     ConnectDevice(ConnectDeviceChange),
-    /// one of its devices, by id, taken off its link (`disconnectDevice`)
+    /// one of its devices, by id, taken off its link
     DisconnectDevice(u32),
-    /// the room of one of its devices (`setDeviceRoom`)
+    /// the room of one of its devices
     DeviceRoom(DeviceRoomChange),
 }
 
@@ -218,10 +219,14 @@ async fn checked_plan(
     owner: OwnerId,
     changes: Vec<ResidentChange>,
 ) -> Result<Checked, Error> {
-    // a resident connecting keeps its devices reached, one disconnecting cuts its own off
-    let own_may_go = changes
+    // a device taken off its link goes, and its own behind it: nothing else of the resident's
+    let disconnected = changes
         .iter()
-        .any(|change| matches!(change, ResidentChange::DisconnectDevice(_)));
+        .filter_map(|change| match change {
+            ResidentChange::DisconnectDevice(device) => Some(DeviceId(*device)),
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
     let mut helpers = Vec::with_capacity(changes.len());
     let mut configured = Vec::new();
     let mut plan = None;
@@ -241,7 +246,7 @@ async fn checked_plan(
         .iter()
         .any(|step| matches!(step, PlanStep::DeleteCable(_) | PlanStep::DeleteAddress(_)));
     if cuts_cables {
-        keeps_reached(topology, &topology.owned_by(owner), &plan, own_may_go)?;
+        keeps_reached(topology, &topology.owned_by(owner), &plan, &disconnected)?;
     }
     Ok(Checked {
         helpers,
@@ -260,15 +265,15 @@ struct Checked {
 }
 
 /// The RouterOS devices reaching a management root before `plan` reach one after it too: all
-/// of others, and the resident's own unless `own_may_go`.
+/// of others, and of the resident's own all but those `disconnected` and behind them. The
+/// whole plan counts, as the devices get it at once.
 fn keeps_reached(
     topology: &Arc<Topology>,
     owned: &Owned,
     plan: &NetboxPlan,
-    own_may_go: bool,
+    disconnected: &BTreeSet<DeviceId>,
 ) -> Result<(), Error> {
-    let reached = |topology: &Arc<Topology>| {
-        let tree = ManagementTree::of(topology, topology.management_proxy());
+    let reached = |topology: &Arc<Topology>, tree: &ManagementTree| {
         topology
             .list_devices()
             .filter(DeviceAccess::has_routeros)
@@ -276,10 +281,12 @@ fn keeps_reached(
             .filter(|id| tree.is_root(*id) || tree.parent(*id).is_some())
             .collect::<BTreeSet<_>>()
     };
+    let before = ManagementTree::of(topology, topology.management_proxy());
     let after = plan.preview_topology()?;
-    for lost in reached(topology).difference(&reached(&after)) {
+    let after_tree = ManagementTree::of(&after, after.management_proxy());
+    for lost in reached(topology, &before).difference(&reached(&after, &after_tree)) {
         let own = owned.devices.contains(lost);
-        if own && own_may_go {
+        if own && behind(&before, *lost, disconnected) {
             continue;
         }
         let name: Box<str> = topology
@@ -292,6 +299,19 @@ fn keeps_reached(
         });
     }
     Ok(())
+}
+
+/// Whether `device` is one of `devices` or reaches its management root through one of them.
+fn behind(tree: &ManagementTree, device: DeviceId, devices: &BTreeSet<DeviceId>) -> bool {
+    let mut seen = BTreeSet::new();
+    let mut on_the_way = Some(device);
+    while let Some(device) = on_the_way.filter(|device| seen.insert(*device)) {
+        if devices.contains(&device) {
+            return true;
+        }
+        on_the_way = tree.parent(device);
+    }
+    false
 }
 
 /// The owned device of id `device`, or why not.

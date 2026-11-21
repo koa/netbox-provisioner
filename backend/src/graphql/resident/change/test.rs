@@ -1,14 +1,17 @@
 //! Scope: Tests of `graphql::resident::change`; nothing else.
+use super::behind;
 use crate::{
     graphql::resident::create_resident_schema,
     helper::connect_device::uplink_port,
     role::Role,
     topology::{
-        TopologyHolder,
+        DeviceId, TopologyHolder,
+        management::ManagementTree,
         test::{HUBER, MEIER, OwnedExample, owned_example, topology_from},
     },
 };
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 
 /// Asks the residents' schema `query` as `role`: the data, or the first error's code.
 async fn ask(role: Role, query: &str) -> Result<Value, String> {
@@ -390,4 +393,27 @@ async fn changes_are_planned_one_after_the_other() {
         plan["rooms"][1],
         json!({ "location": { "id": 9103 }, "locationBefore": { "id": 9101 } })
     );
+}
+
+/// Taking a device off its link may cut off what reaches its root through it, nothing else:
+/// a device is behind its parents, not its children, nor a device elsewhere.
+#[test]
+fn only_devices_behind_a_disconnected_one_may_go() {
+    let OwnedExample { raw, .. } = owned_example();
+    let topology = topology_from(raw);
+    let tree = ManagementTree::of(&topology, topology.management_proxy());
+    let mut devices = topology
+        .list_devices()
+        .map(|device| device.id())
+        .filter_map(|device| Some((device, tree.parent(device)?)))
+        .filter(|(_, parent)| tree.parent(*parent).is_some())
+        .collect::<Vec<_>>();
+    devices.sort();
+    let (device, parent) = *devices.first().expect("a device two below a root");
+    let grandparent = tree.parent(parent).expect("the parent's parent");
+    let set = |devices: &[DeviceId]| devices.iter().copied().collect::<BTreeSet<_>>();
+    assert!(behind(&tree, device, &set(&[device])));
+    assert!(behind(&tree, device, &set(&[grandparent])));
+    assert!(!behind(&tree, parent, &set(&[device])));
+    assert!(!behind(&tree, device, &set(&[])));
 }
