@@ -266,7 +266,7 @@ impl PortsTab<'_> {
         })
     }
 
-    /// The row of the device's own Anschluss, where no row of the resident has its cable.
+    /// The row of the device's own Anschluss: its cable is the device's card's.
     fn uplink_row(&self, device: &ResidentDevice) -> Option<&ResidentPort> {
         let uplink = device.uplink.as_ref()?;
         self.resident
@@ -332,7 +332,13 @@ impl PortsTab<'_> {
             .iter()
             .filter_map(|end| self.own(end).filter(|device| device.routeros))
             .collect::<Vec<_>>();
-        let vlan = (linked.is_empty() && port.far_ends.iter().all(|end| end.own_device))
+        // a device coming here by a draft takes the port's network off
+        let coming = self
+            .drafts
+            .links
+            .values()
+            .any(|link| matches!(link, LinkDraft::Connect { port, .. } if *port == key));
+        let vlan = (!coming && linked.is_empty() && port.far_ends.iter().all(|end| end.own_device))
             .then(|| self.vlan_choice(port));
         let connect = port.far_ends.is_empty().then(|| self.connect_choice(port));
         let remove = linked.iter().map(|device| {

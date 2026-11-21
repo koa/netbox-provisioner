@@ -9,7 +9,7 @@ use crate::graphql::{
     },
 };
 use cynic::QueryBuilder;
-use drafts::{Drafts, PortKey, current_link};
+use drafts::{Drafts, LinkDraft, PortKey, current_link};
 use i18n::resident as t;
 use networks::WlanEdit;
 use patternfly_yew::prelude::{Alert, AlertType, Button, ButtonVariant, Color, Label, Tab, Tabs};
@@ -112,6 +112,10 @@ impl Component for ResidentView {
                     true => drafts.links.remove(&device),
                     false => drafts.links.insert(device, link),
                 };
+                // a device linked to a port takes its network off: its draft would be undone
+                if let LinkDraft::Connect { port, .. } = link {
+                    drafts.port_vlans.remove(&port);
+                }
             }
             ResidentViewMsg::Port(PortEdit::ResetLink(device)) => {
                 drafts.links.remove(&device);
