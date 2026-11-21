@@ -1,6 +1,7 @@
 //! Scope: Tests of `graphql::resident::change`; nothing else.
 use crate::{
     graphql::resident::create_resident_schema,
+    helper::connect_device::uplink_port,
     role::Role,
     topology::{
         TopologyHolder,
@@ -253,4 +254,102 @@ async fn a_device_goes_to_a_room_of_the_residents_sites() {
         &format!("resident: {}", HUBER.0),
     );
     assert_eq!(ask_on(raw, huber, &query).await, not_owned);
+}
+
+/// `raw` with the owner of the interface `id` (and of nothing else there) set to Meier.
+fn with_meiers_port(mut raw: Value, id: u32) -> Value {
+    for interface in raw["data"]["device_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+        .flat_map(|device| device["interfaces"].as_array_mut().into_iter().flatten())
+        .filter(|interface| interface["id"] == id.to_string().as_str())
+    {
+        interface["owner"] = json!({ "id": MEIER.0.to_string(), "name": "Familie Meier" });
+    }
+    raw
+}
+
+/// A network for Meier's port at whose cable a device not Meier's hangs is refused, naming
+/// that device.
+#[tokio::test]
+async fn a_port_with_anothers_device_takes_no_network() {
+    let OwnedExample { raw, vlan, .. } = owned_example();
+    let topology = topology_from(raw.clone());
+    // a port of a device with RouterOS whose cable ends at a device without, the first by id
+    let mut ports = topology
+        .list_devices()
+        .filter(|device| device.has_routeros())
+        .flat_map(|device| device.interfaces().into_vec())
+        .filter(|port| {
+            port.connected_interfaces()
+                .iter()
+                .any(|far| far.device().is_some_and(|device| !device.has_routeros()))
+                && port
+                    .connected_interfaces()
+                    .iter()
+                    .all(|far| far.device().is_some_and(|device| !device.has_routeros()))
+        })
+        .map(|port| port.id().0)
+        .collect::<Vec<_>>();
+    ports.sort();
+    let port = *ports.first().expect("a port to a device without RouterOS");
+    let meier = Role::Resident {
+        owners: Box::new([MEIER]),
+    };
+    assert_eq!(
+        ask_on(
+            with_meiers_port(raw, port),
+            meier,
+            &port_query(MEIER.0, port, "INTERFACE", &vlan.to_string())
+        )
+        .await,
+        Err("\"FOREIGN_DEVICE_AT_PORT\"".to_string())
+    );
+}
+
+/// Meier's device can't be taken off its link while a device not Meier's hangs at another of
+/// its ports: that one would go with it.
+#[tokio::test]
+async fn a_device_with_anothers_behind_it_stays_linked() {
+    let OwnedExample { mut raw, .. } = owned_example();
+    let topology = topology_from(raw.clone());
+    // a RouterOS device with its Anschluss cabled and another device at another port, the
+    // first by id
+    let mut devices = topology
+        .list_devices()
+        .filter(|device| device.has_routeros())
+        .filter(|device| {
+            let Some(uplink) = uplink_port(device).filter(|port| port.cable().is_some()) else {
+                return false;
+            };
+            device
+                .interfaces()
+                .iter()
+                .filter(|port| port.id() != uplink.id())
+                .flat_map(|port| port.connected_interfaces().into_vec())
+                .any(|far| far.device().is_some_and(|far| far.id() != device.id()))
+        })
+        .map(|device| device.id().0)
+        .collect::<Vec<_>>();
+    devices.sort();
+    let device = *devices.first().expect("a device with another behind it");
+    for entry in raw["data"]["device_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        let owner = match entry["id"] == device.to_string().as_str() {
+            true => json!({ "id": MEIER.0.to_string(), "name": "Familie Meier" }),
+            false => Value::Null,
+        };
+        entry["owner"] = owner;
+    }
+    let meier = Role::Resident {
+        owners: Box::new([MEIER]),
+    };
+    assert_eq!(
+        ask_on(raw, meier, &disconnect_query(MEIER.0, device)).await,
+        Err("\"FOREIGN_DEVICE_BEHIND\"".to_string())
+    );
 }

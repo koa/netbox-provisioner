@@ -369,7 +369,31 @@ pub fn server(problem: &impl Problem) -> String {
             "Danach wäre {} nicht mehr erreichbar; schliesse es an einem anderen Port an",
             p("device")
         ),
-        "NOT_OWNED" => format!("Das gehört nicht dir: {}", p("what")),
+        "NOT_OWNED" => {
+            let what = match p("what") {
+                "RESIDENT" => "Anwohner",
+                "DEVICE" => "Gerät",
+                "PORT" => "Port",
+                "SOCKET" => "Dose",
+                "VLAN" => "Netz",
+                "WLAN" => "WLAN",
+                "LOCATION" => "Raum",
+                other => other,
+            };
+            format!("Das gehört nicht dir: {what} {}", p("id"))
+        }
+        "FOREIGN_DEVICE_AT_PORT" => format!(
+            "Dort hängt {}, das nicht dir gehört; das ändert ein Admin",
+            p("device")
+        ),
+        "FOREIGN_DEVICE_BEHIND" => format!(
+            "An diesem Gerät hängt {}, das nicht dir gehört: es wäre danach weg",
+            p("device")
+        ),
+        "FOREIGN_DEVICE_CUT_OFF" => format!(
+            "Danach wäre {} eines anderen nicht mehr erreichbar; das ändert ein Admin",
+            p("device")
+        ),
         "NO_SINGLE_RADIO" => format!(
             "{} hat in NetBox keinen oder mehrere Funk-Ports: eine Funkbrücke hat genau einen",
             p("device")

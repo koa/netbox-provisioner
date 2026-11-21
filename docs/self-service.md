@@ -67,7 +67,8 @@ Zusammenführen ist mit Unit-Tests geprüft.
 
 Jede Änderung ist der Plan eines Helfers (`graphql::resident::change`), erlaubt nur an
 eigenen Objekten: ein Anwohner für seine Owner, ein Admin für jeden (Support-Ansicht). Sonst
-lehnt der Server mit `NOT_OWNED` ab.
+lehnt der Server mit `NOT_OWNED` ab (`what`: `RESIDENT`, `DEVICE`, `PORT`, `SOCKET`, `VLAN`,
+`WLAN` oder `LOCATION`, `id`: die NetBox-ID).
 
 Die Änderung (`change`, ein `@oneOf`) ist eine von:
 
@@ -109,8 +110,8 @@ Die Regeln für ein Netz am Port (der Helfer „VLAN am Port“, `helper::port_v
 - der Port ist ein Ethernet-Port ohne Bridge, Adresse, Uplink und Kabel zu einem RouterOS-Gerät:
   den Port, an dem sein eigenes Gerät angebunden ist, stellt `connectDevice` um
   (`DEVICE_AT_PORT` mit dem Gerät);
-- an seinem Kabel hängen nur Geräte des Anwohners (auch durch die Dose), sonst `NOT_OWNED` mit
-  dem fremden Gerät: ein anderes Netz schnitte ab, was dort hängt;
+- an seinem Kabel hängen nur Geräte des Anwohners (auch durch die Dose), sonst
+  `FOREIGN_DEVICE_AT_PORT` mit dem fremden Gerät: ein anderes Netz schnitte ab, was dort hängt;
 - eine Dose, deren Rear-Port zu keinem Switch-Port führt, ist `SOCKET_WITHOUT_PORT`;
 - ohne VLAN ist es kein Mode und kein VLAN; ein Port ohne VLAN bekommt keines
   (`NOTHING_TO_CHANGE`).
@@ -137,15 +138,15 @@ Gerät anschliessen (`helper::connect_device`, nur für Anwohner):
   von der Front der Dose zum Gerät) oder einem Port eines anderen eigenen Geräts;
 - was im Weg ist, geht zuerst, nacheinander auf dem Stand, den das davor lässt: die bisherige
   Verbindung des Geräts an seinem Port und am alten Anschluss („Verbindung abräumen“), was am
-  Port oder in der Dose steckt, dort nur Geräte des Anwohners (sonst `NOT_OWNED`), und das VLAN
-  des Ports (eine Verbindung hat Adressen, kein VLAN);
+  Port oder in der Dose steckt, dort nur Geräte des Anwohners (sonst `FOREIGN_DEVICE_AT_PORT`),
+  und das VLAN des Ports (eine Verbindung hat Adressen, kein VLAN);
 - dann „Verbindung“ (Kabel, `/31` des Transfer-Pools, `ospf`, MTU, Labels) und, wo es fehlt,
   „Loopback“; die Schritte jedes Teils hinter die davor geschoben (`PlanStep::shift`);
 - ein Gerät ohne Port für den Anschluss ist `NO_UPLINK_PORT`.
 
 Gerät abhängen ist „Verbindung abräumen“ an seinem Anschluss, geschrieben vom Router am anderen
 Ende. Abgelehnt wird es, solange an einem anderen Port des Geräts ein fremdes Gerät hängt (es
-speist es oder erreicht es über ihn): `NOT_OWNED`. Das Gerät bleibt in NetBox und gehört
+speist es oder erreicht es über ihn): `FOREIGN_DEVICE_BEHIND`. Das Gerät bleibt in NetBox und gehört
 weiter dem Anwohner.
 
 Der **Raum** eines Geräts (`helper::device_location`, der Helfer „Raum eines Geräts“) ist seine
@@ -161,7 +162,7 @@ nach „1. OG › Wohnung Meier“, dann nach „1. OG“, meier-pc nach „1. O
 Rollout danach hatte nichts zu tun.
 
 Beide prüfen den Plan auf der Vorschau: Ein RouterOS-Gerät, das vorher eine Wurzel des
-Management-Baums erreicht, erreicht danach auch eine. Ist es fremd, ist das `NOT_OWNED`. Ist es
+Management-Baums erreicht, erreicht danach auch eine. Ist es fremd, ist das `FOREIGN_DEVICE_CUT_OFF`. Ist es
 ein eigenes, ist es `CUT_OFF`, ausser beim Abhängen. Geprüft wird bei `changePlan` und noch
 einmal bei `saveChange`. Die Vorschau nennt die Kabel, die wegkommen und dazukommen
 (`cablesRemoved`, `cablesAdded`), die Geräte, die bis zum Ausrollen weg sind (`cutOff`), und

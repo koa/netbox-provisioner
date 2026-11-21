@@ -26,6 +26,7 @@ use crate::{
         DeviceId, TopologyHolder, VlanId,
         access::{AccessTopology, DeviceTarget, device::DeviceAccess, interface::InterfaceAccess},
         findings::InterfaceRef,
+        ownership::Belonging,
     },
 };
 use async_graphql::{Context, Object, SimpleObject, futures_util::future::join_all};
@@ -120,7 +121,11 @@ impl QueryLive {
         let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
         let owner = acting_for(context, &topology, resident)?;
         if !topology.owned_by(owner).vlans.contains(&VlanId(vlan)) {
-            return Err(Error::NotOwned(format!("VLAN {vlan}").into()).into());
+            return Err(Error::NotOwned {
+                what: Belonging::Vlan,
+                id: vlan,
+            }
+            .into());
         }
         let vlan = topology
             .list_vlans()

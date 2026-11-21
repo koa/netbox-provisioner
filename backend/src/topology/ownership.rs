@@ -10,6 +10,33 @@ use std::collections::BTreeSet;
 #[cfg(test)]
 mod test;
 
+/// What kind of object a resident has (or hasn't), for the refusal of one that isn't its own.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Belonging {
+    Resident,
+    Device,
+    Port,
+    Socket,
+    Vlan,
+    Wlan,
+    Location,
+}
+
+impl Belonging {
+    /// Its name in an error's params (`what`).
+    pub fn code(self) -> &'static str {
+        match self {
+            Belonging::Resident => "RESIDENT",
+            Belonging::Device => "DEVICE",
+            Belonging::Port => "PORT",
+            Belonging::Socket => "SOCKET",
+            Belonging::Vlan => "VLAN",
+            Belonging::Wlan => "WLAN",
+            Belonging::Location => "LOCATION",
+        }
+    }
+}
+
 /// Everything of one owner: what NetBox gives it and what follows from that.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Owned {

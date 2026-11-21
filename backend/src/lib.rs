@@ -355,9 +355,22 @@ pub enum Error {
     /// a resident's change would leave one of its devices unreached (`device`)
     #[error("{0} would be cut off")]
     CutOff(Box<str>),
-    /// an object of another resident, or an owner the user isn't
-    #[error("not yours: {0}")]
-    NotOwned(Box<str>),
+    /// an object (`what` by its NetBox `id`) of another resident, or an owner the user isn't
+    #[error("{what:?} {id} isn't yours")]
+    NotOwned {
+        what: topology::ownership::Belonging,
+        id: u32,
+    },
+    /// a device not the resident's at the port or socket of its change (`device`)
+    #[error("{0} of another is at the port")]
+    ForeignDeviceAtPort(Box<str>),
+    /// a device not the resident's at another port of the device it takes off its link, fed
+    /// by it or reached through it (`device`)
+    #[error("{0} of another hangs at the device")]
+    ForeignDeviceBehind(Box<str>),
+    /// a resident's change would leave a device of another unreached (`device`)
+    #[error("{0} of another would be cut off")]
+    ForeignDeviceCutOff(Box<str>),
     /// a port (`device port`) whose NetBox type is no Ethernet
     #[error("{0} is no Ethernet port")]
     NotEthernet(Box<str>),

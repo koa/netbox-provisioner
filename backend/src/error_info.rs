@@ -339,7 +339,22 @@ impl From<&Error> for ErrorInfo {
             Error::OtherCredentials(device) => {
                 ("OTHER_CREDENTIALS", vec![("device", device.to_string())])
             }
-            Error::NotOwned(what) => ("NOT_OWNED", vec![("what", what.to_string())]),
+            Error::NotOwned { what, id } => (
+                "NOT_OWNED",
+                vec![("what", what.code().to_string()), ("id", id.to_string())],
+            ),
+            Error::ForeignDeviceAtPort(device) => (
+                "FOREIGN_DEVICE_AT_PORT",
+                vec![("device", device.to_string())],
+            ),
+            Error::ForeignDeviceBehind(device) => (
+                "FOREIGN_DEVICE_BEHIND",
+                vec![("device", device.to_string())],
+            ),
+            Error::ForeignDeviceCutOff(device) => (
+                "FOREIGN_DEVICE_CUT_OFF",
+                vec![("device", device.to_string())],
+            ),
             Error::NoSingleRadio(device) => {
                 ("NO_SINGLE_RADIO", vec![("device", device.to_string())])
             }

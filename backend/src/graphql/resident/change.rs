@@ -39,7 +39,7 @@ use crate::{
             interface::InterfaceAccess,
         },
         management::ManagementTree,
-        ownership::Owned,
+        ownership::{Belonging, Owned},
     },
 };
 use async_graphql::{Context, Enum, InputObject, Object, OneofObject, SimpleObject};
@@ -152,7 +152,10 @@ pub(super) fn acting_for(
     if allowed {
         Ok(owner)
     } else {
-        Err(Error::NotOwned(format!("resident {resident}").into()))
+        Err(Error::NotOwned {
+            what: Belonging::Resident,
+            id: resident,
+        })
     }
 }
 
@@ -165,7 +168,10 @@ fn helper_for(
     match change {
         ResidentChange::Wlan(change) => {
             if !owned.wlans.contains(&WlanId(change.wlan)) {
-                return Err(Error::NotOwned(format!("WLAN {}", change.wlan).into()));
+                return Err(Error::NotOwned {
+                    what: Belonging::Wlan,
+                    id: change.wlan,
+                });
             }
             Ok(Helper::Wlan(change))
         }
@@ -191,7 +197,10 @@ fn room_helper(
         .site
         .is_some_and(|site| super::resident_sites(topology, owned).contains(&site))
     {
-        return Err(Error::NotOwned(location.path.join(" > ").into()));
+        return Err(Error::NotOwned {
+            what: Belonging::Location,
+            id: change.location,
+        });
     }
     Ok(Helper::DeviceLocation(DeviceLocationInput {
         device: change.device,
@@ -256,7 +265,7 @@ fn keeps_reached(
             .unwrap_or_default();
         return Err(match own {
             true => Error::CutOff(name),
-            false => Error::NotOwned(name),
+            false => Error::ForeignDeviceCutOff(name),
         });
     }
     Ok(())
@@ -265,7 +274,10 @@ fn keeps_reached(
 /// The owned device of id `device`, or why not.
 fn own_device(topology: &Arc<Topology>, owned: &Owned, device: u32) -> Result<DeviceAccess, Error> {
     if !owned.devices.contains(&DeviceId(device)) {
-        return Err(Error::NotOwned(format!("device {device}").into()));
+        return Err(Error::NotOwned {
+            what: Belonging::Device,
+            id: device,
+        });
     }
     topology
         .get_device_by_id(&DeviceId(device))
@@ -289,7 +301,10 @@ fn owned_port(
     match kind {
         PortKind::Interface => {
             if !owned.ports.contains(&InterfaceId(id)) {
-                return Err(Error::NotOwned(format!("port {id}").into()));
+                return Err(Error::NotOwned {
+                    what: Belonging::Port,
+                    id,
+                });
             }
             let port = topology
                 .get_interface_by_id(InterfaceId(id))
@@ -298,7 +313,10 @@ fn owned_port(
         }
         PortKind::Socket => {
             if !owned.sockets.contains(&FrontPortId(id)) {
-                return Err(Error::NotOwned(format!("socket {id}").into()));
+                return Err(Error::NotOwned {
+                    what: Belonging::Socket,
+                    id,
+                });
             }
             let socket = FrontPortAccess::create(topology.clone(), FrontPortId(id));
             let port = socket.interface_behind().ok_or_else(|| {
@@ -333,7 +351,10 @@ fn connect_helper(
         Some(id) => topology
             .get_interface_by_id(InterfaceId(id))
             .filter(|port| port.device().is_some_and(|d| d.id() == device.id()))
-            .ok_or_else(|| Error::NotOwned(format!("port {id}").into()))?,
+            .ok_or_else(|| Error::NotOwned {
+                what: Belonging::Port,
+                id,
+            })?,
         None => uplink_port(&device).ok_or_else(|| Error::NoUplinkPort(device.name().into()))?,
     };
     let at = owned_port(topology, owned, change.kind, change.port)?;
@@ -347,7 +368,7 @@ fn connect_helper(
         .filter_map(InterfaceAccess::device)
         .find(|other| other.id() != device.id() && !owned.devices.contains(&other.id()))
     {
-        return Err(Error::NotOwned(foreign.name().into()));
+        return Err(Error::ForeignDeviceAtPort(foreign.name().into()));
     }
     Ok(Helper::ConnectDevice(ConnectDeviceInput {
         port: at.port.id().0,
@@ -378,7 +399,7 @@ fn disconnect_helper(
         .filter_map(|far| far.device())
         .find(|far| far.id() != device.id() && !owned.devices.contains(&far.id()))
     {
-        return Err(Error::NotOwned(foreign.name().into()));
+        return Err(Error::ForeignDeviceBehind(foreign.name().into()));
     }
     // the router at the other end writes it, as when it was connected
     let writer = port
@@ -400,12 +421,14 @@ fn port_vlan_helper(
     owned: &Owned,
     change: &PortVlanChange,
 ) -> Result<Helper, Error> {
-    let not_owned = |what: String| Error::NotOwned(what.into());
     let OwnedPort { port, .. } = owned_port(topology, owned, change.kind, change.port)?;
     if let Some(vlan) = change.vlan
         && !owned.vlans.contains(&VlanId(vlan))
     {
-        return Err(not_owned(format!("VLAN {vlan}")));
+        return Err(Error::NotOwned {
+            what: Belonging::Vlan,
+            id: vlan,
+        });
     }
     // a device linked there goes with its link (`disconnectDevice`), not with a network
     if let Some(linked) = port
@@ -423,7 +446,7 @@ fn port_vlan_helper(
         .filter_map(|far| far.device())
         .find(|device| !owned.devices.contains(&device.id()))
     {
-        return Err(not_owned(foreign.name().to_string()));
+        return Err(Error::ForeignDeviceAtPort(foreign.name().into()));
     }
     let device = port.device().ok_or(Error::UnknownInterface(change.port))?;
     Ok(Helper::PortVlan(PortVlanInput {
