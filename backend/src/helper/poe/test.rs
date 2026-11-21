@@ -2,16 +2,27 @@
 use super::*;
 use crate::topology::test::example_topology;
 
-/// Two Ethernet ports of different devices of the export, cabled to each other.
-fn cabled_ports(topology: &Arc<Topology>) -> (InterfaceAccess, InterfaceAccess) {
-    topology
+/// The two ends of a cable.
+struct Cable {
+    a: InterfaceAccess,
+    b: InterfaceAccess,
+}
+
+/// Two Ethernet ports of different devices of the export, cabled to each other; the first by
+/// id, the topology's come in no order.
+fn cabled_ports(topology: &Arc<Topology>) -> Cable {
+    let mut ports = topology
         .list_devices()
         .filter(|d| d.has_routeros())
         .flat_map(|d| d.interfaces().into_vec())
+        .collect::<Vec<_>>();
+    ports.sort_by_key(|port| port.id().0);
+    ports
+        .into_iter()
         .find_map(|a| {
             let b = a.connected_interfaces().first()?.clone();
             (a.is_ethernet() && b.is_ethernet() && a.poe().is_none() && b.poe().is_none())
-                .then_some((a, b))
+                .then_some(Cable { a, b })
         })
         .expect("a cable between Ethernet ports")
 }
@@ -21,7 +32,7 @@ fn cabled_ports(topology: &Arc<Topology>) -> (InterfaceAccess, InterfaceAccess) 
 #[test]
 fn both_ports_get_their_mode() {
     let topology = example_topology();
-    let (pse, pd) = cabled_ports(&topology);
+    let Cable { a: pse, b: pd } = cabled_ports(&topology);
     let input = |device: &InterfaceAccess| PoeInput {
         device: device.device().unwrap().id().0,
         pse: pse.id().0,
@@ -60,7 +71,7 @@ fn both_ports_get_their_mode() {
 #[test]
 fn a_cable_is_added_or_in_the_way() {
     let topology = example_topology();
-    let (pse, cabled) = cabled_ports(&topology);
+    let Cable { a: pse, b: cabled } = cabled_ports(&topology);
     let free = topology
         .list_devices()
         .filter(|d| Some(d.id()) != pse.device().map(|d| d.id()))
@@ -103,7 +114,7 @@ fn a_cable_is_added_or_in_the_way() {
 #[test]
 fn no_poe_takes_both_ends() {
     let topology = example_topology();
-    let (pse, pd) = cabled_ports(&topology);
+    let Cable { a: pse, b: pd } = cabled_ports(&topology);
     let paired = super::plan(
         &topology,
         &PoeInput {

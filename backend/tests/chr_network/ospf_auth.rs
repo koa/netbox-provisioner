@@ -43,8 +43,14 @@ const BC: &str = "10.0.43.2/31";
 const AREAS: [&str; 2] = ["backbone-v2", "backbone-v3"];
 const INSTANCES: [&str; 2] = ["default-v2", "default-v3"];
 
+/// A topology and its three devices.
+struct Chain {
+    builder: TopologyBuilder,
+    devices: [DeviceId; 3],
+}
+
 /// `a -- b -- c`: b has `ether2` to a and `ether3` to c.
-fn chain() -> (TopologyBuilder, [DeviceId; 3]) {
+fn chain() -> Chain {
     let mut builder = TopologyBuilder::default();
     let address = |builder: &mut TopologyBuilder, ip: &str| {
         let id = builder.ip_addresses.next_id();
@@ -111,7 +117,10 @@ fn chain() -> (TopologyBuilder, [DeviceId; 3]) {
             },
         );
     }
-    (builder, [devices[0], devices[1], devices[2]])
+    Chain {
+        builder,
+        devices: [devices[0], devices[1], devices[2]],
+    }
 }
 
 /// A device of the scenario: its node, API session and NetBox device.
@@ -121,8 +130,14 @@ struct End<'a> {
     device: DeviceAccess,
 }
 
+/// What an end generates and reads for the decision.
+struct Read {
+    cfg: DeviceCfg,
+    member: MemberRead,
+}
+
 /// What `end` generates and reads for the decision, as `AccessibleDevice::read_plan` does.
-async fn read(end: &End<'_>) -> (DeviceCfg, MemberRead) {
+async fn read(end: &End<'_>) -> Read {
     let mut cfg = DeviceCfg::fetch_with_board_model(&end.api, b"RB750Gr3", &end.device)
         .await
         .expect("fetch");
@@ -133,7 +148,7 @@ async fn read(end: &End<'_>) -> (DeviceCfg, MemberRead) {
         ports: cfg.ospf_ports(),
         neighbors: read_neighbors(&end.api).await.expect("neighbors"),
     };
-    (cfg, member)
+    Read { cfg, member }
 }
 
 /// Applies `ends` together as a batch plans them: all read, the decision over all, then all
@@ -145,14 +160,11 @@ async fn apply_together(settings: &OspfAuth, ends: &[&End<'_>]) -> BTreeMap<Box<
     }
     let mut decisions = decide(
         Some(settings),
-        &read_all
-            .iter()
-            .map(|(_, member)| member)
-            .collect::<Vec<_>>(),
+        &read_all.iter().map(|read| &read.member).collect::<Vec<_>>(),
     );
     let mut by_name = BTreeMap::new();
     let mut applies = Vec::new();
-    for (end, (mut cfg, member)) in ends.iter().zip(read_all) {
+    for (end, Read { mut cfg, member }) in ends.iter().zip(read_all) {
         let decision = decisions.remove(&member.device.id()).unwrap_or_default();
         cfg.take_ospf_decision(&decision);
         by_name.insert(Box::<str>::from(end.device.name()), decision);
@@ -162,8 +174,15 @@ async fn apply_together(settings: &OspfAuth, ends: &[&End<'_>]) -> BTreeMap<Box<
     by_name
 }
 
+/// A template on a device: its comment and credentials.
+#[derive(Debug, PartialEq)]
+struct Template {
+    comment: Option<String>,
+    credentials: OspfCredentials,
+}
+
 /// The comment and credentials of the template of `area` holding `port` on `api`.
-async fn template_at(api: &Session, area: &str, port: &str) -> (Option<String>, OspfCredentials) {
+async fn template_at(api: &Session, area: &str, port: &str) -> Template {
     let templates = collect_resource::<RoutingOspfInterfaceTemplate>(api)
         .await
         .expect("templates");
@@ -174,10 +193,10 @@ async fn template_at(api: &Session, area: &str, port: &str) -> (Option<String>, 
                 && t.cfg.interfaces.iter().any(|i| *i.0 == *port.as_bytes())
         })
         .unwrap_or_else(|| panic!("no template of {area} with {port}: {templates:?}"));
-    (
-        template.cfg.comment.as_ref().map(ToString::to_string),
-        OspfCredentials::of(&template.cfg),
-    )
+    Template {
+        comment: template.cfg.comment.as_ref().map(ToString::to_string),
+        credentials: OspfCredentials::of(&template.cfg),
+    }
 }
 
 /// Asserts that no interface template of `end` is left without a port.
@@ -206,6 +225,12 @@ async fn full(api: &Session, instance: &str, router_id: &str) -> bool {
         })
 }
 
+/// What `during` gave, and what was down or lost while it ran.
+struct Watched<T> {
+    result: T,
+    broken: Vec<String>,
+}
+
 /// While `during` runs and up to `watch`: b's four adjacencies (to a and c, v2 and v3) every
 /// second and a ping from a to c's loopback every second. Gives what was down or lost, by
 /// second.
@@ -214,7 +239,7 @@ async fn unbroken<T>(
     b: &Session,
     during: impl Future<Output = T>,
     watch: Duration,
-) -> (T, Vec<String>) {
+) -> Watched<T> {
     let start = Instant::now();
     let adjacencies = async {
         let mut down = Vec::new();
@@ -242,7 +267,10 @@ async fn unbroken<T>(
         lost
     };
     let (result, down, lost) = tokio::join!(during, adjacencies, pings);
-    (result, down.into_iter().chain(lost).collect())
+    Watched {
+        result,
+        broken: down.into_iter().chain(lost).collect(),
+    }
 }
 
 /// The networks a decision moves.
@@ -263,7 +291,10 @@ async fn ospf_credentials_move_with_both_ends_of_a_segment() {
     )
     .await
     .expect("golden image build failed");
-    let (builder, [a, b, c]) = chain();
+    let Chain {
+        builder,
+        devices: [a, b, c],
+    } = chain();
     let boards = HashMap::from([
         (a, DeviceType::RB750Gr3),
         (b, DeviceType::RB750Gr3),
@@ -312,7 +343,10 @@ async fn ospf_credentials_move_with_both_ends_of_a_segment() {
     let target = |network: &str| target_credentials(&settings, network.parse().unwrap());
 
     // a and b together: a-b moves, b-c stays, c being outside
-    let (decisions, broken) = unbroken(
+    let Watched {
+        result: decisions,
+        broken,
+    } = unbroken(
         &a.api,
         &b.api,
         apply_together(&settings, &[a, b]),
@@ -336,14 +370,20 @@ async fn ospf_credentials_move_with_both_ends_of_a_segment() {
         for (end, port) in [(a, "ether2"), (b, "ether2")] {
             assert_eq!(
                 template_at(&end.api, area, port).await,
-                (own(AB), target(AB)),
+                Template {
+                    comment: own(AB),
+                    credentials: target(AB),
+                },
                 "{} {area}",
                 end.device.name()
             );
         }
         assert_eq!(
             template_at(&b.api, area, "ether3").await,
-            (None, OspfCredentials::default()),
+            Template {
+                comment: None,
+                credentials: OspfCredentials::default(),
+            },
             "b {area}"
         );
     }
@@ -352,7 +392,7 @@ async fn ospf_credentials_move_with_both_ends_of_a_segment() {
     no_empty_template(b).await;
 
     // b alone now: a-b is at the provisioner's credentials, b-c stays; nothing in the diff
-    let (mut cfg, member) = read(b).await;
+    let Read { mut cfg, member } = read(b).await;
     let alone = decide(Some(&settings), &[&member])
         .remove(&b.device.id())
         .unwrap_or_default();
@@ -371,7 +411,10 @@ async fn ospf_credentials_move_with_both_ends_of_a_segment() {
     assert!(templates.is_empty(), "b alone: {templates:?}");
 
     // b and c together: b-c moves, a-b keeps its credentials
-    let (decisions, broken) = unbroken(
+    let Watched {
+        result: decisions,
+        broken,
+    } = unbroken(
         &a.api,
         &b.api,
         apply_together(&settings, &[b, c]),
@@ -390,7 +433,10 @@ async fn ospf_credentials_move_with_both_ends_of_a_segment() {
         ] {
             assert_eq!(
                 template_at(&end.api, area, port).await,
-                (own(network), target(network)),
+                Template {
+                    comment: own(network),
+                    credentials: target(network),
+                },
                 "{} {port} {area}",
                 end.device.name()
             );
@@ -403,7 +449,10 @@ async fn ospf_credentials_move_with_both_ends_of_a_segment() {
 
     // a new version: a alone leaves a-b as it is, a and b together move it
     let next = OspfAuth::new(2, "chr-test-secret-2");
-    let (decisions, broken) = unbroken(
+    let Watched {
+        result: decisions,
+        broken,
+    } = unbroken(
         &a.api,
         &b.api,
         apply_together(&next, &[a]),
@@ -412,8 +461,14 @@ async fn ospf_credentials_move_with_both_ends_of_a_segment() {
     .await;
     assert!(broken.is_empty(), "a alone: {broken:?}");
     assert!(decisions["a"].switch.is_empty(), "{:?}", decisions["a"]);
-    assert_eq!(template_at(&a.api, AREAS[0], "ether2").await.1, target(AB));
-    let (decisions, broken) = unbroken(
+    assert_eq!(
+        template_at(&a.api, AREAS[0], "ether2").await.credentials,
+        target(AB)
+    );
+    let Watched {
+        result: decisions,
+        broken,
+    } = unbroken(
         &a.api,
         &b.api,
         apply_together(&next, &[a, b]),
@@ -426,9 +481,15 @@ async fn ospf_credentials_move_with_both_ends_of_a_segment() {
     assert_eq!(version_2.id, Some(2));
     for end in [a, b] {
         for area in AREAS {
-            assert_eq!(template_at(&end.api, area, "ether2").await.1, version_2);
+            assert_eq!(
+                template_at(&end.api, area, "ether2").await.credentials,
+                version_2
+            );
         }
     }
     // b-c stays at version 1: b has a segment of each version
-    assert_eq!(template_at(&b.api, AREAS[0], "ether3").await.1, target(BC));
+    assert_eq!(
+        template_at(&b.api, AREAS[0], "ether3").await.credentials,
+        target(BC)
+    );
 }

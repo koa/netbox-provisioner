@@ -40,9 +40,15 @@ fn template(area: &str, ports: &[&str]) -> RoutingOspfInterfaceTemplateCfg {
     }
 }
 
+/// A target and the segment of each of its OSPF ports.
+struct Shared {
+    target: BaseDeviceDataTarget,
+    segments: BTreeMap<AsciiString, Ipv4Net>,
+}
+
 /// A target with the shared templates `setup_ospf` gives `ether2` and `ether3`, and the
 /// segment of each.
-fn target() -> (BaseDeviceDataTarget, BTreeMap<AsciiString, Ipv4Net>) {
+fn target() -> Shared {
     let mut target = BaseDeviceDataTarget::new(b"RB750Gr3").unwrap();
     for area in AREAS {
         target
@@ -54,7 +60,7 @@ fn target() -> (BaseDeviceDataTarget, BTreeMap<AsciiString, Ipv4Net>) {
         (AsciiString::from("ether3"), net("10.0.1.2/31")),
     ]
     .into();
-    (target, segments)
+    Shared { target, segments }
 }
 
 fn current_templates(
@@ -84,25 +90,38 @@ fn own(
     template
 }
 
-/// The ports and credentials of the target's templates of `area`, by comment.
-fn placed(
-    target: &BaseDeviceDataTarget,
-    area: &str,
-) -> Vec<(Option<String>, Vec<String>, OspfCredentials)> {
+/// A template of the target: its comment, ports and credentials.
+#[derive(Debug, PartialEq)]
+struct Placed {
+    comment: Option<String>,
+    ports: Vec<String>,
+    credentials: OspfCredentials,
+}
+
+impl Placed {
+    fn new(comment: Option<String>, ports: Vec<String>, credentials: OspfCredentials) -> Self {
+        Placed {
+            comment,
+            ports,
+            credentials,
+        }
+    }
+}
+
+/// The target's templates of `area`, by comment.
+fn placed(target: &BaseDeviceDataTarget, area: &str) -> Vec<Placed> {
     target
         .ospf_interface
         .iter()
         .filter(|((a, _), _)| *a.0 == *area.as_bytes())
-        .map(|((_, comment), template)| {
-            (
-                comment.as_ref().map(ToString::to_string),
-                template
-                    .interfaces
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                OspfCredentials::of(template),
-            )
+        .map(|((_, comment), template)| Placed {
+            comment: comment.as_ref().map(ToString::to_string),
+            ports: template
+                .interfaces
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            credentials: OspfCredentials::of(template),
         })
         .collect()
 }
@@ -111,7 +130,10 @@ fn placed(
 /// `setup_ospf` made them, and the diff changes no field of them.
 #[test]
 fn nothing_to_switch_changes_nothing() {
-    let (mut target, segments) = target();
+    let Shared {
+        mut target,
+        segments,
+    } = target();
     let mut current = empty_current(&target);
     current.ospf_interface = current_templates(
         AREAS
@@ -122,7 +144,7 @@ fn nothing_to_switch_changes_nothing() {
     for area in AREAS {
         assert_eq!(
             placed(&target, area),
-            [(
+            [Placed::new(
                 None,
                 vec!["ether2".into(), "ether3".into()],
                 OspfCredentials::default()
@@ -142,7 +164,10 @@ fn nothing_to_switch_changes_nothing() {
 /// the other port stays in the shared one.
 #[test]
 fn a_switched_segment_gets_its_own_template() {
-    let (mut target, segments) = target();
+    let Shared {
+        mut target,
+        segments,
+    } = target();
     let current = empty_current(&target);
     let key = credentials(1, "k1");
     let switch = OspfSwitch::from([(net("10.0.1.2/31"), key.clone())]);
@@ -151,8 +176,8 @@ fn a_switched_segment_gets_its_own_template() {
         assert_eq!(
             placed(&target, area),
             [
-                (None, vec!["ether2".into()], OspfCredentials::default()),
-                (
+                Placed::new(None, vec!["ether2".into()], OspfCredentials::default()),
+                Placed::new(
                     Some("netbox-provisioner: ospf 10.0.1.2/31".into()),
                     vec!["ether3".into()],
                     key.clone()
@@ -167,7 +192,10 @@ fn a_switched_segment_gets_its_own_template() {
 /// where its port has another name there now; its template follows the port.
 #[test]
 fn a_segment_not_switched_keeps_its_credentials() {
-    let (mut target, segments) = target();
+    let Shared {
+        mut target,
+        segments,
+    } = target();
     let mut current = empty_current(&target);
     let old = credentials(1, "old");
     current.ospf_interface = current_templates(
@@ -186,8 +214,8 @@ fn a_segment_not_switched_keeps_its_credentials() {
         assert_eq!(
             placed(&target, area),
             [
-                (None, vec!["ether2".into()], OspfCredentials::default()),
-                (
+                Placed::new(None, vec!["ether2".into()], OspfCredentials::default()),
+                Placed::new(
                     Some("netbox-provisioner: ospf 10.0.1.2/31".into()),
                     vec!["ether3".into()],
                     old.clone()
@@ -202,7 +230,10 @@ fn a_segment_not_switched_keeps_its_credentials() {
 /// no target anymore, so the diff removes it.
 #[test]
 fn a_segment_switched_off_goes_back_into_the_shared_template() {
-    let (mut target, segments) = target();
+    let Shared {
+        mut target,
+        segments,
+    } = target();
     let mut current = empty_current(&target);
     current.ospf_interface = current_templates(
         AREAS
@@ -220,7 +251,7 @@ fn a_segment_switched_off_goes_back_into_the_shared_template() {
     for area in AREAS {
         assert_eq!(
             placed(&target, area),
-            [(
+            [Placed::new(
                 None,
                 vec!["ether2".into(), "ether3".into()],
                 OspfCredentials::default()
@@ -233,7 +264,10 @@ fn a_segment_switched_off_goes_back_into_the_shared_template() {
 /// in it with them.
 #[test]
 fn the_shared_template_keeps_its_credentials() {
-    let (mut target, segments) = target();
+    let Shared {
+        mut target,
+        segments,
+    } = target();
     let mut current = empty_current(&target);
     let by_hand = OspfCredentials {
         auth: Some(RoutingOspfInterfaceTemplateAuth::Md5),
@@ -256,7 +290,7 @@ fn the_shared_template_keeps_its_credentials() {
     for area in AREAS {
         assert_eq!(
             placed(&target, area),
-            [(
+            [Placed::new(
                 None,
                 vec!["ether2".into(), "ether3".into()],
                 by_hand.clone()
@@ -268,7 +302,10 @@ fn the_shared_template_keeps_its_credentials() {
 /// Placed again with a decision after the generate, the result is the decision's alone.
 #[test]
 fn placing_again_follows_the_last_decision() {
-    let (mut target, segments) = target();
+    let Shared {
+        mut target,
+        segments,
+    } = target();
     let current = empty_current(&target);
     let first = OspfSwitch::from([(net("10.0.1.2/31"), credentials(1, "k1"))]);
     target.place_ospf_credentials(&current, &segments, &first);
@@ -278,8 +315,8 @@ fn placing_again_follows_the_last_decision() {
         assert_eq!(
             placed(&target, area),
             [
-                (None, vec!["ether3".into()], OspfCredentials::default()),
-                (
+                Placed::new(None, vec!["ether3".into()], OspfCredentials::default()),
+                Placed::new(
                     Some("netbox-provisioner: ospf 10.0.1.0/31".into()),
                     vec!["ether2".into()],
                     credentials(2, "k2")
@@ -295,7 +332,10 @@ fn placing_again_follows_the_last_decision() {
 #[test]
 fn a_port_is_in_a_template_all_the_time() {
     let order = |switch: &OspfSwitch, current: &[RoutingOspfInterfaceTemplateCfg]| {
-        let (mut target, segments) = target();
+        let Shared {
+            mut target,
+            segments,
+        } = target();
         let mut now = empty_current(&target);
         now.ospf_interface = current_templates(current.to_vec());
         target.place_ospf_credentials(&now, &segments, switch);
@@ -342,7 +382,10 @@ fn a_port_is_in_a_template_all_the_time() {
 /// is in it again.
 #[test]
 fn a_shared_template_without_ports_goes() {
-    let (mut target, segments) = target();
+    let Shared {
+        mut target,
+        segments,
+    } = target();
     let current = empty_current(&target);
     let all = OspfSwitch::from([
         (net("10.0.1.0/31"), credentials(1, "k1")),
@@ -352,7 +395,7 @@ fn a_shared_template_without_ports_goes() {
     for area in AREAS {
         let comments = placed(&target, area)
             .into_iter()
-            .map(|(comment, _, _)| comment)
+            .map(|placed| placed.comment)
             .collect::<Vec<_>>();
         assert_eq!(
             comments,
@@ -369,8 +412,8 @@ fn a_shared_template_without_ports_goes() {
         assert_eq!(
             placed(&target, area),
             [
-                (None, vec!["ether2".into()], OspfCredentials::default()),
-                (
+                Placed::new(None, vec!["ether2".into()], OspfCredentials::default()),
+                Placed::new(
                     Some("netbox-provisioner: ospf 10.0.1.2/31".into()),
                     vec!["ether3".into()],
                     credentials(1, "k2")
@@ -385,7 +428,10 @@ fn a_shared_template_without_ports_goes() {
 /// credentials its port has on the device, in its old segment's template: in doubt they stay.
 #[test]
 fn a_renumbered_port_keeps_its_credentials() {
-    let (mut target, segments) = target();
+    let Shared {
+        mut target,
+        segments,
+    } = target();
     let mut current = empty_current(&target);
     let old = credentials(1, "old");
     current.ospf_interface = current_templates(
@@ -404,8 +450,8 @@ fn a_renumbered_port_keeps_its_credentials() {
         assert_eq!(
             placed(&target, area),
             [
-                (None, vec!["ether2".into()], OspfCredentials::default()),
-                (
+                Placed::new(None, vec!["ether2".into()], OspfCredentials::default()),
+                Placed::new(
                     Some("netbox-provisioner: ospf 10.0.1.2/31".into()),
                     vec!["ether3".into()],
                     old.clone()

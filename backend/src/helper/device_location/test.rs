@@ -6,10 +6,16 @@ use crate::topology::{
 };
 use serde_json::json;
 
+/// A topology and the device a test moves.
+struct Moving {
+    topology: Arc<Topology>,
+    device: DeviceAccess,
+}
+
 /// A RouterOS device of the example whose tenant is that of its location now: two locations
 /// at its site with that tenant (1, where it is, and 3), one with a tenant of other
 /// credentials (2).
-fn topology() -> (Arc<Topology>, DeviceAccess) {
+fn topology() -> Moving {
     let mut raw = example_response();
     let plain = topology_from(raw.clone());
     // the first in NetBox's order whose credentials come from its own tenant: the topology's
@@ -53,14 +59,14 @@ fn topology() -> (Arc<Topology>, DeviceAccess) {
     ]);
     let topology = topology_from(raw);
     let device = topology.get_device_by_id(&device.id()).expect("the device");
-    (topology, device)
+    Moving { topology, device }
 }
 
 /// A device goes to a location that keeps its credentials; one whose tenant has others is
 /// refused, the same location is nothing to change.
 #[test]
 fn a_room_keeps_the_credentials() {
-    let (topology, device) = topology();
+    let Moving { topology, device } = topology();
     assert_eq!(device.location_id(), Some(1));
     let input = |location| DeviceLocationInput {
         device: device.id().0,

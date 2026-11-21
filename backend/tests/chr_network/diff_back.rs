@@ -26,8 +26,14 @@ use std::path::Path;
 /// client) stays out of the scripts.
 const TABLES: [&[u8]; 2] = [b"system/identity", b"ip/address"];
 
+/// A diff's script and the script back.
+struct Scripts {
+    script: String,
+    back: String,
+}
+
 /// The script of the diff in [`TABLES`] and the script back.
-async fn scripts(node: &Session, device: &DeviceAccess) -> (String, String) {
+async fn scripts(node: &Session, device: &DeviceAccess) -> Scripts {
     let mut cfg = DeviceCfg::fetch_with_board_model(node, b"RB750Gr3", device)
         .await
         .expect("fetch");
@@ -47,7 +53,10 @@ async fn scripts(node: &Session, device: &DeviceAccess) -> (String, String) {
         generator.append_mutation(mutation).expect("script");
     }
     let back = revert_script(&mutations).expect("script back");
-    (script, back.into())
+    Scripts {
+        script,
+        back: back.into(),
+    }
 }
 
 #[tokio::test]
@@ -104,7 +113,7 @@ async fn the_script_back_undoes_an_apply() {
     let api = node.connect_api(crate::TEST_PASSWORD).await.expect("api");
     apply_directly(node, &device).await;
     assert_eq!(
-        scripts(&api, &device).await.0,
+        scripts(&api, &device).await.script,
         "",
         "in line after the apply"
     );
@@ -118,7 +127,7 @@ async fn the_script_back_undoes_an_apply() {
     )
     .await
     .expect("netbox's address removed");
-    let (script, back) = scripts(&api, &device).await;
+    let Scripts { script, back } = scripts(&api, &device).await;
     for change in ["by-hand", "192.168.78.1/24", "192.168.77.1/24"] {
         assert!(
             back.contains(change),
@@ -130,7 +139,7 @@ async fn the_script_back_undoes_an_apply() {
         .await
         .expect("script applied");
     assert_eq!(
-        scripts(&api, &device).await.0,
+        scripts(&api, &device).await.script,
         "",
         "in line after the script"
     );
@@ -138,7 +147,7 @@ async fn the_script_back_undoes_an_apply() {
         .await
         .unwrap_or_else(|error| panic!("script back failed: {error}\n{back}"));
     assert_eq!(
-        scripts(&api, &device).await.0,
+        scripts(&api, &device).await.script,
         script,
         "the hand changes back after the script back"
     );

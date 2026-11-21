@@ -280,42 +280,35 @@ pub fn resident(topology: &Arc<Topology>, owner: OwnerId) -> Option<Resident> {
         .collect();
     devices.sort_by_cached_key(|device| naturalize(&device.name));
     let sites = resident_sites(topology, &owned);
-    let mut locations: Vec<(String, ResidentLocation)> = topology
+    let mut locations = topology
         .locations()
         .iter()
         .filter(|(_, location)| location.site.is_some_and(|site| sites.contains(&site)))
-        .map(|(id, location)| {
-            let site = location.site.map(|id| {
-                let site = SiteAccess::create(topology.clone(), id);
-                Named {
-                    id: id.0,
-                    name: site.name().into(),
-                }
-            });
-            let key = format!(
-                "{}\0{}",
-                site.as_ref().map(|site| &*site.name).unwrap_or_default(),
-                location_key(&location.path)
-            );
-            let location = ResidentLocation {
-                id: *id,
-                path: location.path.clone(),
-                site,
-            };
-            (key, location)
+        .map(|(id, location)| ResidentLocation {
+            id: *id,
+            path: location.path.clone(),
+            site: location.site.map(|id| Named {
+                id: id.0,
+                name: SiteAccess::create(topology.clone(), id).name().into(),
+            }),
         })
-        .collect();
-    locations.sort_by(|a, b| a.0.cmp(&b.0));
+        .collect::<Vec<_>>();
+    // by site, then as the building goes
+    locations.sort_by_cached_key(|location| {
+        let site = location
+            .site
+            .as_ref()
+            .map(|site| &*site.name)
+            .unwrap_or_default();
+        format!("{site}\0{}", location_key(&location.path))
+    });
     Some(Resident {
         id: owner.0,
         name: data.name.clone(),
         ports: ports.into_iter().map(|sorted| sorted.port).collect(),
         networks: networks.into(),
         devices: devices.into(),
-        locations: locations
-            .into_iter()
-            .map(|(_, location)| location)
-            .collect(),
+        locations: locations.into(),
     })
 }
 

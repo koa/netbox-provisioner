@@ -187,18 +187,21 @@ impl Watched for Fake {
     }
 }
 
+/// What a batch of stand-ins did: the calls in their order, each member's result and log.
+struct Outcome {
+    calls: Vec<String>,
+    results: Vec<Result<(), Error>>,
+    logs: Vec<Log>,
+}
+
 /// `near` and `far`: the calls and the outcomes.
-async fn batch(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>, Vec<Log>) {
+async fn batch(near: Fake, far: Fake) -> Outcome {
     batch_needing(near, far, false).await
 }
 
 /// [`batch`], every device needing the internet before and after (the automatic rollout) with
 /// `needs_internet`.
-async fn batch_needing(
-    near: Fake,
-    far: Fake,
-    needs_internet: bool,
-) -> (Vec<String>, Vec<Result<(), Error>>, Vec<Log>) {
+async fn batch_needing(near: Fake, far: Fake, needs_internet: bool) -> Outcome {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let delays = Arc::new(Mutex::new(Vec::new()));
     let near = Fake {
@@ -236,7 +239,11 @@ async fn batch_needing(
         assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     }
     let calls = calls.lock().unwrap().clone();
-    (calls, results, logs)
+    Outcome {
+        calls,
+        results,
+        logs,
+    }
 }
 
 fn left(log: &Log) -> Vec<FallbackLeftReason> {
@@ -251,7 +258,7 @@ fn left(log: &Log) -> Vec<FallbackLeftReason> {
 
 #[tokio::test]
 async fn all_back_takes_every_fallback_away() {
-    let (calls, results, _) = batch(Fake::default(), Fake::default()).await;
+    let Outcome { calls, results, .. } = batch(Fake::default(), Fake::default()).await;
     assert_eq!(
         calls,
         [
@@ -273,7 +280,7 @@ async fn all_back_takes_every_fallback_away() {
 /// A device whose device mode has the scheduler off has no fallback to take away or leave.
 #[tokio::test]
 async fn a_device_without_scheduler_has_no_fallback_to_stop() {
-    let (calls, results, _) = batch(
+    let Outcome { calls, results, .. } = batch(
         Fake {
             no_scheduler: true,
             ..Fake::default()
@@ -284,7 +291,7 @@ async fn a_device_without_scheduler_has_no_fallback_to_stop() {
     assert!(calls.contains(&"stop far".to_string()), "{calls:?}");
     assert!(!calls.contains(&"stop near".to_string()), "{calls:?}");
     assert!(results.iter().all(Result::is_ok), "{results:?}");
-    let (_, _, logs) = batch(
+    let Outcome { logs, .. } = batch(
         Fake {
             no_scheduler: true,
             ..Fake::default()
@@ -301,7 +308,11 @@ async fn a_device_without_scheduler_has_no_fallback_to_stop() {
 
 #[tokio::test]
 async fn one_not_back_leaves_every_fallback() {
-    let (calls, results, logs) = batch(
+    let Outcome {
+        calls,
+        results,
+        logs,
+    } = batch(
         Fake::default(),
         Fake {
             lost: true,
@@ -326,7 +337,11 @@ async fn one_not_back_leaves_every_fallback() {
 /// lab-w60-b: reached over another way, but its script never ran
 #[tokio::test]
 async fn one_back_but_not_in_line_leaves_every_fallback() {
-    let (calls, results, logs) = batch(
+    let Outcome {
+        calls,
+        results,
+        logs,
+    } = batch(
         Fake::default(),
         Fake {
             left: true,
@@ -351,7 +366,11 @@ async fn one_back_but_not_in_line_leaves_every_fallback() {
 /// the others' scripts go on; the one not started leaves its device not in line
 #[tokio::test]
 async fn a_script_not_started_sends_all_back() {
-    let (calls, results, logs) = batch(
+    let Outcome {
+        calls,
+        results,
+        logs,
+    } = batch(
         Fake {
             start_fails: true,
             ..Fake::default()
@@ -430,7 +449,7 @@ async fn a_changed_radio_holds_the_watchdogs_until_all_are_back() {
         radio: true,
         ..Fake::default()
     };
-    let (calls, results, _) = batch(radio(), Fake::default()).await;
+    let Outcome { calls, results, .. } = batch(radio(), Fake::default()).await;
     assert_eq!(
         calls,
         [
@@ -449,7 +468,7 @@ async fn a_changed_radio_holds_the_watchdogs_until_all_are_back() {
         ]
     );
     assert!(results.iter().all(Result::is_ok), "{results:?}");
-    let (calls, _, _) = batch(
+    let Outcome { calls, .. } = batch(
         radio(),
         Fake {
             lost: true,
@@ -462,7 +481,7 @@ async fn a_changed_radio_holds_the_watchdogs_until_all_are_back() {
         Some("keep near"),
         "{calls:?}"
     );
-    let (calls, _, _) = batch(
+    let Outcome { calls, .. } = batch(
         radio(),
         Fake {
             write_fails: true,
@@ -479,7 +498,7 @@ async fn a_changed_radio_holds_the_watchdogs_until_all_are_back() {
 
 #[tokio::test]
 async fn a_failing_write_starts_nothing() {
-    let (calls, results, _) = batch(
+    let Outcome { calls, results, .. } = batch(
         Fake {
             write_fails: true,
             ..Fake::default()
@@ -514,7 +533,7 @@ async fn a_failing_write_starts_nothing() {
 
 #[tokio::test]
 async fn a_failing_plan_applies_nothing() {
-    let (calls, results, _) = batch(
+    let Outcome { calls, results, .. } = batch(
         Fake {
             plan_fails: true,
             ..Fake::default()
@@ -539,7 +558,7 @@ async fn each_failing_plan_keeps_its_own_error() {
         plan_fails: true,
         ..Fake::default()
     };
-    let (_, results, _) = batch(failing(), failing()).await;
+    let Outcome { results, .. } = batch(failing(), failing()).await;
     assert!(
         results
             .iter()
@@ -550,7 +569,7 @@ async fn each_failing_plan_keeps_its_own_error() {
 
 #[tokio::test]
 async fn a_failing_fallback_takes_the_others_away() {
-    let (calls, results, _) = batch(
+    let Outcome { calls, results, .. } = batch(
         Fake {
             arm_fails: true,
             ..Fake::default()
@@ -579,7 +598,7 @@ async fn a_failing_fallback_takes_the_others_away() {
 
 #[tokio::test]
 async fn a_device_in_line_is_left_out() {
-    let (calls, results, _) = batch(
+    let Outcome { calls, results, .. } = batch(
         Fake {
             nothing_to_do: true,
             ..Fake::default()
@@ -611,7 +630,11 @@ async fn a_fired_fallback_ends_the_wait() {
         left: true,
         ..Fake::default()
     };
-    let (calls, results, logs) = batch(
+    let Outcome {
+        calls,
+        results,
+        logs,
+    } = batch(
         near,
         Fake {
             lost: true,
@@ -641,7 +664,7 @@ async fn a_fallback_brought_forward_bounds_the_wait() {
         pending: Some(Pending::Armed(Some(Duration::from_millis(50)))),
         ..Fake::default()
     };
-    let (calls, results, _) = batch(
+    let Outcome { calls, results, .. } = batch(
         near,
         Fake {
             lost: true,
@@ -663,7 +686,7 @@ async fn a_fallback_brought_forward_bounds_the_wait() {
 
 /// A batch going on after a restart, its scripts running: `near` and `far`, the calls and the
 /// outcomes.
-async fn resumed(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>, Vec<Log>) {
+async fn resumed(near: Fake, far: Fake) -> Outcome {
     use crate::device_state::ApplyState;
     let calls = Arc::new(Mutex::new(Vec::new()));
     let logs = vec![Log::new("near"), Log::new("far")];
@@ -720,17 +743,25 @@ async fn resumed(near: Fake, far: Fake) -> (Vec<String>, Vec<Result<(), Error>>,
         assert!(log.unexpected().is_empty(), "{:?}", log.unexpected());
     }
     let calls = calls.lock().unwrap().clone();
-    (calls, results, logs)
+    Outcome {
+        calls,
+        results,
+        logs,
+    }
 }
 
 /// After a restart the batch goes on where its scripts run: all back, every fallback goes;
 /// one not back, none does.
 #[tokio::test]
 async fn a_resumed_batch_keeps_its_rules() {
-    let (calls, results, _) = resumed(Fake::default(), Fake::default()).await;
+    let Outcome { calls, results, .. } = resumed(Fake::default(), Fake::default()).await;
     assert_eq!(calls, ["stop near", "stop far"]);
     assert!(results.iter().all(Result::is_ok), "{results:?}");
-    let (calls, results, logs) = resumed(
+    let Outcome {
+        calls,
+        results,
+        logs,
+    } = resumed(
         Fake::default(),
         Fake {
             lost: true,
@@ -753,7 +784,7 @@ async fn a_resumed_batch_keeps_its_rules() {
 /// batch before anything is armed.
 #[tokio::test]
 async fn no_internet_before_applies_nothing() {
-    let (calls, results, _) = batch_needing(
+    let Outcome { calls, results, .. } = batch_needing(
         Fake::default(),
         Fake {
             offline_before: true,
@@ -774,7 +805,7 @@ async fn no_internet_before_applies_nothing() {
 /// then the fallbacks go.
 #[tokio::test]
 async fn the_internet_is_waited_for_after_the_scripts() {
-    let (calls, results, _) = batch_needing(
+    let Outcome { calls, results, .. } = batch_needing(
         Fake {
             offline_looks: 3,
             ..Fake::default()
@@ -790,7 +821,11 @@ async fn the_internet_is_waited_for_after_the_scripts() {
 /// A device in line but without the internet after its script sends all back.
 #[tokio::test]
 async fn no_internet_after_sends_all_back() {
-    let (calls, results, logs) = batch_needing(
+    let Outcome {
+        calls,
+        results,
+        logs,
+    } = batch_needing(
         Fake::default(),
         Fake {
             offline_after: true,
@@ -817,7 +852,11 @@ async fn no_internet_after_sends_all_back() {
 /// credentials before; also in a batch by hand.
 #[tokio::test]
 async fn an_ospf_neighbor_missing_after_sends_all_back() {
-    let (calls, results, logs) = batch(
+    let Outcome {
+        calls,
+        results,
+        logs,
+    } = batch(
         Fake::default(),
         Fake {
             ospf_missing: true,
@@ -842,7 +881,7 @@ async fn an_ospf_neighbor_missing_after_sends_all_back() {
 /// Without the need, nothing pings the internet.
 #[tokio::test]
 async fn a_batch_by_hand_doesnt_ask_for_the_internet() {
-    let (calls, results, _) = batch(
+    let Outcome { calls, results, .. } = batch(
         Fake {
             offline_before: true,
             offline_after: true,

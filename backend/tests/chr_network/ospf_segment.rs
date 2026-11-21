@@ -174,17 +174,19 @@ async fn set_port_disabled(device: &Session, port: &str, disabled: bool) {
     .expect("port switched");
 }
 
-/// The segment booted, the switch bridging its four ports and every speaker applied: the nodes
-/// (they stop when dropped), the topology and the speakers' APIs in the order of
-/// [`Segment::speakers`].
-async fn boot(
-    test: &str,
-) -> (
-    HashMap<DeviceId, RunningNode>,
-    TopologyHolder,
-    [DeviceId; 4],
-    Vec<Session>,
-) {
+/// A booted segment.
+struct Booted {
+    /// they stop when dropped
+    nodes: HashMap<DeviceId, RunningNode>,
+    holder: TopologyHolder,
+    speakers: [DeviceId; 4],
+    /// in the order of `speakers`
+    apis: Vec<Session>,
+}
+
+/// The segment booted, the switch bridging its four ports and every speaker applied: the nodes,
+/// the topology and the speakers' APIs in the order of [`Segment::speakers`].
+async fn boot(test: &str) -> Booted {
     let golden = crate::chr_network::golden_image::ensure_golden_image(
         &crate::cache_dir(),
         crate::TEST_PASSWORD,
@@ -238,7 +240,12 @@ async fn boot(
                 .expect("api"),
         );
     }
-    (nodes, holder, speakers, apis)
+    Booted {
+        nodes,
+        holder,
+        speakers,
+        apis,
+    }
 }
 
 #[tokio::test]
@@ -248,7 +255,11 @@ async fn bridge_devices_are_never_dr_or_bdr_of_their_segment() {
         eprintln!("skipping: `nix` is not available in this environment");
         return;
     }
-    let (_nodes, _, _, apis) = boot("chr-network-ospf-segment-test").await;
+    let Booted {
+        nodes: _nodes,
+        apis,
+        ..
+    } = boot("chr-network-ospf-segment-test").await;
     let [_, bridge_a, bridge_b, _] = &apis[..] else {
         unreachable!()
     };
@@ -354,7 +365,12 @@ async fn an_empty_networks_is_unset_by_the_apply() {
         eprintln!("skipping: `nix` is not available in this environment");
         return;
     }
-    let (nodes, holder, speakers, apis) = boot("chr-network-empty-networks").await;
+    let Booted {
+        nodes,
+        holder,
+        speakers,
+        apis,
+    } = boot("chr-network-empty-networks").await;
     let near = &apis[0];
     let far: Ipv4Addr = "192.168.255.24".parse().unwrap();
     let near_node = &nodes[&speakers[0]];

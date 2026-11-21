@@ -28,8 +28,28 @@ struct Chain {
     builder: TopologyBuilder,
     routers: [DeviceId; 3],
     /// the ports of the edge r2–r3
-    far_edge: (InterfaceId, InterfaceId),
+    far_edge: Ports,
 }
+
+/// The two ports of an edge.
+#[derive(Clone, Copy)]
+struct Ports {
+    a: InterfaceId,
+    b: InterfaceId,
+}
+
+/// The states of the edge r1–r2 (`near`) and r2–r3 (`far`).
+#[derive(Debug, PartialEq)]
+struct States {
+    near: EdgeState,
+    far: EdgeState,
+}
+
+/// Both edges up.
+const BOTH_UP: States = States {
+    near: EdgeState::Up,
+    far: EdgeState::Up,
+};
 
 fn build() -> Chain {
     let mut builder = TopologyBuilder::default();
@@ -95,7 +115,7 @@ fn build() -> Chain {
     Chain {
         builder,
         routers: routers.try_into().unwrap(),
-        far_edge: (r2b, r3),
+        far_edge: Ports { a: r2b, b: r3 },
     }
 }
 
@@ -120,15 +140,18 @@ async fn set_port_disabled(device: &Session, port: &str, disabled: bool) {
 }
 
 /// The state of the edge r1–r2 and of r2–r3.
-fn states(edges: &[Edge], far_edge: (InterfaceId, InterfaceId)) -> (EdgeState, EdgeState) {
-    let is_far = |edge: &&Edge| (edge.a, edge.b) == far_edge || (edge.b, edge.a) == far_edge;
+fn states(edges: &[Edge], far_edge: Ports) -> States {
+    let is_far = |edge: &&Edge| {
+        (edge.a == far_edge.a && edge.b == far_edge.b)
+            || (edge.a == far_edge.b && edge.b == far_edge.a)
+    };
     let far = edges.iter().find(is_far).expect("the edge r2–r3").state;
     let near = edges
         .iter()
         .find(|edge| !is_far(edge))
         .expect("the edge r1–r2")
         .state;
-    (near, far)
+    States { near, far }
 }
 
 #[tokio::test]
@@ -178,7 +201,7 @@ async fn the_lsdb_gives_the_state_of_each_edge() {
             .await
             .unwrap_or_else(|e| panic!("{instance}: {e}"));
     }
-    let wait_for = |want: (EdgeState, EdgeState), what: &'static str| {
+    let wait_for = |want: States, what: &'static str| {
         let (r1, devices) = (&r1, &devices);
         async move {
             wait_until(
@@ -193,12 +216,12 @@ async fn the_lsdb_gives_the_state_of_each_edge() {
             .unwrap_or_else(|e| panic!("{what}: {e}"));
         }
     };
-    wait_for((EdgeState::Up, EdgeState::Up), "both up").await;
+    wait_for(BOTH_UP, "both up").await;
 
     set_port_disabled(&r3, "ether2", true).await;
     wait_until(
         || async {
-            let (near, far) = states(&edges(&devices, &lsdb(&r1).await), far_edge);
+            let States { near, far } = states(&edges(&devices, &lsdb(&r1).await), far_edge);
             eprintln!("r3 cut off: {near:?} {far:?}");
             Ok(near == EdgeState::Up && matches!(far, EdgeState::Down(_)))
         },
@@ -208,5 +231,5 @@ async fn the_lsdb_gives_the_state_of_each_edge() {
     .expect("r2–r3 down, r1–r2 up");
 
     set_port_disabled(&r3, "ether2", false).await;
-    wait_for((EdgeState::Up, EdgeState::Up), "both up again").await;
+    wait_for(BOTH_UP, "both up again").await;
 }

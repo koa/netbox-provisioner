@@ -87,6 +87,12 @@ struct Linked {
     router_port: InterfaceAccess,
 }
 
+/// A router at the far end of Anschlüsse, the devices linked to it.
+struct RouterOf {
+    router: DeviceAccess,
+    linked: Vec<Linked>,
+}
+
 /// A WLAN of the network and the controller registering its clients.
 struct WlanAt {
     ssid: Box<str>,
@@ -233,7 +239,7 @@ impl QueryLive {
     ) -> Result<SeenUplinks, ApiError> {
         let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
         let owner = acting_for(context, &topology, resident)?;
-        let mut routers = BTreeMap::<DeviceId, (DeviceAccess, Vec<Linked>)>::new();
+        let mut routers = BTreeMap::<DeviceId, RouterOf>::new();
         for device in topology
             .owned_by(owner)
             .devices
@@ -253,23 +259,21 @@ impl QueryLive {
             };
             routers
                 .entry(router.id())
-                .or_insert_with(|| (router, Vec::new()))
-                .1
+                .or_insert_with(|| RouterOf {
+                    router,
+                    linked: Vec::new(),
+                })
+                .linked
                 .push(Linked {
                     device,
                     uplink,
                     router_port,
                 });
         }
-        let read = join_all(
-            routers
-                .into_values()
-                .map(|(router, linked)| async move { (seen_by(&router).await, router, linked) }),
-        )
-        .await;
+        let seen = join_all(routers.values().map(|of| seen_by(&of.router))).await;
         let mut devices = Vec::new();
         let mut unreachable = Vec::new();
-        for (seen, router, linked) in read {
+        for (RouterOf { router, linked }, seen) in routers.into_values().zip(seen) {
             let Ok(seen) = seen else {
                 unreachable.push(Named {
                     id: router.id().0,

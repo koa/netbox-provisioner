@@ -43,13 +43,20 @@ async fn mac_telnet_setup_over_31() {
     mac_telnet_setup(31, "chr-network-mac-telnet-31-test").await;
 }
 
+/// The two addresses on a cable: the entry's (the neighbor of the device set up) and the new
+/// device's.
+struct CableAddresses {
+    neighbor: String,
+    device: String,
+}
+
 /// The entry's address and the new device's on cable `n` (0, 1) as `/len` (30 or 31).
-fn cable_addresses(n: u8, len: u8) -> (String, String) {
+fn cable_addresses(n: u8, len: u8) -> CableAddresses {
     let base = n * 4 + if len == 31 { 0 } else { 1 };
-    (
-        format!("192.168.77.{base}/{len}"),
-        format!("192.168.77.{}/{len}", base + 1),
-    )
+    CableAddresses {
+        neighbor: format!("192.168.77.{base}/{len}"),
+        device: format!("192.168.77.{}/{len}", base + 1),
+    }
 }
 
 async fn mac_telnet_setup(len: u8, work_dir: &str) {
@@ -100,7 +107,7 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
         .await
         .expect("entry api");
     for (n, interface) in [(0, "ether2"), (1, "ether3")] {
-        add_address(&entry_api, &cable_addresses(n, len).0, interface).await;
+        add_address(&entry_api, &cable_addresses(n, len).neighbor, interface).await;
     }
     forward_ssh(&entry_api).await;
     wait_for_boot(&fresh).await;
@@ -118,7 +125,10 @@ async fn mac_telnet_setup(len: u8, work_dir: &str) {
         // has a password already: the factory login is refused, the second one works
         (&configured, 2, crate::TEST_PASSWORD),
     ] {
-        let (neighbor, address) = cable_addresses(slot as u8 - 1, len);
+        let CableAddresses {
+            neighbor,
+            device: address,
+        } = cable_addresses(slot as u8 - 1, len);
         let neighbor = neighbor.split('/').next().unwrap();
         let address = address.as_str();
         let mut terminal = Terminal::connect(

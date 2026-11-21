@@ -26,18 +26,24 @@ use std::path::Path;
 
 const DNS: &str = "2001:db8::53";
 
-/// `(interface, advertise-dns, RouterOS's note)` of each entry.
-async fn entries(node: &Session) -> Vec<(String, Option<bool>, Option<String>)> {
+/// An entry of `/ipv6/nd`: its interface, `advertise-dns` and RouterOS's note.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Nd {
+    interface: String,
+    advertise_dns: Option<bool>,
+    note: Option<String>,
+}
+
+/// Each entry of `/ipv6/nd`, by interface.
+async fn entries(node: &Session) -> Vec<Nd> {
     let mut entries = collect_resource::<Ipv6Nd>(node)
         .await
         .expect("nd read")
         .iter()
-        .map(|nd| {
-            (
-                nd.cfg.interface.to_string(),
-                nd.cfg.advertise_dns,
-                nd.status.about.as_ref().map(ToString::to_string),
-            )
+        .map(|nd| Nd {
+            interface: nd.cfg.interface.to_string(),
+            advertise_dns: nd.cfg.advertise_dns,
+            note: nd.status.about.as_ref().map(ToString::to_string),
         })
         .collect::<Vec<_>>();
     entries.sort();
@@ -118,11 +124,14 @@ async fn an_added_entry_advertises_the_dns_servers() {
     let device = holder.devices_by_id(router).await.unwrap();
     let node = &nodes[&router];
     let api = node.connect_api(crate::TEST_PASSWORD).await.expect("api");
-    let advertising = || {
-        vec![
-            ("ether2".to_string(), Some(true), None),
-            ("ether3".to_string(), Some(true), None),
-        ]
+    let advertising = || -> Vec<Nd> {
+        ["ether2", "ether3"]
+            .map(|interface| Nd {
+                interface: interface.into(),
+                advertise_dns: Some(true),
+                note: None,
+            })
+            .into()
     };
 
     // over the API
