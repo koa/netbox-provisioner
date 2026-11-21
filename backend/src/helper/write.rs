@@ -1156,7 +1156,7 @@ async fn update_wireless_lan(
         });
     }
     if let Some(enabled) = update.enabled {
-        let new = super::wlan_status(enabled);
+        let new = crate::netbox::WlanStatus::switched(enabled).value();
         change.insert("status".into(), json!(new));
         before.insert("status".into(), json!(status));
         changes.push(FieldChange {

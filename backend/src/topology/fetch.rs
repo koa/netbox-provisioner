@@ -1,7 +1,7 @@
 //! Scope: Building the topology from NetBox's answer; not the query (`netbox::fetch_topology`).
 use crate::{
     netbox::{
-        NetboxError, fetch_topology,
+        NetboxError, WlanStatus, fetch_topology,
         fetch_topology::{
             CableTermination, ClusterScope, FetchTopology, PrefixScope, Region, ServiceParent,
         },
@@ -220,7 +220,7 @@ impl Builder {
                     self.wlans.insert(
                         id,
                         WlanData {
-                            enabled: wlan.status != "disabled",
+                            enabled: WlanStatus::of(&wlan.status) != Some(WlanStatus::Disabled),
                             ssid: wlan.ssid.into_boxed_str(),
                             vlan,
                             wlan_auth,

@@ -1,5 +1,5 @@
-//! Scope: Talking to NetBox: its URLs, the authorization and the types of its scalars and custom
-//! fields; not what is built from the answer (`topology`).
+//! Scope: Talking to NetBox: its URLs, the authorization and the types of its scalars, custom
+//! fields and choice values; not what is built from the answer (`topology`).
 use crate::config::CONFIG;
 use cynic::{GraphQlError, GraphQlResponse, QueryBuilder};
 use reqwest::header::{AUTHORIZATION, HeaderMap};
@@ -12,6 +12,45 @@ pub mod owners;
 pub mod rest;
 
 /// NetBox' `BigInt` (an interface's `speed`), sent as a number or as a string.
+/// NetBox' `status` of a wireless LAN (`WirelessLANStatusChoices`), which its GraphQL gives as a
+/// plain string.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum WlanStatus {
+    Active,
+    Reserved,
+    Disabled,
+    Deprecated,
+}
+
+impl WlanStatus {
+    /// The status of NetBox' value `status`, none for one it doesn't have.
+    pub fn of(status: &str) -> Option<WlanStatus> {
+        match status {
+            "active" => Some(WlanStatus::Active),
+            "reserved" => Some(WlanStatus::Reserved),
+            "disabled" => Some(WlanStatus::Disabled),
+            "deprecated" => Some(WlanStatus::Deprecated),
+            _ => None,
+        }
+    }
+    /// NetBox' value.
+    pub fn value(self) -> &'static str {
+        match self {
+            WlanStatus::Active => "active",
+            WlanStatus::Reserved => "reserved",
+            WlanStatus::Disabled => "disabled",
+            WlanStatus::Deprecated => "deprecated",
+        }
+    }
+    /// The status of a WLAN switched on or off.
+    pub fn switched(enabled: bool) -> WlanStatus {
+        match enabled {
+            true => WlanStatus::Active,
+            false => WlanStatus::Disabled,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum BigInt {
