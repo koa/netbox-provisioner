@@ -411,11 +411,13 @@ fn port(owned: &Owned, interface: &InterfaceAccess) -> Option<ResidentPort> {
 fn socket_port(owned: &Owned, socket: &FrontPortAccess) -> Option<ResidentPort> {
     let data = socket.data()?;
     let device = socket.device()?;
-    let far_ends = interfaces_at(CablePortAccess::FrontPort(socket.clone()))
+    let far_ends = socket
+        .plugged_in()
         .iter()
         .filter_map(|far| far_end(owned, far))
         .collect();
-    let network = switch_port(socket)
+    let network = socket
+        .interface_behind()
         .as_ref()
         .map(PortNetwork::of)
         .unwrap_or_default();
@@ -470,27 +472,6 @@ impl PortNetwork {
     fn foreign(&self, owned: &Owned) -> bool {
         self.own(owned).is_none() && (self.vlan.is_some() || self.addressed)
     }
-}
-
-/// The interfaces the cables from `start` end at, through patch panels.
-/// The switch port behind the wall of `socket`: the first interface the rear port's cables
-/// reach. It carries the socket's network.
-pub(crate) fn switch_port(socket: &FrontPortAccess) -> Option<InterfaceAccess> {
-    let rear = socket.rear_port()?;
-    interfaces_at(CablePortAccess::RearPort(rear))
-        .into_vec()
-        .into_iter()
-        .next()
-}
-
-pub(crate) fn interfaces_at(start: CablePortAccess) -> Box<[InterfaceAccess]> {
-    let mut found = Vec::new();
-    start.walk_cable(&mut |path| {
-        if let CablePortAccess::Interface(interface) = path.far_port() {
-            found.push(interface.clone());
-        }
-    });
-    found.into()
 }
 
 /// Whether the cable of `interface` (a port of the resident's device) goes into one of its

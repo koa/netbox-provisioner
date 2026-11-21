@@ -1,7 +1,10 @@
 //! Scope: Access to a patch panel's front port; nothing else.
 use crate::topology::{
     FrontPort, FrontPortId, Topology,
-    access::{AccessTopology, cable::CableAccess, device::DeviceAccess, rear_port::RearPortAccess},
+    access::{
+        AccessTopology, cable::CableAccess, cable::CablePortAccess, device::DeviceAccess,
+        interface::InterfaceAccess, rear_port::RearPortAccess,
+    },
 };
 use std::sync::Arc;
 
@@ -46,5 +49,18 @@ impl FrontPortAccess {
         self.data()
             .and_then(|d| d.rear_port)
             .map(self.create_access())
+    }
+    /// The interface behind the wall of this socket: the first one its rear port's cables
+    /// reach, a switch port carrying the socket's network.
+    pub fn interface_behind(&self) -> Option<InterfaceAccess> {
+        CablePortAccess::RearPort(self.rear_port()?)
+            .connected_interfaces()
+            .into_vec()
+            .into_iter()
+            .next()
+    }
+    /// The interfaces the cables from its front side end at: what is plugged into the socket.
+    pub fn plugged_in(&self) -> Box<[InterfaceAccess]> {
+        CablePortAccess::FrontPort(self.clone()).connected_interfaces()
     }
 }

@@ -218,4 +218,14 @@ impl CablePortAccess {
         self.walk_cable(&mut |cable_path| result.push(cable_path));
         result.into_boxed_slice()
     }
+    /// The interfaces the cables from this port end at, through patch panels and circuits.
+    pub fn connected_interfaces(&self) -> Box<[InterfaceAccess]> {
+        let mut result = Vec::new();
+        self.walk_cable(&mut |path| {
+            if let CablePortAccess::Interface(interface) = path.far_port() {
+                result.push(interface.clone());
+            }
+        });
+        result.into_boxed_slice()
+    }
 }

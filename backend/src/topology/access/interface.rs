@@ -108,15 +108,7 @@ impl InterfaceAccess {
         self.data().map(|d| d.device).map(self.create_access())
     }
     pub fn connected_interfaces(&self) -> Box<[InterfaceAccess]> {
-        let mut result = Vec::new();
-        self.cable_port().walk_cable(
-            &mut (|p| {
-                if let CablePortAccess::Interface(a) = p.far_port() {
-                    result.push(a.clone())
-                }
-            }),
-        );
-        result.into_boxed_slice()
+        self.cable_port().connected_interfaces()
     }
 
     pub fn cable_port(&self) -> CablePortAccess {

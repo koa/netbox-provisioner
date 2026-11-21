@@ -12,7 +12,7 @@
 //! the management roots (`ManagementTree` before and after the plan), nor its own when it
 //! connects. Saving writes the plan as a `NetboxWrite` job of the plan's device, as the admins'
 //! helpers do; the devices get it from the automatic rollout.
-use super::{Named, PortKind, interfaces_at, switch_port};
+use super::{Named, PortKind};
 use crate::{
     Error,
     config::CONFIG,
@@ -35,8 +35,8 @@ use crate::{
     topology::{
         DeviceId, FrontPortId, InterfaceId, OwnerId, Topology, TopologyHolder, VlanId, WlanId,
         access::{
-            AccessTopology, cable::CablePortAccess, device::DeviceAccess,
-            front_port::FrontPortAccess, interface::InterfaceAccess,
+            AccessTopology, device::DeviceAccess, front_port::FrontPortAccess,
+            interface::InterfaceAccess,
         },
         management::ManagementTree,
         ownership::Owned,
@@ -156,13 +156,12 @@ pub(super) fn acting_for(
     }
 }
 
-/// The helper for `owner`'s `change`, refused for what isn't its own.
+/// The helper for the change of the resident owning `owned`, refused for what isn't its own.
 fn helper_for(
     topology: &Arc<Topology>,
-    owner: OwnerId,
+    owned: &Owned,
     change: ResidentChange,
 ) -> Result<Helper, Error> {
-    let owned = topology.owned_by(owner);
     match change {
         ResidentChange::Wlan(change) => {
             if !owned.wlans.contains(&WlanId(change.wlan)) {
@@ -170,10 +169,10 @@ fn helper_for(
             }
             Ok(Helper::Wlan(change))
         }
-        ResidentChange::PortVlan(change) => port_vlan_helper(topology, &owned, &change),
-        ResidentChange::ConnectDevice(change) => connect_helper(topology, &owned, &change),
-        ResidentChange::DisconnectDevice(device) => disconnect_helper(topology, &owned, device),
-        ResidentChange::DeviceRoom(change) => room_helper(topology, &owned, &change),
+        ResidentChange::PortVlan(change) => port_vlan_helper(topology, owned, &change),
+        ResidentChange::ConnectDevice(change) => connect_helper(topology, owned, &change),
+        ResidentChange::DisconnectDevice(device) => disconnect_helper(topology, owned, device),
+        ResidentChange::DeviceRoom(change) => room_helper(topology, owned, &change),
     }
 }
 
@@ -210,7 +209,7 @@ async fn checked_plan(
     let owned = topology.owned_by(owner);
     // a resident connecting keeps its devices reached, one disconnecting cuts its own off
     let own_may_go = matches!(change, ResidentChange::DisconnectDevice(_));
-    let helper = helper_for(topology, owner, change)?;
+    let helper = helper_for(topology, &owned, change)?;
     let plan = helper.plan(topology).await?;
     let cuts_cables = plan
         .steps
@@ -273,6 +272,52 @@ fn own_device(topology: &Arc<Topology>, owned: &Owned, device: u32) -> Result<De
         .ok_or(Error::UnknownDevice(device))
 }
 
+/// A row of the resident's ports (`ResidentPort.id` with its `kind`): the interface, for a
+/// socket the switch port behind it.
+struct OwnedPort {
+    port: InterfaceAccess,
+    socket: Option<FrontPortAccess>,
+}
+
+/// The resident's port `id` of `kind`, or why not.
+fn owned_port(
+    topology: &Arc<Topology>,
+    owned: &Owned,
+    kind: PortKind,
+    id: u32,
+) -> Result<OwnedPort, Error> {
+    match kind {
+        PortKind::Interface => {
+            if !owned.ports.contains(&InterfaceId(id)) {
+                return Err(Error::NotOwned(format!("port {id}").into()));
+            }
+            let port = topology
+                .get_interface_by_id(InterfaceId(id))
+                .ok_or(Error::UnknownInterface(id))?;
+            Ok(OwnedPort { port, socket: None })
+        }
+        PortKind::Socket => {
+            if !owned.sockets.contains(&FrontPortId(id)) {
+                return Err(Error::NotOwned(format!("socket {id}").into()));
+            }
+            let socket = FrontPortAccess::create(topology.clone(), FrontPortId(id));
+            let port = socket.interface_behind().ok_or_else(|| {
+                let name = socket
+                    .device()
+                    .map(|device| {
+                        format!("{} {}", device.name(), socket.name().unwrap_or_default())
+                    })
+                    .unwrap_or_default();
+                Error::SocketWithoutPort(name.into())
+            })?;
+            Ok(OwnedPort {
+                port,
+                socket: Some(socket),
+            })
+        }
+    }
+}
+
 /// The link of `change`: to the resident's port, the switch port behind its socket, or a port
 /// of another of its devices; what hangs there now has to be its own.
 fn connect_helper(
@@ -291,28 +336,11 @@ fn connect_helper(
             .ok_or_else(|| Error::NotOwned(format!("port {id}").into()))?,
         None => uplink_port(&device).ok_or_else(|| Error::NoUplinkPort(device.name().into()))?,
     };
-    let (port, socket, in_the_way) = match change.kind {
-        PortKind::Interface => {
-            if !owned.ports.contains(&InterfaceId(change.port)) {
-                return Err(Error::NotOwned(format!("port {}", change.port).into()));
-            }
-            let port = topology
-                .get_interface_by_id(InterfaceId(change.port))
-                .ok_or(Error::UnknownInterface(change.port))?;
-            let at = port.connected_interfaces().into_vec();
-            (port, None, at)
-        }
-        PortKind::Socket => {
-            if !owned.sockets.contains(&FrontPortId(change.port)) {
-                return Err(Error::NotOwned(format!("socket {}", change.port).into()));
-            }
-            let socket = FrontPortAccess::create(topology.clone(), FrontPortId(change.port));
-            let port = switch_port(&socket).ok_or_else(|| {
-                Error::SocketWithoutPort(socket.name().unwrap_or_default().into())
-            })?;
-            let at = interfaces_at(CablePortAccess::FrontPort(socket)).into_vec();
-            (port, Some(change.port), at)
-        }
+    let at = owned_port(topology, owned, change.kind, change.port)?;
+    // what is plugged in there now: at a socket's front, else at the port
+    let in_the_way = match &at.socket {
+        Some(socket) => socket.plugged_in(),
+        None => at.port.connected_interfaces(),
     };
     if let Some(foreign) = in_the_way
         .iter()
@@ -322,8 +350,11 @@ fn connect_helper(
         return Err(Error::NotOwned(foreign.name().into()));
     }
     Ok(Helper::ConnectDevice(ConnectDeviceInput {
-        port: port.id().0,
-        socket,
+        port: at.port.id().0,
+        socket: at
+            .socket
+            .as_ref()
+            .map(|socket| AccessTopology::id(socket).0),
         device_port: device_port.id().0,
     }))
 }
@@ -370,31 +401,7 @@ fn port_vlan_helper(
     change: &PortVlanChange,
 ) -> Result<Helper, Error> {
     let not_owned = |what: String| Error::NotOwned(what.into());
-    let port = match change.kind {
-        PortKind::Interface => {
-            if !owned.ports.contains(&InterfaceId(change.port)) {
-                return Err(not_owned(format!("port {}", change.port)));
-            }
-            topology
-                .get_interface_by_id(InterfaceId(change.port))
-                .ok_or(Error::UnknownInterface(change.port))?
-        }
-        PortKind::Socket => {
-            if !owned.sockets.contains(&FrontPortId(change.port)) {
-                return Err(not_owned(format!("socket {}", change.port)));
-            }
-            let socket = FrontPortAccess::create(topology.clone(), FrontPortId(change.port));
-            switch_port(&socket).ok_or_else(|| {
-                let name = socket
-                    .device()
-                    .map(|device| {
-                        format!("{} {}", device.name(), socket.name().unwrap_or_default())
-                    })
-                    .unwrap_or_default();
-                Error::SocketWithoutPort(name.into())
-            })?
-        }
-    };
+    let OwnedPort { port, .. } = owned_port(topology, owned, change.kind, change.port)?;
     if let Some(vlan) = change.vlan
         && !owned.vlans.contains(&VlanId(vlan))
     {
