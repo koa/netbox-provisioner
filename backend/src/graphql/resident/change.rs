@@ -427,84 +427,77 @@ fn port_vlan_helper(
 }
 
 fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
-    let wlans = plan
-        .steps
-        .iter()
-        .filter_map(|step| match step {
-            PlanStep::UpdateWirelessLan(update) => Some(update.clone()),
-            _ => None,
-        })
-        .collect();
-    let ports = plan
-        .steps
-        .iter()
-        .filter_map(|step| match step {
-            PlanStep::UpdatePortVlan(update) => Some(update.clone()),
-            _ => None,
-        })
-        .collect();
-    let cables_added = plan
-        .steps
-        .iter()
-        .filter_map(|step| match step {
-            PlanStep::CreateCable(create) => Some(create.clone()),
-            _ => None,
-        })
-        .collect();
-    let cables_removed = plan
-        .steps
-        .iter()
-        .filter_map(|step| match step {
-            PlanStep::DeleteCable(delete) => Some(delete.clone()),
-            _ => None,
-        })
-        .collect();
-    let rooms = plan
-        .steps
-        .iter()
-        .filter_map(|step| match step {
-            PlanStep::UpdateDeviceLocation(update) => Some(update.clone()),
-            _ => None,
-        })
-        .collect();
-    let device = plan.device();
-    let touched = plan
-        .steps
-        .iter()
-        .flat_map(touched_devices)
-        .filter_map(|id| device.topology().get_device_by_id(&DeviceId(id)))
-        .collect::<Vec<_>>();
-    let aps = plan
-        .steps
-        .iter()
-        .find_map(|step| match step {
-            PlanStep::UpdateWirelessLan(update) => {
-                helper::wlan::wlan(device.topology(), update.id).ok()
+    let mut wlans = Vec::new();
+    let mut ports = Vec::new();
+    let mut cables_added = Vec::new();
+    let mut cables_removed = Vec::new();
+    let mut rooms = Vec::new();
+    // the devices a step changes something at (a created one's id is a preview id, which the
+    // topology hasn't)
+    let mut touched = Vec::<u32>::new();
+    for step in &plan.steps {
+        match step {
+            PlanStep::UpdateWirelessLan(update) => wlans.push(update.clone()),
+            PlanStep::UpdatePortVlan(update) => {
+                touched.push(update.interface.device.id);
+                ports.push(update.clone());
             }
-            _ => None,
-        })
+            PlanStep::CreateCable(create) => {
+                touched.extend([create.a.device.id, create.b.device.id]);
+                cables_added.push(create.clone());
+            }
+            PlanStep::DeleteCable(delete) => {
+                touched.push(delete.port.device.id);
+                touched.extend(delete.far.iter().map(|far| far.device.id));
+                cables_removed.push(delete.clone());
+            }
+            // a room is NetBox's only: the device's configuration stays
+            PlanStep::UpdateDeviceLocation(update) => rooms.push(update.clone()),
+            PlanStep::CreateInterface(create) => touched.push(create.device.id),
+            PlanStep::CreateAddress(create) => touched.push(create.device.id),
+            PlanStep::SetPrimaryIp(set) => touched.push(set.device.id),
+            PlanStep::UpdateInterface(update) => touched.push(update.interface.device.id),
+            PlanStep::DeleteAddress(delete) => touched.push(delete.interface.device.id),
+            PlanStep::UpdatePort(update) => touched.push(update.interface.device.id),
+            PlanStep::DeleteInterface(delete) => touched.push(delete.interface.device.id),
+            PlanStep::CreateWirelessLink(link) => {
+                touched.extend([link.a.device.id, link.b.device.id])
+            }
+            PlanStep::UpdateWirelessLink(link) => {
+                touched.extend([link.a.device.id, link.b.device.id])
+            }
+            PlanStep::DeleteWirelessLink(link) => {
+                touched.extend([link.a.device.id, link.b.device.id])
+            }
+            // a new device is no RouterOS device of the topology yet; a prefix or range changes
+            // what the plan's own steps do with it
+            PlanStep::CreateDevice(_)
+            | PlanStep::CreatePrefix(_)
+            | PlanStep::CreateIpRange(_)
+            | PlanStep::DeletePrefix(_) => {}
+        }
+    }
+    let device = plan.device();
+    let topology = device.topology();
+    let touched = touched
+        .into_iter()
+        .filter_map(|id| topology.get_device_by_id(&DeviceId(id)));
+    let aps = wlans
+        .iter()
+        .find_map(|update| helper::wlan::wlan(topology, update.id).ok())
         .and_then(|wlan| wlan.wlan_group())
         .map(|group| group.aps())
         .unwrap_or_default();
     // a port's VLAN tunneled over VXLAN: the device joining or leaving it changes the VTEPs
     // of every other device with it
-    let vteps = plan
-        .steps
+    let vteps = ports
         .iter()
-        .filter_map(|step| match step {
-            PlanStep::UpdatePortVlan(update) => Some(update),
-            _ => None,
-        })
         .flat_map(|update| update.vlan.iter().chain(&update.vlan_before))
         .flat_map(|vlan| vtep_peers(plan, VlanId(vlan.id)))
         .collect::<Vec<_>>();
     // only those the provisioner configures: a switch without RouterOS changes in NetBox only
-    let mut seen = std::collections::BTreeSet::new();
-    // a room is NetBox's only: the device's configuration stays
-    let configured = !plan
-        .steps
-        .iter()
-        .all(|step| matches!(step, PlanStep::UpdateDeviceLocation(_)));
+    let mut seen = BTreeSet::new();
+    let configured = rooms.len() < plan.steps.len();
     let devices = configured
         .then(|| device.clone())
         .into_iter()
@@ -519,11 +512,11 @@ fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
         .collect();
     ResidentPlan {
         fingerprint: plan.fingerprint_value().into(),
-        wlans,
-        ports,
-        cables_added,
-        cables_removed,
-        rooms,
+        wlans: wlans.into(),
+        ports: ports.into(),
+        cables_added: cables_added.into(),
+        cables_removed: cables_removed.into(),
+        rooms: rooms.into(),
         cut_off: plan
             .cut_off
             .iter()
@@ -533,23 +526,6 @@ fn resident_plan(plan: &NetboxPlan) -> ResidentPlan {
             })
             .collect(),
         devices,
-    }
-}
-
-/// The devices a step changes something at (their ids; a created one's is a preview id).
-fn touched_devices(step: &PlanStep) -> Vec<u32> {
-    match step {
-        PlanStep::CreateInterface(create) => vec![create.device.id],
-        PlanStep::CreateAddress(create) => vec![create.device.id],
-        PlanStep::SetPrimaryIp(set) => vec![set.device.id],
-        PlanStep::CreateCable(create) => vec![create.a.device.id, create.b.device.id],
-        PlanStep::UpdateInterface(update) => vec![update.interface.device.id],
-        PlanStep::DeleteCable(delete) => std::iter::once(delete.port.device.id)
-            .chain(delete.far.iter().map(|far| far.device.id))
-            .collect(),
-        PlanStep::DeleteAddress(delete) => vec![delete.interface.device.id],
-        PlanStep::UpdatePortVlan(update) => vec![update.interface.device.id],
-        _ => Vec::new(),
     }
 }
 

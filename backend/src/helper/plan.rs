@@ -59,7 +59,23 @@ impl PlanStep {
                     bridge.shift(by);
                 }
             }
-            _ => {}
+            // no reference to another step
+            PlanStep::CreateDevice(_)
+            | PlanStep::CreateInterface(_)
+            | PlanStep::CreateCable(_)
+            | PlanStep::CreatePrefix(_)
+            | PlanStep::CreateIpRange(_)
+            | PlanStep::UpdateInterface(_)
+            | PlanStep::DeleteCable(_)
+            | PlanStep::DeleteAddress(_)
+            | PlanStep::DeletePrefix(_)
+            | PlanStep::CreateWirelessLink(_)
+            | PlanStep::UpdateWirelessLink(_)
+            | PlanStep::DeleteWirelessLink(_)
+            | PlanStep::UpdatePortVlan(_)
+            | PlanStep::DeleteInterface(_)
+            | PlanStep::UpdateWirelessLan(_)
+            | PlanStep::UpdateDeviceLocation(_) => {}
         }
     }
     /// The step with the ids of objects the plan creates replaced by `real`: a plan computed on
@@ -108,7 +124,35 @@ impl PlanStep {
                 interface(&mut create.b)?;
             }
             PlanStep::UpdatePortVlan(update) => interface(&mut update.interface)?,
-            _ => {}
+            PlanStep::DeleteCable(delete) => {
+                delete.id = real(delete.id)?;
+                interface(&mut delete.port)?;
+                if let Some(far) = &mut delete.far {
+                    interface(far)?;
+                }
+            }
+            PlanStep::DeleteAddress(delete) => {
+                delete.id = real(delete.id)?;
+                interface(&mut delete.interface)?;
+            }
+            PlanStep::DeletePrefix(delete) => delete.id = real(delete.id)?,
+            PlanStep::UpdateWirelessLink(update) => {
+                update.id = real(update.id)?;
+                interface(&mut update.a)?;
+                interface(&mut update.b)?;
+            }
+            PlanStep::DeleteWirelessLink(delete) => {
+                delete.id = real(delete.id)?;
+                interface(&mut delete.a)?;
+                interface(&mut delete.b)?;
+            }
+            PlanStep::DeleteInterface(delete) => interface(&mut delete.interface)?,
+            PlanStep::UpdateDeviceLocation(update) => device(&mut update.device)?,
+            PlanStep::CreateDevice(create) => create.template = real(create.template)?,
+            // only objects no plan creates: sites, VLANs, WLANs
+            PlanStep::CreatePrefix(_)
+            | PlanStep::CreateIpRange(_)
+            | PlanStep::UpdateWirelessLan(_) => {}
         }
         Some(step)
     }
@@ -444,3 +488,6 @@ pub struct DeletePrefix {
     pub id: u32,
     pub prefix: Box<str>,
 }
+
+#[cfg(test)]
+mod test;
