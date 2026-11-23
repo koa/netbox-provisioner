@@ -1,6 +1,7 @@
 //! Scope: A resident's drafts: what it changed but hasn't saved, one per element, and the
 //! changes they are saved as; not showing them (`components::resident`), nor saving them
 //! (`save_dialog`).
+use super::View;
 use crate::graphql::resident::{
     change::{
         ConnectDeviceChange, DeviceRoomChange, PortKindInput, PortVlanChange, ResidentChange,
@@ -97,6 +98,13 @@ impl Drafts {
     }
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+    /// How many of them the tab of `view` shows: the networks the WLANs, the other the rest.
+    pub fn len_in(&self, view: View) -> usize {
+        match view {
+            View::Networks => self.wlans.len(),
+            View::Ports => self.port_vlans.len() + self.links.len() + self.rooms.len(),
+        }
     }
     /// The changes they are saved as, in an order in which each finds NetBox as it needs it:
     /// devices off their link first (that frees their ports), then the networks of ports, the
@@ -216,6 +224,8 @@ mod test {
             .collect::<Vec<_>>();
         assert_eq!(kinds, ["disconnect", "port", "connect", "room"]);
         assert_eq!(drafts.len(), 4);
+        assert_eq!(drafts.len_in(View::Ports), 4);
+        assert_eq!(drafts.len_in(View::Networks), 0);
     }
 
     /// A link to the port row a device is at already is no draft, unless it names another

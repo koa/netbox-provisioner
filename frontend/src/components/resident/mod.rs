@@ -12,7 +12,9 @@ use cynic::QueryBuilder;
 use drafts::{Drafts, LinkDraft, PortKey, current_link};
 use i18n::resident as t;
 use networks::WlanEdit;
-use patternfly_yew::prelude::{Alert, AlertType, Button, ButtonVariant, Color, Label, Tab, Tabs};
+use patternfly_yew::prelude::{
+    Alert, AlertType, Badge, Button, ButtonVariant, Color, Label, Tab, Tabs,
+};
 use ports::{PortEdit, PortsTab};
 use room_dialog::RoomDialog;
 use save_dialog::SaveDialog;
@@ -239,10 +241,10 @@ impl Component for ResidentView {
             <div class="resident-view">
                 {bar}
                 <Tabs<View> selected={self.view} {onselect}>
-                    <Tab<View> index={View::Ports} title={t::TAB_PORTS}>
+                    <Tab<View> index={View::Ports} title={self.tab_title(View::Ports)}>
                         {ports.view()}
                     </Tab<View>>
-                    <Tab<View> index={View::Networks} title={t::TAB_NETWORKS}>
+                    <Tab<View> index={View::Networks} title={self.tab_title(View::Networks)}>
                         {networks}
                     </Tab<View>>
                 </Tabs<View>>
@@ -250,6 +252,25 @@ impl Component for ResidentView {
                 {preview}
             </div>
         }
+    }
+}
+
+impl ResidentView {
+    /// The title of the tab of `view`, with the number of its drafts where it has some.
+    fn tab_title(&self, view: View) -> Html {
+        let title = match view {
+            View::Ports => t::TAB_PORTS,
+            View::Networks => t::TAB_NETWORKS,
+        };
+        let badge = match self.drafts.len_in(view) {
+            0 => None,
+            count => Some(html! {
+                <Badge read=false screen_reader_text={t::unsaved_changes(count)}>
+                    {count}
+                </Badge>
+            }),
+        };
+        html! { <>{title}{" "}{badge}</> }
     }
 }
 

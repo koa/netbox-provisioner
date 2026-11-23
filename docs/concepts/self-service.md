@@ -69,7 +69,8 @@ Eine Kopie liegt in [self-service-ui.dc.html](self-service-ui.dc.html): eine Des
 der Design-Canvas (`support.js`), die nicht im Repository liegt. Die Tweaks `rolle`, `stoerung`
 und `rolloutFails` spielen Admin, Störungen und ein gescheitertes Ausrollen durch.
 
-Gebaut sind die Tabs „Dosen und Geräte“ und „Netze“ mit Entwürfen, Vorschau, Anschluss und Raum.
+Gebaut sind die Tabs „Dosen und Geräte“ und „Netze“ mit Entwürfen (Badges mit ihrer Zahl an
+den Tabs), Vorschau, Anschluss und Raum.
 Offen nach dem Prototyp:
 
 - **Dosen und Geräte:** rechts neben einem Port das Netz mit den Geräten, die dahinter eine
@@ -91,7 +92,6 @@ Offen nach dem Prototyp:
   fasst eine Meldung zusammen („Alles ok“ oder was nicht stimmt). Live-Zustände kommen aus den
   Live-Reads des Provisioners und pflanzen sich fort (Gerät aus → sein Anschluss gestört, die
   Geräte dahinter nicht erreichbar, das WLAN „Problem“, seine Clients weg).
-- **Badges** an den Tabs mit der Zahl ihrer Entwürfe.
 
 ## Leases
 

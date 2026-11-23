@@ -213,8 +213,8 @@ Nach dem Login fragt das UI zuerst `me { role }` am Endpunkt der Anwohner (`app:
 Die Ansicht (`components::resident`) hat zwei Tabs nach dem Prototyp. Geändert wird direkt
 in den Karten; jede Änderung ist ein **Entwurf** (`drafts`, einer pro Element): Die Karte trägt
 „ungespeichert“ und „Zurücksetzen“, oben steht mitscrollend „n ungespeicherte Änderungen“ mit
-„Vorschau und speichern“ und „Alle verwerfen“. Eine Auswahl, die dem gespeicherten Stand
-entspricht, ist kein Entwurf.
+„Vorschau und speichern“ und „Alle verwerfen“; jeder Tab trägt die Zahl seiner Entwürfe als
+Badge. Eine Auswahl, die dem gespeicherten Stand entspricht, ist kein Entwurf.
 
 - **Dosen und Geräte:** nach Site gruppiert, darin ein Rahmen pro Raum (die Location samt
   ihren übergeordneten, „1. OG › Wohnung Meier“). Jede Zeile zeigt links die Dose oder den
