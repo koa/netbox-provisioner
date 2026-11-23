@@ -22,6 +22,7 @@ pub mod change;
 pub mod live;
 #[cfg(test)]
 mod test;
+pub mod undo;
 
 pub type ResidentGraphqlSchema = Schema<QueryResident, change::MutationResident, EmptySubscription>;
 
@@ -114,7 +115,7 @@ pub struct Named {
 }
 
 /// What a row of the resident's ports is in NetBox.
-#[derive(Enum, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Enum, Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PortKind {
     /// an interface: a port of its device, or of another device given to it
     Interface,

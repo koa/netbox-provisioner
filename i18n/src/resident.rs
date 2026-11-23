@@ -326,6 +326,10 @@ pub const PICK_RESIDENT: &str = "Anwohner";
 pub const NO_RESIDENTS: &str = "NetBox nennt keinen Owner an einem Gerät, Port oder VLAN.";
 
 pub const NO_CHANGES: &str = "Noch keine gespeicherten Änderungen.";
+pub const UNDO_CHANGE: &str = "Zurücknehmen";
+pub const UNDO_GONE: &str = "Diese Änderung lässt sich nicht mehr zurücknehmen: Der Provisioner \
+    kennt sie nicht mehr.";
+pub const UNDO_AS_BEFORE: &str = "Es ist schon alles wie vor dieser Änderung.";
 pub const READING_CHANGES: &str = "Lese die Änderungen …";
 pub const CHANGES_HINT: &str = "Jede gespeicherte Änderung und wie weit sie auf den Geräten ist. \
     Die Geräte bekommen sie in der Regel innert weniger Minuten.";

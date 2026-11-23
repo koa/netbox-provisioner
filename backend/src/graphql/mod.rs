@@ -391,7 +391,7 @@ impl MutationAuthenticated {
                             .into_iter()
                             .chain([plan.device().clone()]),
                     );
-                    auto_rollout::note_change(job, &user, None, devices);
+                    auto_rollout::note_change(job, &user, None, devices, Box::new([]));
                 }
                 log.enter(NetboxState::Refetching);
                 refetch(&topology).await;
@@ -428,7 +428,13 @@ impl MutationAuthenticated {
                 if let (Some(undone), Some(job)) =
                     (auto_rollout::change_of_job(job_id), log.job_id())
                 {
-                    auto_rollout::note_change(job, &user, undone.owner, undone.devices);
+                    auto_rollout::note_change(
+                        job,
+                        &user,
+                        undone.owner,
+                        undone.devices,
+                        Box::new([]),
+                    );
                 }
                 log.enter(NetboxState::Refetching);
                 refetch(&topology).await;

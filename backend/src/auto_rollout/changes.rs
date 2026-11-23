@@ -12,7 +12,7 @@ use super::{
     decide::{self, Decision, Diff},
     hold::HoldReason,
 };
-use crate::topology::DeviceId;
+use crate::{graphql::resident::undo::UndoStep, topology::DeviceId};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, time::SystemTime};
 
@@ -32,6 +32,10 @@ pub struct Change {
     pub owner: Option<u32>,
     /// the RouterOS devices whose configuration it changes
     pub devices: Box<[RoundDevice]>,
+    /// what takes a resident's change back (with the WLAN key it replaced); none for an
+    /// admin's
+    #[serde(default)]
+    pub undo: Box<[UndoStep]>,
 }
 
 /// How a round saw a device, as of its start.

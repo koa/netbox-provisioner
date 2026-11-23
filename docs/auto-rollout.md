@@ -135,8 +135,9 @@ vergisst: der Zustand jeder automatischen Site (bereit, Fehler mit Grund, Gerät
 Zeitpunkt), die Grundlinien der manuellen Geräte, die Diffs der anhaltenden (`holding`, zum
 Übernehmen oder Freigeben), die freigegebenen Diffs, die letzte
 Runde (Ergebnis, angewendete, zurückgestellte und anhaltende Geräte, die automatischen mit
-ihren Gründen) und die Geräte, an denen
-sie die Vorbedingung verletzt fand (`unmet`).
+ihren Gründen), die Geräte, an denen
+sie die Vorbedingung verletzt fand (`unmet`), und die Änderungen mit dem, was sie zurücknimmt
+(beim WLAN auch das alte Passwort; die Datei liest darum nur der Benutzer des Provisioners).
 
 ## Stand pro Änderung
 
@@ -156,6 +157,12 @@ las die Geräte ohne sie.
 
 Die Anwohner sehen ihre Änderungen im Tab „Änderungen“ (`changes(resident:)`), die Karte der
 Site die Änderungen an ihren Geräten, die noch nicht überall sind (`SiteAutoRollout.changes`).
+
+Beim Speichern eines Anwohners hält der Provisioner auch fest, was die Änderung zurücknimmt
+(`graphql::resident::undo::undo_of`, aus der Sicht des Anwohners davor): pro Teil den Stand
+davor, beim WLAN nur, was die Änderung setzte (SSID, Passwort, ein/aus). Ein Port mit dem Netz
+des Betreibers und ein Gerät am Router des Betreibers haben keinen Stand, den der Anwohner
+setzen darf; sie fallen weg. Eine Änderung eines Helfers oder ein Rückgängig hat nichts.
 
 ## Auf der Seite der Site
 

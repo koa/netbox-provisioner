@@ -678,6 +678,23 @@ impl QueryChange {
             change.owner == Some(owner.0)
         }))
     }
+    /// What takes `resident`'s saved change `change` back, as the parts of a new change: what
+    /// was there before it, for drafts the resident previews and saves.
+    async fn undo_change(
+        &self,
+        context: &Context<'_>,
+        resident: u32,
+        change: u32,
+    ) -> Result<Box<[super::undo::UndoStep]>, ApiError> {
+        let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
+        let owner = acting_for(context, &topology, resident)?;
+        Ok(auto_rollout::state()
+            .changes
+            .into_iter()
+            .find(|saved| saved.id == change && saved.owner == Some(owner.0))
+            .map(|saved| saved.undo)
+            .unwrap_or_default())
+    }
     /// How saving the change of job `job` went, for its resident or an admin.
     async fn saved_change(
         &self,
@@ -719,6 +736,10 @@ impl MutationResident {
         }
         let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
         let owner = acting_for(context, &topology, resident)?;
+        // what takes it back, from the resident as it is before
+        let undo = super::resident(&topology, owner)
+            .map(|before| super::undo::undo_of(&before, &changes))
+            .unwrap_or_default();
         // the checks on the plan as previewed; the write refuses a plan changed since
         let Checked {
             helpers,
@@ -741,7 +762,7 @@ impl MutationResident {
                 let result = helper::write(&helpers, &current, &fingerprint, &user, &log).await;
                 if let (Ok(plan), Some(job)) = (&result, log.job_id()) {
                     let devices = auto_rollout::configured(changed_devices(plan, &configured));
-                    auto_rollout::note_change(job, &user, Some(owner.0), devices);
+                    auto_rollout::note_change(job, &user, Some(owner.0), devices, undo);
                 }
                 log.enter(crate::device_state::NetboxState::Refetching);
                 refetch(&holder).await;

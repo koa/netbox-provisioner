@@ -100,9 +100,15 @@ pub struct State {
     pub next_change: u32,
 }
 
-/// Keeps a change the job `job` wrote to NetBox: by whom, for which resident, and the
-/// RouterOS devices whose configuration it changes.
-pub fn note_change(job: u32, by: &str, owner: Option<u32>, devices: Box<[RoundDevice]>) {
+/// Keeps a change the job `job` wrote to NetBox: by whom, for which resident, the RouterOS
+/// devices whose configuration it changes and what takes it back (a resident's).
+pub fn note_change(
+    job: u32,
+    by: &str,
+    owner: Option<u32>,
+    devices: Box<[RoundDevice]>,
+    undo: Box<[crate::graphql::resident::undo::UndoStep]>,
+) {
     let mut state = STATE.lock_anyway();
     let id = state.next_change;
     state.next_change = id.wrapping_add(1);
@@ -115,6 +121,7 @@ pub fn note_change(job: u32, by: &str, owner: Option<u32>, devices: Box<[RoundDe
             by: by.into(),
             owner,
             devices,
+            undo,
         },
     );
     save(&state);
@@ -828,8 +835,8 @@ fn load() -> Option<State> {
         .ok()
 }
 
-/// Writes `state` (a temporary file, then renamed; a failure only goes to the log) and sets
-/// the metrics from it.
+/// Writes `state` (a temporary file only its user reads, then renamed: the undos hold WLAN
+/// keys; a failure only goes to the log) and sets the metrics from it.
 fn save(state: &State) {
     SITE_ERROR.reset();
     for (site, site_state) in &state.sites {
@@ -847,6 +854,8 @@ fn save(state: &State) {
     };
     let temporary = path.with_extension("json.tmp");
     let written = std::fs::File::create(&temporary).and_then(|file| {
+        // also a temporary file a crash left behind
+        file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
         serde_json::to_writer_pretty(&file, state)?;
         file.sync_all()?;
         std::fs::rename(&temporary, &path)

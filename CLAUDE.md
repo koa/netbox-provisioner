@@ -852,7 +852,10 @@ way. A failure puts the members' sites into their error state, which an admin cl
 `auto_rollout::note_change` with the job, user, owner and the RouterOS devices it changes) is
 kept with each round's view of each device as of the round's start (`changes::observed`), so
 `changes::state_of` gives its state per device (`changes(resident:)`, the third resident tab,
-`SiteAutoRollout.changes`). State in `state_dir/auto_rollout.json`; the site page's card
+`SiteAutoRollout.changes`). A resident's change also keeps what takes it back
+(`graphql::resident::undo::undo_of` from the resident view before the write; `undoChange`,
+the tab turns it into drafts and opens the preview). State in `state_dir/auto_rollout.json`
+(mode 0600: the undos hold WLAN keys); the site page's card
 (`components::site::auto_rollout`, `SiteAccess.autoRollout`) is live through
 `facts::Change::AutoRollout`; metrics `auto_rollout_*`. The lab NetBox runs a `rqworker` for
 the webhooks.

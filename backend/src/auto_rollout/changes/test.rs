@@ -82,6 +82,7 @@ fn the_newest_changes_are_kept() {
                 by: "admin".into(),
                 owner: None,
                 devices: Box::new([]),
+                undo: Box::new([]),
             },
         );
     }

@@ -270,8 +270,15 @@ der Reihenfolge, in der jede Änderung NetBox so vorfindet, wie sie es braucht
 Geräte anschliessen, Räume, WLANs. Ein Gerät, das an einen Port kommt, nimmt dessen Netz weg;
 ein Netz-Entwurf dort entfällt, und die Wahl des Netzes fehlt, solange es kommt.
 
-Noch nicht gebaut sind Geräte pro Port aus den Leases, Status-Labels und der Tab
-„Änderungen“ (C21). Status-Labels kommen erst mit einer verlässlichen Quelle: Ein Label, das
+Der Tab „Änderungen“ zeigt jede gespeicherte Änderung mit dem Stand pro Gerät
+([Stand pro Änderung](auto-rollout.md#stand-pro-änderung)). „Zurücknehmen“ an einer Änderung
+holt deren Stand davor (`undoChange`) und macht daraus Entwürfe, wie sie eine Bearbeitung von
+Hand machte (ein Teil, der schon so ist, entfällt), und öffnet die Vorschau; gespeichert wird
+es wie jede Änderung und lässt sich selbst wieder zurücknehmen. Ist schon alles wie davor,
+sagt das UI das. Auch eine nicht ausgerollte Änderung lässt sich zurücknehmen: Sie steht in
+NetBox, bis jemand sie ändert.
+
+Noch nicht gebaut sind Geräte pro Port aus den Leases und Status-Labels (C21). Status-Labels kommen erst mit einer verlässlichen Quelle: Ein Label, das
 „ausgerollt“ behauptet, ohne es zu wissen, wäre falsch.
 
 Die folgenden Lab-Tests bis 2026-11-20 liefen noch mit dem UI davor (ein Dialog pro

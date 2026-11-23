@@ -4,6 +4,7 @@
 use crate::graphql::{
     request_resident,
     resident::{
+        changes::UndoStep,
         live::{SeenUplink, SeenUplinksQuery, SeenUplinksVariables},
         residents::Resident,
     },
@@ -57,6 +58,8 @@ pub struct ResidentView {
     room_of: Option<i32>,
     /// the drafts' preview is open
     previewing: bool,
+    /// a change taken back found everything as before it already
+    as_before: bool,
 }
 
 pub enum ResidentViewMsg {
@@ -69,6 +72,8 @@ pub enum ResidentViewMsg {
     DiscardAll,
     Preview(bool),
     Saved,
+    /// a saved change taken back: its parts become drafts, the preview opens
+    Undo(Vec<UndoStep>),
 }
 
 impl Component for ResidentView {
@@ -83,11 +88,13 @@ impl Component for ResidentView {
             drafts: Drafts::default(),
             room_of: None,
             previewing: false,
+            as_before: false,
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         let resident = &ctx.props().resident;
+        self.as_before = false;
         let drafts = &mut self.drafts;
         match msg {
             ResidentViewMsg::Show(view) => self.view = view,
@@ -156,6 +163,14 @@ impl Component for ResidentView {
             ResidentViewMsg::Saved => {
                 *drafts = Drafts::default();
                 ctx.props().on_saved.emit(());
+            }
+            ResidentViewMsg::Undo(steps) => {
+                let before = self.drafts.clone();
+                for step in steps {
+                    self.undo_step(ctx, step);
+                }
+                self.previewing = !self.drafts.is_empty();
+                self.as_before = self.drafts == before;
             }
         }
         true
@@ -240,9 +255,15 @@ impl Component for ResidentView {
                 />
             }
         });
+        let as_before = self.as_before.then(|| {
+            html! {
+                <Alert inline=true r#type={AlertType::Info} title={t::UNDO_AS_BEFORE}/>
+            }
+        });
         html! {
             <div class="resident-view">
                 {bar}
+                {as_before}
                 <Tabs<View> selected={self.view} {onselect}>
                     <Tab<View> index={View::Ports} title={self.tab_title(View::Ports)}>
                         {ports.view()}
@@ -251,7 +272,8 @@ impl Component for ResidentView {
                         {networks}
                     </Tab<View>>
                     <Tab<View> index={View::Changes} title={self.tab_title(View::Changes)}>
-                        <changes::ChangesTab resident={resident.id}/>
+                        <changes::ChangesTab resident={resident.id}
+                            on_undo={link.callback(ResidentViewMsg::Undo)}/>
                     </Tab<View>>
                 </Tabs<View>>
                 {room}
@@ -262,6 +284,72 @@ impl Component for ResidentView {
 }
 
 impl ResidentView {
+    /// Makes a draft of a part that takes a change back, as an edit by hand would; one as it is
+    /// now is none.
+    fn undo_step(&mut self, ctx: &Context<Self>, step: UndoStep) {
+        let msg = match step {
+            UndoStep::WlanUndo(undo) => {
+                let Some(now) = ctx
+                    .props()
+                    .resident
+                    .networks
+                    .iter()
+                    .flat_map(|network| network.wlans.iter())
+                    .find(|wlan| wlan.id == undo.wlan)
+                else {
+                    return;
+                };
+                let mut draft = self
+                    .drafts
+                    .wlans
+                    .get(&undo.wlan)
+                    .cloned()
+                    .unwrap_or_default();
+                if let Some(ssid) = undo.ssid {
+                    draft.ssid = (ssid != now.ssid).then_some(ssid);
+                }
+                if let Some(psk) = undo.psk {
+                    draft.psk = (Some(&psk) != now.psk.as_ref()).then_some(psk);
+                }
+                if let Some(enabled) = undo.enabled {
+                    draft.enabled = (enabled != now.enabled).then_some(enabled);
+                }
+                ResidentViewMsg::Wlan(WlanEdit {
+                    wlan: undo.wlan,
+                    draft,
+                })
+            }
+            UndoStep::PortVlanUndo(undo) => ResidentViewMsg::Port(PortEdit::Vlan {
+                port: PortKey {
+                    kind: undo.kind,
+                    id: undo.port,
+                },
+                vlan: undo.vlan,
+            }),
+            UndoStep::ConnectDeviceUndo(undo) => ResidentViewMsg::Port(PortEdit::Link {
+                device: undo.device,
+                link: LinkDraft::Connect {
+                    port: PortKey {
+                        kind: undo.kind,
+                        id: undo.port,
+                    },
+                    device_port: undo.device_port,
+                    seen: false,
+                },
+            }),
+            UndoStep::DisconnectDeviceUndo(undo) => ResidentViewMsg::Port(PortEdit::Link {
+                device: undo.device,
+                link: LinkDraft::Disconnect,
+            }),
+            UndoStep::DeviceRoomUndo(undo) => {
+                self.room_of = Some(undo.device);
+                ResidentViewMsg::Room(undo.location)
+            }
+            // a part of a newer server: the preview shows what the others give
+            UndoStep::Unknown => return,
+        };
+        self.update(ctx, msg);
+    }
     /// The title of the tab of `view`, with the number of its drafts where it has some.
     fn tab_title(&self, view: View) -> Html {
         let title = match view {

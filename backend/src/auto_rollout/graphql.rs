@@ -43,6 +43,8 @@ pub struct ChangeState {
     pub age: u64,
     /// the RouterOS devices whose configuration it changes; none: NetBox only
     pub devices: Box<[ChangeDevice]>,
+    /// it can be taken back (`undoChange`, a resident's change)
+    pub undoable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -92,6 +94,7 @@ pub fn changes(topology: &Arc<Topology>, wanted: impl Fn(&Change) -> bool) -> Bo
             by: change.by.clone(),
             job: change.job,
             age: age(change.at),
+            undoable: !change.undo.is_empty(),
             devices: change
                 .devices
                 .iter()
