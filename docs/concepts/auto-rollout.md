@@ -139,4 +139,5 @@ sicher, aber das ganze Netz kurz weg; wer das nicht will, nimmt dieses Gerät au
   Sites. Funkbrücken ohne RouterOS zählen wie Kabel.
 - **Scheduler:** Ein Fallback beim Anwenden fehlt nur, wo der Device-Mode den Scheduler
   abschaltet; das ist ein Fehler. Ein Device-Mode mit `scheduler` auf jedem Gerät gehört zur
-  Vorbedingung.
+  Vorbedingung. Von Hand angewendet bleibt es die Warnung `FallbackUnavailable`: Dort
+  entscheidet ein Mensch.
