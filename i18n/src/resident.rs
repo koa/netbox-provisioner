@@ -37,6 +37,9 @@ pub const SAVED_HINT: &str = "Auf die Geräte kommt die Änderung mit dem Ausrol
     ist, zeigt diese Seite noch nicht.";
 pub const NOT_SAVED: &str = "Nicht gespeichert";
 pub const SHOW_DEVICES: &str = "Geräte im Netz";
+/// the sockets and ports with the network, in its card
+pub const CABLED_AT: &str = "Per Kabel an";
+pub const NO_CABLED_PORTS: &str = "keiner Dose und keinem Port";
 pub const READING_DEVICES: &str = "Geräte werden gelesen …";
 pub const READ_AGAIN: &str = "Erneut lesen";
 pub const NO_DEVICES: &str = "Keine Geräte gefunden";

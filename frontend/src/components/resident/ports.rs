@@ -757,7 +757,7 @@ fn cable_room<'a>(tab: &'a PortsTab, cable: &Cable<'a>, device: &'a ResidentDevi
 }
 
 /// A port row's name: its label, a socket by its wall and place, or the port's name.
-fn title(port: &ResidentPort) -> String {
+pub(super) fn title(port: &ResidentPort) -> String {
     match &port.label {
         Some(label) => label.clone(),
         // a socket's device is the wall it is in, named after the room
@@ -767,7 +767,7 @@ fn title(port: &ResidentPort) -> String {
 }
 
 /// A port by itself and its device: „Port ether3 an lab-np2“, „Port ether2 von lab-wap“.
-fn sub(port: &ResidentPort) -> String {
+pub(super) fn sub(port: &ResidentPort) -> String {
     match port.on_own_device {
         true => t::own_port(&port.name, &port.device.name),
         false => t::port_of(&port.name, &port.device.name),

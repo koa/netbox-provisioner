@@ -246,7 +246,9 @@ Badge. Eine Auswahl, die dem gespeicherten Stand entspricht, ist kein Entwurf.
     Browsers, ohne 0, O, 1, l und I);
   - die Zahl der Access Points.
 
-  Ausgeschaltet steht „Aus: Das Netz gibt es nur per Kabel.“ Darunter die „Geräte im Netz“.
+  Ausgeschaltet steht „Aus: Das Netz gibt es nur per Kabel.“ Darunter „Per Kabel an“: die
+  Dosen und Ports des Anwohners mit dem Netz, wie gespeichert und so benannt wie im Tab „Dosen
+  und Geräte“; dann die „Geräte im Netz“.
 
 Die **Vorschau** („Das ändert sich“, `save_dialog`) plant alle Entwürfe zusammen (`changePlan`
 mit einer Liste). Sie sagt in Worten, was sich ändert, warnt vor Geräten, die bis zum

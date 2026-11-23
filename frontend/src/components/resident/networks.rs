@@ -4,8 +4,9 @@
 use super::{
     drafts::{Drafts, WlanDraft},
     network_devices::NetworkDevicesView,
+    ports,
 };
-use crate::graphql::resident::residents::{Resident, ResidentWlan};
+use crate::graphql::resident::residents::{PortKind, Resident, ResidentNetwork, ResidentWlan};
 use i18n::resident as t;
 use patternfly_yew::prelude::{
     Button, ButtonVariant, Content, Form, FormGroup, FormHelperText, InputState, Switch, TextInput,
@@ -67,13 +68,47 @@ pub fn networks(resident: &Resident, drafts: &Drafts, edit: &Callback<WlanEdit>)
             <div class="pf-v6-c-card" key={network.id}>
                 {super::card_header(heading, changed, reset)}
                 <div class="pf-v6-c-card__body resident-network">
-                    <div class="resident-wlan">{wlans}</div>
+                    <div class="resident-wlan">
+                        {wlans}
+                        {cabled(resident, network)}
+                    </div>
                     <NetworkDevicesView resident={resident.id} vlan={network.id}/>
                 </div>
             </div>
         }
     });
     html!(<div class="resident-networks">{ for cards }</div>)
+}
+
+/// „Per Kabel an“: the resident's sockets and ports with the network as saved, a socket by its
+/// name, a port with its device, as the tab „Dosen und Geräte“ names them.
+fn cabled(resident: &Resident, network: &ResidentNetwork) -> Html {
+    let names = resident
+        .ports
+        .iter()
+        .filter(|port| !port.foreign_network)
+        .filter(|port| port.network.as_ref().is_some_and(|n| n.id == network.id))
+        .map(|port| match port.kind {
+            PortKind::Socket => ports::title(port),
+            _ => ports::sub(port),
+        })
+        .collect::<Vec<_>>();
+    let text = match names.is_empty() {
+        true => t::NO_CABLED_PORTS.to_string(),
+        false => names.join(", "),
+    };
+    html! {
+        <dl class="pf-v6-c-description-list pf-m-compact">
+            <div class="pf-v6-c-description-list__group">
+                <dt class="pf-v6-c-description-list__term">
+                    <span class="pf-v6-c-description-list__text">{t::CABLED_AT}</span>
+                </dt>
+                <dd class="pf-v6-c-description-list__description">
+                    <div class="pf-v6-c-description-list__text">{text}</div>
+                </dd>
+            </div>
+        </dl>
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Properties)]

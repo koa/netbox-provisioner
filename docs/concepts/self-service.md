@@ -76,8 +76,8 @@ Offen nach dem Prototyp:
 - **Dosen und Geräte:** rechts neben einem Port das Netz mit den Geräten, die dahinter eine
   Adresse bezogen haben (Name aus dem Lease, leer ohne; MAC als Tooltip auf der IP), siehe
   [Leases](#leases).
-- **Netze:** QR-Code zum Verbinden (`WIFI:T:WPA;S:…;P:…;;`), die Ports per Kabel („Per Kabel
-  an“) und bei den verbundenen Geräten das Band, siehe [Clients](#clients).
+- **Netze:** QR-Code zum Verbinden (`WIFI:T:WPA;S:…;P:…;;`) und bei den verbundenen Geräten das
+  Band, siehe [Clients](#clients). „Per Kabel an“ ist gebaut.
 - **Änderungen:** ein dritter Tab, jede gespeicherte Änderung mit Fortschritt und dem Stand pro
   Gerät (aus dem automatischen Rollout, C20).
 - **Zurücknehmen** einer ausgerollten Änderung macht aus dem Stand davor neue Entwürfe (auch
