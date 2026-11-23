@@ -20,8 +20,10 @@ Erreichbar ist eine RouterOS-Brücke als OSPF-Router: das NetBox-Interface `brid
 
 Eine reine L2-Brücke läuft nicht mit RouterOS: Der Provisioner fasst sie nicht an, NetBox
 braucht für sie nur den DHCP-Server und die IP-Range, aus denen sie ihre Management-Adressen
-bekommt; sonst ist sie wie ein Kabel ohne Verwaltung. Dass der Generator einer RouterOS-Brücke
-ohne IP-Adresse in NetBox einen DHCP-Client gibt (`setup_ip_addresses`), ist ein Überbleibsel.
+bekommt; sonst ist sie wie ein Kabel ohne Verwaltung. Eine RouterOS-Brücke ohne Adresse in NetBox ist
+ein Fehler (`NoLoopback`, `NoPrimaryIpv4`) und bekommt keinen DHCP-Client; die Vorbedingung
+des [automatischen Rollouts](concepts/auto-rollout.md) hält die Automatik an, bis er behoben
+ist.
 
 Eine Loopback ohne `ospf` an irgendeinem Interface wird nicht angekündigt: das Gerät ist danach
 nicht erreichbar (schopf-burri). Der Befund

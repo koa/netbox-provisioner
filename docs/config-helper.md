@@ -45,8 +45,8 @@ gerechnet. Jeder Befund hat eine Schwere (Fehler: Generator scheitert oder macht
 Warnung; Hinweis) und die Objekte mit Link nach NetBox. Fast jede Regel aus `netbox-modeling.md`
 ist eine Prüfung:
 
-- Gerät mit Platform `routeros` ohne `lo` (`NoLoopback`), ohne Primary IPv4 (`NoPrimaryIpv4`: ein
-  Fehler, wo das Gerät `ospf` hat, sonst eine Warnung) oder mit Primary IPv4 nicht auf `lo`.
+- Gerät mit Platform `routeros` ohne `lo` (`NoLoopback`), ohne Primary IPv4 (`NoPrimaryIpv4`), beides
+  Fehler, oder mit Primary IPv4 nicht auf `lo`.
 - Eine Primary IPv4 auf `lo` ohne `ospf` an irgendeinem Interface (`LoopbackWithoutOspf`, Fehler):
   Niemand kündigt sie an, der Provisioner erreicht das Gerät dort nicht.
 - Ein Gerät, das über seine OSPF-Nachbarn keine Wurzel erreicht und selbst keine ist

@@ -230,7 +230,8 @@ radios need its site's country (`radio::needs_country`) without a known one is a
 (`NoCountry`, from `radio::country_settings`). A primary IPv4 on `lo` without `ospf` on any interface is an error
 (`LoopbackWithoutOspf`): nothing announces it. A pure L2 radio bridge doesn't run RouterOS
 and isn't touched (NetBox only needs the DHCP server and IP range for its management address);
-the generator's DHCP client for a RouterOS bridge without an address is a leftover. A radio
+a RouterOS device without an address is an error (`NoLoopback`, `NoPrimaryIpv4`) and gets no
+DHCP client. A radio
 bridge is an OSPF router through a static address and `ospf` on its `bridge` (management only,
 forwarding stays L2), with OSPF priority 0 (v2 and v3, `setup_ospf`) so it is never DR or BDR of
 the segment it shares with the routers (they keep RouterOS's 128); CHR test

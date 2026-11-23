@@ -759,12 +759,7 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
         .any(|i| i.name() == "lo" && port_type(i) == Some(PortType::Loopback))
     {
         push(
-            // a radio bridge device is reached at its loopback only
-            if device.is_bridge_device() {
-                Severity::Error
-            } else {
-                Severity::Warning
-            },
+            Severity::Error,
             &this,
             FindingKind::NoLoopback(NoLoopback {
                 device: device_ref(device),
@@ -792,13 +787,9 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
         );
     }
     match device.primary_ip_v4() {
-        // OSPF takes its router ID from it; without OSPF it is only the address to reach it at
+        // OSPF takes its router ID from it, and the provisioner reaches the device there
         None => push(
-            if interfaces.iter().any(InterfaceAccess::use_ospf) {
-                Severity::Error
-            } else {
-                Severity::Warning
-            },
+            Severity::Error,
             &this,
             FindingKind::NoPrimaryIpv4(NoPrimaryIpv4 {
                 device: device_ref(device),

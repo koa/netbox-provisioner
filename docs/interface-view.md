@@ -75,8 +75,8 @@ weggenommen (nicht angewendet), die Zeile warnte, danach rückgängig gemacht.
 - `lo` vorhanden, IPv4 `/32` und IPv6 `/128` darauf, je als Primary IP des Geräts.
 - `ospf` an mindestens einem Interface (sonst kündigt niemand die Loopback an,
   `LoopbackWithoutOspf`).
-- Auf einem Brückengerät ist eine fehlende Loopback ein Fehler (`NoLoopback`): Es ist nur über
-  sie erreichbar.
+- Eine fehlende Loopback ist ein Fehler (`NoLoopback`): Der Provisioner erreicht das Gerät nur
+  über sie.
 
 ### Uplink
 

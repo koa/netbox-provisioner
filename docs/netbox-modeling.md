@@ -423,10 +423,10 @@ tragen.
 
 ## IP-Adressen, Prefixe und DHCP
 
-- **Reines L2-Gerät:** Hat ein Gerät in NetBox keine einzige IP-Adresse und nirgends das Tag
-  `dhcp-client` (z.B. eine Funkbrücke), bekommt jede seiner flachen Bridges einen DHCP-Client.
-  Sonst wäre es nach dem Provisionieren nicht mehr erreichbar. Der Client hängt am generierten
-  Bridge-Namen und zieht bei einer Umbenennung mit.
+- **Kein reines L2-Gerät mit RouterOS:** Jedes RouterOS-Gerät braucht seine Loopback und
+  OSPF; eines ohne Adresse ist ein Fehler (`NoLoopback`, `NoPrimaryIpv4`) und bekommt keinen
+  DHCP-Client. Eine reine L2-Brücke läuft nicht mit RouterOS: NetBox braucht für sie nur den
+  DHCP-Server und die IP-Range, aus denen sie ihre Management-Adresse bekommt.
 - Zu jeder IP-Adresse muss ein **Prefix** mit genau derselben Länge existieren (Adresse
   `192.168.50.1/24` braucht Prefix `192.168.50.0/24`). Für DHCP-Server ist das zwingend,
   sonst `MissingPrefixOnIpAddress`.
@@ -586,9 +586,8 @@ weiterreicht. Pro Seite:
 4. Management: `lo` mit Loopback als Primary IP und eine feste IPv4 an der Bridge im Netz der
    Router-Ports, mit Tag `ospf` an der Bridge: die Brücke ist dann ein OSPF-Router, der seine
    Loopback ankündigt, die Nutzdaten bleiben auf L2. Für IPv6 reichen die Link-Local-Adressen.
-   Eine Loopback ohne `ospf` meldet `LoopbackWithoutOspf`. Ein Gerät ganz ohne IP-Adresse und
-   ohne Tag `dhcp-client` bekommt stattdessen auf seiner Bridge einen DHCP-Client (siehe
-   [IP-Adressen, Prefixe und DHCP](#ip-adressen-prefixe-und-dhcp)).
+   Eine Loopback ohne `ospf` meldet `LoopbackWithoutOspf`. Ohne Adresse ist das Gerät ein
+   Fehler und nicht erreichbar (siehe [IP-Adressen, Prefixe und DHCP](#ip-adressen-prefixe-und-dhcp)).
 5. Am Funk-Port die **RF Role**: `AP` auf der einen, `Station` auf der anderen Seite.
    **RF Channel Frequency** (MHz) und **RF Channel Width** sind optional; die Frequenz gilt nur
    am AP, ohne sie wählt er selbst (`auto`). **TX Power** (dBm, nur 5 GHz) ist ebenfalls

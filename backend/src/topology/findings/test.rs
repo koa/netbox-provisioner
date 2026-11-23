@@ -277,7 +277,7 @@ fn primary_ipv4_and_loopback() {
         matches!(&kinds[0], (Severity::Error, FindingKind::NoPrimaryIpv4(n)) if &*n.device.name == "r1")
     );
     assert!(
-        matches!(&kinds[1], (Severity::Warning, FindingKind::NoLoopback(n)) if &*n.device.name == "r2")
+        matches!(&kinds[1], (Severity::Error, FindingKind::NoLoopback(n)) if &*n.device.name == "r2")
     );
     assert!(
         matches!(&kinds[2], (Severity::Warning, FindingKind::PrimaryIpv4NotOnLoopback(p))

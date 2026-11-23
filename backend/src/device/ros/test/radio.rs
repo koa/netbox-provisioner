@@ -341,19 +341,16 @@ async fn test_rf_role_on_a_board_without_radio_profile_is_an_error() {
     );
 }
 
+/// A RouterOS bridge without an address is a modeling error (`NoLoopback`, `NoPrimaryIpv4`),
+/// not pure L2: it gets no DHCP client to be reached at.
 #[tokio::test]
-async fn test_radio_bridge_without_addresses_gets_a_dhcp_client() {
+async fn test_radio_bridge_without_addresses_gets_no_dhcp_client() {
     let device = radio_bridge(PhysicalPortId::W60g(1), None, None).await;
-    let l2 = L2Setup::new(&device, EndpointNameGenerator).unwrap();
-    let PortPlacement { bridge, .. } = l2.placement_of_port(PhysicalPortId::W60g(1)).unwrap();
     let mut target = BaseDeviceDataTarget::new(b"RBwAPG-60ad").unwrap();
     target
         .generate_from(&device, EndpointNameGenerator)
         .unwrap();
-    assert_eq!(
-        target.dhcp_v_4_client.keys().collect::<Vec<_>>(),
-        [&(bridge.unwrap().clone(),)]
-    );
+    assert!(target.dhcp_v_4_client.is_empty());
 }
 
 /// RouterOS doesn't report `hw` for a 60 GHz bridge port (wAP 60G, 7.23.8): setting it would
