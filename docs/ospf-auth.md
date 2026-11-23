@@ -118,6 +118,16 @@ Enden im Anwenden (welche fehlen), eine Adresse an einem Gerät ohne RouterOS od
 ein fremder Nachbar (Router-ID), ein erwarteter Nachbar fehlt, die Enden haben verschiedene
 Credentials.
 
+## Ports der Anwohner
+
+Ein Port, an dem schon ein fremdes Gerät hängt, wird nie geschützt: Sein anderes Ende kommt in
+kein Anwenden. Das ist keine Lücke, weil OSPF dort gar nicht läuft (2026-11-23). Das
+Anwohner-UI legt keinen freien OSPF-Port an: `ospf` bekommt ein Port nur mit „Gerät
+anschliessen“, als Verbindung zu einem RouterOS-Gerät des Anwohners, das der Provisioner selbst
+einrichtet und das mit seinem Router im selben Anwenden den Schlüssel bekommt. Ein fremdes
+Gerät hängt an einem Kunden-Port ohne `ospf`. Und auch das eigene MikroTik des Anwohners
+bekommt OSPF nur an dieser Verbindung, ein fremdes Gerät dahinter wird kein Nachbar.
+
 ## Bewusst nicht
 
 Entschieden am 2026-11-18, zu viel Aufwand für den Nutzen:

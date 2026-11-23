@@ -9,6 +9,10 @@ reines L2 und seine eigene Management-Adresse.
 
 ## Entschieden
 
+- **Ausnahme zu Z26** (2026-11-23): Getaggte VLANs an physischen Ports sind sonst nicht
+  vorgesehen (Befund `TaggedVlanOnPort`). Der Trunk zwischen altem und L3-Switch ist die
+  Ausnahme: Seine VLANs stehen nicht in NetBox, der Provisioner erzeugt sie, und der Befund
+  gilt für ihn nicht.
 - **Beziehung** (Z39, 2026-11-07): ein Custom Field am Interface des alten Switches (Boolean,
   etwa `l3_uplink`, „L3 über diesen Port“). Gesetzt auf dem Port zum L3-Switch heisst es: Alle
   L3-Funktionen dieses Geräts laufen über diesen Port und werden am Gerät am anderen Ende seines

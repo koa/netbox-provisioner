@@ -245,7 +245,8 @@ counts per domain (`topology/vlan_domain.rs`): with a VNI every RouterOS device 
 without one the devices that cables carrying it join, so the same VLAN local on two devices is
 two networks. Two gateways are an error (`VlanWithSeveralGateways`), none a warning
 (`VlanWithoutGateway`), except a WLAN group's management VLAN, which CAPsMAN uses on L2. Tagged
-VLANs on an Ethernet port (or its bridge) are a warning (`TaggedVlanOnPort`, Z26); a bridge
+VLANs on an Ethernet port (or its bridge) are a warning (`TaggedVlanOnPort`, Z26; the L2
+extender's generated trunk, C18, is the one exception); a bridge
 device's radio link missing a cable, the link or its SSID is `RadioPathIncomplete` (from the
 row's `RadioPath`, once per link); a bridge device without `lo` is an error, it is reached at its
 loopback only. A port cabled to a RouterOS device whose label doesn't name it (without case and
