@@ -1087,9 +1087,11 @@ NetBox's interface `mtu` is the L3 MTU of an Ethernet port or `wlan` radio (`set
 wireless target); `l2mtu` is raised to carry it with a VLAN tag, other interface types refuse
 one. Both ends of a cable need the same (`port_mtu`): RouterOS 7's OSPF stays in ExStart/Exchange
 between different MTUs and has no `mtu-ignore`, so a link is cut until both ends have it. A
-rollout therefore goes outward from the management proxy's device: `connect` reaches a device
-cut off from OSPF through the neighbor already changed (see the bootstrap fallback below), and
-its apply brings the link back. A new MTU
+single apply therefore goes outward from the management proxy's device: `connect` reaches a
+device cut off from OSPF through the neighbor already changed (see the bootstrap fallback below),
+and its apply brings the link back. A batch changes both ends at once; that the devices behind
+its members answer afterwards is still to be checked (Z58, C20), and the automatic rollout
+doesn't predict changes to the provisioner's way (`docs/concepts/auto-rollout.md`). A new MTU
 restarts a `wlan` radio; on a DFS weather radar channel (5600-5650 MHz) it listens for radar for
 10 minutes (ETSI) before it sends again. The lab's links have none, as in production.
 NetBox's interface `speed` (kbit/s) fixes an Ethernet port's speed without auto-negotiation

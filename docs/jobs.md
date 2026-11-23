@@ -115,8 +115,10 @@ Die Übergänge sind mit ihrer Quelle bezeichnet: **(B)** Bedienung, **(G)** Beo
 - Ein gestartetes Skript wird nie angehalten, auch nicht beim Abbrechen; das entscheidet der
   Mensch.
 - Ein Gerät ohne Marken (Datei nicht schreibbar) gilt nach 90 s als durch, wie vor den Marken.
-- Die Reihenfolge eines Rollouts (vom Management-Proxy nach aussen, z.B. bei MTU) ist Sache des
-  Menschen, nicht des Auftrags.
+- Die Reihenfolge eines Rollouts (vom Management-Proxy nach aussen, z.B. bei MTU) ist beim
+  einzelnen Anwenden Sache des Menschen, nicht des Auftrags. Gemeinsam angewendet gehen beide
+  Enden eines Links zugleich; dass danach auch die Geräte dahinter antworten, soll der Batch
+  prüfen (Z58, [Automatisches Rollout](concepts/auto-rollout.md#wann-automatisch-wann-nicht)).
 
 `device_state::ApplyState` (Name im Code in Klammern); das einzelne und das gemeinsame
 Anwenden melden ihre Zustände daran. Mit `www_ca` legt das Anwenden vor dem Plan das
