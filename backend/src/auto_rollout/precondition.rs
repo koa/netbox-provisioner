@@ -1,6 +1,6 @@
-//! Scope: The part of the automatic rollout's precondition NetBox tells, before a round reads
-//! a device (`docs/concepts/auto-rollout.md`, „Vorbedingung“); not the device mode, which a
-//! round reads with the diff, nor what a round does when it is unmet (`auto_rollout`).
+//! Scope: The automatic rollout's precondition (`docs/auto-rollout.md`, „Vorbedingung“): the
+//! part NetBox tells, before a round reads a device, and the device mode's part from what the
+//! round read; not reading nor what a round does when it is unmet (`auto_rollout`).
 //!
 //! Every automatic RouterOS device has a loopback for IPv4 (`/32`) and IPv6 (`/128`) on `lo`,
 //! and an IP connection to every other one: over OSPF neighbors (both with an `ospf`
@@ -27,6 +27,8 @@ pub enum Lack {
     LoopbackIpv6,
     /// no way over OSPF neighbors to the most of the other automatic devices
     Connection,
+    /// the device mode has the scheduler off: no fallback for the apply (read with the diff)
+    Scheduler,
 }
 
 /// An automatic device the precondition fails on.
@@ -98,6 +100,27 @@ pub fn unmet(automatic: &[DeviceAccess]) -> Vec<Unmet> {
                 device: RoundDevice::of(device),
                 lacks: lacks.into(),
             })
+        })
+        .collect()
+}
+
+/// The automatic devices among `automatic` whose device mode has the scheduler off
+/// (`without_scheduler`, from the round's reads): the apply would go without a fallback, and a
+/// device cutting itself off stays away until someone is there.
+pub fn without_scheduler(
+    automatic: &[DeviceAccess],
+    without_scheduler: &BTreeSet<DeviceId>,
+) -> Vec<Unmet> {
+    let mut automatic = automatic
+        .iter()
+        .filter(|device| without_scheduler.contains(&device.id()))
+        .collect::<Vec<_>>();
+    automatic.sort_by_cached_key(|device| naturalize(device.name()));
+    automatic
+        .into_iter()
+        .map(|device| Unmet {
+            device: RoundDevice::of(device),
+            lacks: [Lack::Scheduler].into(),
         })
         .collect()
 }

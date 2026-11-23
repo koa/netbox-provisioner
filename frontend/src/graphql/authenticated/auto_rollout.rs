@@ -60,6 +60,7 @@ pub enum Lack {
     #[cynic(rename = "LOOPBACK_IPV_6")]
     LoopbackIpv6,
     Connection,
+    Scheduler,
     #[cynic(fallback)]
     Other(String),
 }

@@ -269,6 +269,7 @@ fn lack(lack: &Lack) -> String {
         Lack::LoopbackIpv4 => t::Lack::LoopbackIpv4,
         Lack::LoopbackIpv6 => t::Lack::LoopbackIpv6,
         Lack::Connection => t::Lack::Connection,
+        Lack::Scheduler => t::Lack::Scheduler,
         Lack::Other(other) => t::Lack::Other(other),
     })
 }

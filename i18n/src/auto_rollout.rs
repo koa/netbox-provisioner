@@ -79,7 +79,7 @@ pub fn last_round(outcome: Outcome, ago: &str, applied: &[String]) -> String {
         Outcome::Failed => format!("gescheitert auf {applied}, alle gingen zurück"),
         Outcome::NetboxUnreadable => "NetBox war nicht lesbar".to_string(),
         Outcome::PreconditionUnmet => {
-            "nichts gelesen und nichts angewendet, die Vorbedingung ist verletzt".to_string()
+            "nichts angewendet, die Vorbedingung ist verletzt".to_string()
         }
         Outcome::Other(other) => other.to_string(),
     };
@@ -98,15 +98,16 @@ pub const HELD_BY: &str = "Diese manuellen Geräte haben eine neue Abweichung vo
     oder als Stand übernommen sind (sie bleibt auf dem Gerät, erst eine weitere Änderung hält \
     wieder an):";
 
-pub const UNMET: &str = "Ausgesetzt: Die Vorbedingung ist in NetBox verletzt, an keiner \
-    automatischen Site rollt etwas aus. Sobald NetBox sie wieder erfüllt, läuft die Automatik \
-    von selbst weiter. Es fehlt:";
+pub const UNMET: &str = "Ausgesetzt: Die Vorbedingung ist verletzt, an keiner automatischen \
+    Site rollt etwas aus. Sobald sie wieder erfüllt ist, läuft die Automatik von selbst weiter. \
+    Es fehlt:";
 
 /// What an automatic device lacks for the precondition (`Lack`).
 pub enum Lack<'a> {
     LoopbackIpv4,
     LoopbackIpv6,
     Connection,
+    Scheduler,
     Other(&'a str),
 }
 
@@ -119,6 +120,9 @@ pub fn lack(lack: Lack) -> String {
              Netz wie ein Nachbar)"
                 .into()
         }
+        Lack::Scheduler => "Scheduler im Device-Mode (für den Fallback des Anwendens; \
+            einschalten mit „Device-Mode“ auf der Geräteseite und Bestätigung am Gerät)"
+            .into(),
         Lack::Other(other) => other.into(),
     }
 }

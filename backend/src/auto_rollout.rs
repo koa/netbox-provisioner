@@ -11,8 +11,9 @@
 //! after (`batch::apply`). A batch that fails puts the sites of its devices into their error
 //! state; their devices wait until an admin clears it.
 //!
-//! Before reading, a round checks the precondition in NetBox (`precondition`): unmet, it
-//! applies nothing and the next round, after the next change in NetBox, checks again.
+//! Before reading, a round checks the precondition in NetBox (`precondition`), and with the
+//! diffs the device mode of each automatic device: unmet, it applies nothing and the next
+//! round, after [`RETRY`] or a change in NetBox, checks again.
 pub mod decide;
 pub mod graphql;
 pub mod precondition;
@@ -21,7 +22,7 @@ pub mod webhook;
 use crate::{
     Error,
     config::CONFIG,
-    device::batch,
+    device::{batch, ros::fallback},
     facts::Freshness,
     job::{self, JobKind},
     journal::Started,
@@ -153,7 +154,8 @@ pub enum RoundOutcome {
     Failed,
     /// NetBox couldn't be read
     NetboxUnreadable,
-    /// the precondition failed on an automatic device: nothing read, nothing applied
+    /// the precondition failed on an automatic device: nothing applied (nothing read, where
+    /// NetBox broke it)
     PreconditionUnmet,
 }
 
@@ -350,7 +352,26 @@ async fn round(topology: Arc<Topology>) -> Duration {
             }
         }
     }
-    let diffs = read_diffs(automatic.iter().chain(manual.values()).cloned().collect()).await;
+    let reads = read_diffs(automatic.iter().chain(manual.values()).cloned().collect()).await;
+    let without_scheduler: BTreeSet<DeviceId> = reads
+        .iter()
+        .filter(|(_, read)| read.without_scheduler)
+        .map(|(device, _)| *device)
+        .collect();
+    let unmet = precondition::without_scheduler(&automatic, &without_scheduler);
+    if !unmet.is_empty() {
+        let devices = unmet.iter().map(|u| u.device.clone()).collect::<Vec<_>>();
+        warn!("auto rollout: no scheduler on {}", listed(&devices));
+        let mut state = STATE.lock_anyway();
+        state.unmet = unmet.into();
+        save(&state);
+        drop(state);
+        return finish(RoundOutcome::PreconditionUnmet, &[], &[], &[]);
+    }
+    let diffs: BTreeMap<DeviceId, Diff> = reads
+        .into_iter()
+        .map(|(device, read)| (device, read.diff))
+        .collect();
     let seen: Vec<Seen> = automatic
         .iter()
         .map(|device| (device, device.site().map(|site| site.id())))
@@ -520,7 +541,10 @@ fn finish(
     let again = !deferred.is_empty()
         || matches!(
             outcome,
-            RoundOutcome::NoInternet | RoundOutcome::Busy | RoundOutcome::NetboxUnreadable
+            RoundOutcome::NoInternet
+                | RoundOutcome::Busy
+                | RoundOutcome::NetboxUnreadable
+                | RoundOutcome::PreconditionUnmet
         );
     if again { RETRY } else { EVERY }
 }
@@ -533,8 +557,15 @@ fn listed(devices: &[RoundDevice]) -> String {
         .join(", ")
 }
 
-/// The diff of each of `devices`, [`AT_ONCE`] at a time.
-async fn read_diffs(devices: Vec<DeviceAccess>) -> BTreeMap<DeviceId, Diff> {
+/// What a round read of one device.
+struct Read {
+    diff: Diff,
+    /// its device mode has the scheduler off
+    without_scheduler: bool,
+}
+
+/// The diff of each of `devices` and whether it has the scheduler, [`AT_ONCE`] at a time.
+async fn read_diffs(devices: Vec<DeviceAccess>) -> BTreeMap<DeviceId, Read> {
     let started = Instant::now();
     let permits = Arc::new(Semaphore::new(AT_ONCE));
     let mut reads = JoinSet::new();
@@ -542,10 +573,13 @@ async fn read_diffs(devices: Vec<DeviceAccess>) -> BTreeMap<DeviceId, Diff> {
         let permits = permits.clone();
         reads.spawn(async move {
             let _permit = permits.acquire_owned().await;
-            let diff = job::run(diff_of(device.clone(), started))
+            let read = job::run(diff_of(device.clone(), started))
                 .await
-                .unwrap_or(Diff::Unreached);
-            (device.id(), diff)
+                .unwrap_or(Read {
+                    diff: Diff::Unreached,
+                    without_scheduler: false,
+                });
+            (device.id(), read)
         });
     }
     let mut diffs = BTreeMap::new();
@@ -559,14 +593,22 @@ async fn read_diffs(devices: Vec<DeviceAccess>) -> BTreeMap<DeviceId, Diff> {
 
 /// Read anew for the round; a device not reached, or whose config can't be generated, is
 /// [`Diff::Unreached`].
-async fn diff_of(device: DeviceAccess, started: Instant) -> Result<Diff, Error> {
+async fn diff_of(device: DeviceAccess, started: Instant) -> Result<Read, Error> {
     let Some(link) = device.connect(DeviceTarget::default()).await? else {
-        return Ok(Diff::Unreached);
+        return Ok(Read {
+            diff: Diff::Unreached,
+            without_scheduler: false,
+        });
     };
     let generated = link.generated_cfg(Freshness::Since(started)).await?;
-    Ok(match generated.fingerprint() {
-        Some(fingerprint) => Diff::Changes(fingerprint),
-        None => Diff::InLine,
+    let reader = link.reader().at(Freshness::Since(started));
+    let without_scheduler = fallback::without_scheduler(&reader).await?.is_some();
+    Ok(Read {
+        diff: match generated.fingerprint() {
+            Some(fingerprint) => Diff::Changes(fingerprint),
+            None => Diff::InLine,
+        },
+        without_scheduler,
     })
 }
 

@@ -77,7 +77,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
-| C20 | Automatisches Rollout, Rest: der Journal-Eintrag nennt die Änderungen pro Tabelle (Z56); anhalten mit Grund (`HoldReason`) beim Umstecken, bei Ankündigungen nach aussen, bei Warnungen des Anwendens wie `PoeCut`, und bei Richtfunk (Z58); Vorbedingung, Rest: Device-Mode mit `scheduler` (mit dem Diff gelesen), verletzt setzt die Automatik aus und die Karte zeigt es beim Gerät; nach dem Skript prüfen, dass jedes Gerät der automatischen Sites antwortet (beim Gemeinsam anwenden von Hand die Geräte hinter den Mitgliedern); selbst anstossen, wenn der Provisioner schreibt; Stand pro Änderung und Gerät für das Anwohner-UI (Z51); Vorschau beim Aufheben des Fehlers | [Automatisches Rollout](concepts/auto-rollout.md) | M–L | Bereich, Runden, Transaktion, Fehlerzustand, Karte, Vorbedingung aus NetBox erledigt |
+| C20 | Automatisches Rollout, Rest: der Journal-Eintrag nennt die Änderungen pro Tabelle (Z56); anhalten mit Grund (`HoldReason`) beim Umstecken, bei Ankündigungen nach aussen, bei Warnungen des Anwendens wie `PoeCut`, und bei Richtfunk (Z58); nach dem Skript prüfen, dass jedes Gerät der automatischen Sites antwortet (beim Gemeinsam anwenden von Hand die Geräte hinter den Mitgliedern); selbst anstossen, wenn der Provisioner schreibt; Stand pro Änderung und Gerät für das Anwohner-UI (Z51); Vorschau beim Aufheben des Fehlers | [Automatisches Rollout](concepts/auto-rollout.md) | M–L | Bereich, Runden, Transaktion, Fehlerzustand, Karte, Vorbedingung erledigt |
 
 ## E. Erweiterungen umgesetzter Teile
 

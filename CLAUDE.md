@@ -833,7 +833,9 @@ changed holds all back until released or its diff accepted as baseline
 reading, it checks the precondition in NetBox (`auto_rollout::precondition`: both loopbacks on
 `lo` and an OSPF path, `ManagementTree::reached`, to the biggest group of the automatic devices);
 unmet, nothing is read or applied (`PreconditionUnmet`, `State.unmet` on the card) until a
-later round finds it met, no admin needed. A failure puts the members' sites into their error state, which an admin clears
+later round finds it met, no admin needed. With the diffs it reads each device's device mode
+(`fallback::without_scheduler`): an automatic one without `scheduler` stops the round the same
+way. A failure puts the members' sites into their error state, which an admin clears
 (`clearAutoRolloutError`). State in `state_dir/auto_rollout.json`; the site page's card
 (`components::site::auto_rollout`, `SiteAccess.autoRollout`) is live through
 `facts::Change::AutoRollout`; metrics `auto_rollout_*`. The lab NetBox runs a `rqworker` for

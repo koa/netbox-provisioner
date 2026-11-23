@@ -85,7 +85,9 @@ pub async fn arm(raw: &impl Writes, delay: Duration) -> Result<Option<DeviceMode
 
 /// The device mode, where it has the scheduler off; `None` with the scheduler on, or before
 /// RouterOS 7.17, which has no device mode.
-async fn without_scheduler(raw: &impl Reads) -> Result<Option<DeviceModeName>, Error> {
+/// The device mode where it has the scheduler off, which no fallback can be scheduled in; `None`
+/// with it on, or without a device mode (before RouterOS 7.17).
+pub async fn without_scheduler(raw: &impl Reads) -> Result<Option<DeviceModeName>, Error> {
     let mode = match SystemDeviceModeState::fetch(raw).await {
         Ok(mode) => mode,
         // no such table

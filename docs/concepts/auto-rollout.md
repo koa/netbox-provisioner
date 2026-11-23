@@ -4,8 +4,8 @@ Status: zum Teil umgesetzt, beschrieben in [Automatisches Rollout](../auto-rollo
 Bereich pro Site, Runden auf Webhook und alle 30 min, eine Transaktion über `applyBatch` mit
 dem Internet vorher und nachher, Zurückstellen nicht erreichbarer Geräte samt ihren
 Funkpartnern, Anhalten durch manuelle Geräte mit Freigabe, Fehlerzustand pro Site, Zustand in
-`state_dir`, Karte auf der Seite der Site, Metriken, der NetBox-Teil der Vorbedingung (Loopbacks
-und OSPF-Verbindung). Von der Vorbedingung fehlt noch der Device-Mode. Aufgabe C20 in [todo.md](../todo.md).
+`state_dir`, Karte auf der Seite der Site, Metriken, die Vorbedingung (Loopbacks, OSPF-Verbindung,
+Device-Mode mit `scheduler`). Aufgabe C20 in [todo.md](../todo.md).
 Voraussetzung für den [Self-Service](self-service.md).
 
 Was noch fehlt:

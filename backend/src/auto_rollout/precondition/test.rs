@@ -162,3 +162,24 @@ async fn at_a_tie_the_first_name_keeps_its_connection() {
         [("b".into(), vec![Lack::Connection])]
     );
 }
+
+/// A device whose device mode has the scheduler off is named, the others not.
+#[tokio::test]
+async fn a_device_without_scheduler_is_named() {
+    let mut builder = TopologyBuilder::default();
+    let b = full(&mut builder, "b", 2);
+    let a = full(&mut builder, "a", 1);
+    let topology: TopologyHolder = builder.into();
+    let devices = [
+        topology.devices_by_id(b).await.unwrap(),
+        topology.devices_by_id(a).await.unwrap(),
+    ];
+    let unmet = without_scheduler(&devices, &[b].into());
+    assert_eq!(
+        unmet
+            .iter()
+            .map(|unmet| (&*unmet.device.name, &*unmet.lacks))
+            .collect::<Vec<_>>(),
+        [("b", &[Lack::Scheduler][..])]
+    );
+}

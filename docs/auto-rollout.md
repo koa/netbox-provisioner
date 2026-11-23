@@ -28,12 +28,20 @@ in `precondition/test.rs`), ob jedes automatische RouterOS-Gerät aller Sites ha
   Enden treffen sich ohnehin. Zerfallen die Geräte in Gruppen ohne Verbindung, hat die grösste
   ihre Verbindung (bei Gleichstand die mit dem ersten Namen), jedem anderen fehlt sie.
 
-Fehlt einem Gerät etwas, liest und wendet die Runde nichts an (`PreconditionUnmet`), an keiner
-Site, und die Karte jeder automatischen Site zeigt, was bei welchem Gerät fehlt
-(`SiteAutoRollout.unmet`). Ein Admin hebt nichts auf: Die nächste Runde, nach der nächsten
-Änderung in NetBox, prüft wieder und läuft weiter, sobald sie erfüllt ist. Das fängt ab, was ein
+Fehlt einem Gerät etwas, liest die Runde kein Gerät und wendet nichts an (`PreconditionUnmet`),
+an keiner Site, und die Karte jeder automatischen Site zeigt, was bei welchem Gerät fehlt
+(`SiteAutoRollout.unmet`). Ein Admin hebt nichts auf: Die nächste Runde (nach 5 min oder der
+nächsten Änderung in NetBox) prüft wieder und läuft weiter, sobald sie erfüllt ist. Das fängt ab, was ein
 versehentliches Löschen in NetBox gefährlich macht, eine gelöschte Loopback oder die letzte
-Verbindung eines Geräts. Den Device-Mode mit `scheduler` prüft die Runde noch nicht (C20).
+Verbindung eines Geräts.
+
+Dazu liest die Runde mit dem Diff jedes erreichten Geräts seinen Device-Mode
+(`fallback::without_scheduler`): Ohne `scheduler` hätte das Anwenden keinen Fallback, und ein
+Gerät, das sich abschneidet, bliebe weg, bis jemand vor Ort ist. Hat ein automatisches Gerät
+ihn nicht, wendet die Runde nichts an, ebenfalls mit `PreconditionUnmet` und dem Gerät auf der
+Karte; einschalten geht nur mit Bestätigung am Gerät („Device-Mode“ auf der Geräteseite). Ein
+nicht erreichtes Gerät wird ohnehin zurückgestellt. Von Hand angewendet bleibt es die Warnung
+`FallbackUnavailable`.
 
 ## Runden
 
@@ -53,8 +61,7 @@ Wann eine Runde läuft:
   weitere kam (`QUIET`): was ein Plan oder ein Admin nacheinander schreibt, geht zusammen.
 - **Alle 30 min** (`EVERY`), damit eine Änderung von Hand spätestens dann zurückgeht.
 - **Nach 5 min** (`RETRY`), wenn die letzte ein Gerät zurückstellte, das Internet fehlte, ein
-  Gerät beschäftigt oder NetBox nicht lesbar war; nicht bei verletzter Vorbedingung, die erst
-  eine Änderung in NetBox (oder die 30 min) wieder prüft.
+  Gerät beschäftigt, NetBox nicht lesbar oder die Vorbedingung verletzt war.
 - Gleich nach dem Start (nach 20 s) und nach „Fehler aufheben“ oder „Freigeben“.
 
 Entschieden wird ohne Gerät (`auto_rollout::decide`, getestet in `decide/test.rs`):
