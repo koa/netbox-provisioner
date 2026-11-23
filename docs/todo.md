@@ -59,6 +59,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | B39 | Beschreibung eines Plans aus `i18n`: Jeder Helfer setzt `NetboxPlan.description` als deutschen Text im Backend („Verbindung …“, „Raum von …“, „Kunden-Netz …“, einer englisch: „no PoE …“), der als `changelog_message` nach NetBox geht und im Job steht. Das Backend schreibt keine Sätze; das Journal holt seine aus `i18n::journal`. Plan: die Beschreibung als typisierte Art des Plans mit seinen Werten (Gerät, Port, …), gewortet in einem Modul `i18n::changelog`, das Backend und Frontend nutzen | M | offen |
+| B40 | Ein GraphQL-Schema statt drei (authenticated, resident, anonymous): ein Endpunkt, Token optional, die Rolle einmal pro Anfrage im Kontext; ein Guard `Admin` oder `Resident` an jedem Wurzelfeld, der Besitz weiter am Objekt; ein Test ruft jedes Wurzelfeld als Anwohner und ohne Token auf; im Frontend ein cynic-Schema. Danach gilt „Rolle am Wurzelfeld, Besitz am Objekt“ statt „an der Grenze, einmal“ (CLAUDE.md), und die Anwohner bekommen Subscriptions (Z51). [Konzept](concepts/graphql-one-schema.md) | M | offen |
 
 ## C. Konzepte zum Umsetzen
 
