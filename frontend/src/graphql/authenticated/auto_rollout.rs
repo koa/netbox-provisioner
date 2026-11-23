@@ -42,6 +42,26 @@ pub struct SiteAutoRollout {
     pub last_round: Option<LastRound>,
     pub released: Vec<i32>,
     pub holding: Vec<i32>,
+    pub unmet: Vec<Unmet>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct Unmet {
+    pub device: RoundDevice,
+    pub lacks: Vec<Lack>,
+}
+
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum Lack {
+    #[cynic(rename = "LOOPBACK_IPV_4")]
+    LoopbackIpv4,
+    #[cynic(rename = "LOOPBACK_IPV_6")]
+    LoopbackIpv6,
+    Connection,
+    #[cynic(fallback)]
+    Other(String),
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -89,6 +109,7 @@ pub enum RoundOutcome {
     Busy,
     Failed,
     NetboxUnreadable,
+    PreconditionUnmet,
     #[cynic(fallback)]
     Other(String),
 }

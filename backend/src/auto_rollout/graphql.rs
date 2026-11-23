@@ -1,5 +1,7 @@
 //! Scope: The automatic rollout as a site's page shows it; not the rounds (`auto_rollout`).
-use super::{RoundDevice, RoundDone, RoundOutcome, SiteError, SiteState, state};
+use super::{
+    RoundDevice, RoundDone, RoundOutcome, SiteError, SiteState, precondition::Unmet, state,
+};
 use crate::topology::SiteId;
 use async_graphql::SimpleObject;
 use std::time::SystemTime;
@@ -18,6 +20,9 @@ pub struct SiteAutoRollout {
     /// manual devices holding back whose diff an admin may still take over; one of the last
     /// round's `heldBy` missing here is taken over already
     pub holding: Box<[u32]>,
+    /// the automatic devices, of every site, the precondition failed on at the last round:
+    /// nothing rolls out until NetBox meets it again
+    pub unmet: Box<[Unmet]>,
 }
 
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -78,5 +83,6 @@ pub fn of_site(site: SiteId) -> SiteAutoRollout {
         ),
         released: state.released.iter().map(|id| id.0).collect(),
         holding: state.holding.keys().map(|id| id.0).collect(),
+        unmet: state.unmet,
     }
 }

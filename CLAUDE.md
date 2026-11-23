@@ -829,8 +829,11 @@ manual ones next to them (`related`), decides without a device (`auto_rollout::d
 unreached devices and their radio partners deferred, a manual device whose diff fingerprint
 changed holds all back until released or its diff accepted as baseline
 (`accept`, from `State.holding`), a site seen automatic first with diffs goes into
-`NotInLine`) and starts one `batch::apply` with `needs_internet` (`Started::Automatic`); a
-failure puts the members' sites into their error state, which an admin clears
+`NotInLine`) and starts one `batch::apply` with `needs_internet` (`Started::Automatic`). Before
+reading, it checks the precondition in NetBox (`auto_rollout::precondition`: both loopbacks on
+`lo` and an OSPF path, `ManagementTree::reached`, to the biggest group of the automatic devices);
+unmet, nothing is read or applied (`PreconditionUnmet`, `State.unmet` on the card) until a
+later round finds it met, no admin needed. A failure puts the members' sites into their error state, which an admin clears
 (`clearAutoRolloutError`). State in `state_dir/auto_rollout.json`; the site page's card
 (`components::site::auto_rollout`, `SiteAccess.autoRollout`) is live through
 `facts::Change::AutoRollout`; metrics `auto_rollout_*`. The lab NetBox runs a `rqworker` for
@@ -1097,8 +1100,8 @@ device cut off from OSPF through the neighbor already changed (see the bootstrap
 and its apply brings the link back. A batch changes both ends at once; that the devices behind
 its members (in the automatic rollout every device of its sites) answer afterwards is still
 to be checked (Z58, C20). The automatic rollout doesn't predict changes to the provisioner's
-way; it is to run only while NetBox gives every device of its sites both loopbacks and an
-OSPF path to all the others (`docs/concepts/auto-rollout.md`). A new MTU
+way; it runs only while NetBox gives every device of its sites both loopbacks and an
+OSPF path to the others (`auto_rollout::precondition`). A new MTU
 restarts a `wlan` radio; on a DFS weather radar channel (5600-5650 MHz) it listens for radar for
 10 minutes (ETSI) before it sends again. The lab's links have none, as in production.
 NetBox's interface `speed` (kbit/s) fixes an Ethernet port's speed without auto-negotiation

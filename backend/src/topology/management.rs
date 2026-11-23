@@ -114,6 +114,15 @@ impl ManagementTree {
     /// The roots reached from `from` over OSPF neighbors (a network both have an `ospf`
     /// interface in), those among `from` included.
     pub fn roots_reached(&self, from: impl IntoIterator<Item = DeviceId>) -> BTreeSet<DeviceId> {
+        self.reached(from)
+            .intersection(&self.roots)
+            .copied()
+            .collect()
+    }
+
+    /// The RouterOS devices reached from `from` over OSPF neighbors, those among `from`
+    /// included, also across devices that are no root.
+    pub fn reached(&self, from: impl IntoIterator<Item = DeviceId>) -> BTreeSet<DeviceId> {
         let mut seen = from
             .into_iter()
             .filter(|device| self.networks.contains_key(device))
@@ -127,7 +136,7 @@ impl ManagementTree {
                 }
             }
         }
-        seen.intersection(&self.roots).copied().collect()
+        seen
     }
 
     /// The devices that may lose their parent while `device` is away: its children, and those

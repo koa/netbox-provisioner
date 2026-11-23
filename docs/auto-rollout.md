@@ -16,6 +16,25 @@ der Provisioner selbst startet (`backend::auto_rollout`). Was noch fehlt, steht 
   sich vorher angesammelt hat. Der Admin sieht die Diffs („Abweichung von NetBox“) und hebt den
   Fehler auf, dann rollt die nächste Runde sie aus, oder er wendet von Hand an.
 
+## Vorbedingung
+
+Vor dem Lesen eines Geräts prüft jede Runde in NetBox (`auto_rollout::precondition`, getestet
+in `precondition/test.rs`), ob jedes automatische RouterOS-Gerät aller Sites hat:
+
+- eine Loopback IPv4 (`/32`) und IPv6 (`/128`) auf `lo`;
+- eine IP-Verbindung zu den übrigen: über OSPF-Nachbarn wie im Management-Baum (zwei
+  RouterOS-Geräte mit je einem `ospf`-Interface im selben IPv4-Netz), auch über Geräte
+  ausserhalb des Bereichs. Eine Funkbrücke ohne RouterOS ist wie ein Kabel: Die Netze ihrer
+  Enden treffen sich ohnehin. Zerfallen die Geräte in Gruppen ohne Verbindung, hat die grösste
+  ihre Verbindung (bei Gleichstand die mit dem ersten Namen), jedem anderen fehlt sie.
+
+Fehlt einem Gerät etwas, liest und wendet die Runde nichts an (`PreconditionUnmet`), an keiner
+Site, und die Karte jeder automatischen Site zeigt, was bei welchem Gerät fehlt
+(`SiteAutoRollout.unmet`). Ein Admin hebt nichts auf: Die nächste Runde, nach der nächsten
+Änderung in NetBox, prüft wieder und läuft weiter, sobald sie erfüllt ist. Das fängt ab, was ein
+versehentliches Löschen in NetBox gefährlich macht, eine gelöschte Loopback oder die letzte
+Verbindung eines Geräts. Den Device-Mode mit `scheduler` prüft die Runde noch nicht (C20).
+
 ## Runden
 
 Eine Runde (`auto_rollout::round`) liest NetBox neu und den Diff jedes automatischen Geräts
@@ -34,7 +53,8 @@ Wann eine Runde läuft:
   weitere kam (`QUIET`): was ein Plan oder ein Admin nacheinander schreibt, geht zusammen.
 - **Alle 30 min** (`EVERY`), damit eine Änderung von Hand spätestens dann zurückgeht.
 - **Nach 5 min** (`RETRY`), wenn die letzte ein Gerät zurückstellte, das Internet fehlte, ein
-  Gerät beschäftigt oder NetBox nicht lesbar war.
+  Gerät beschäftigt oder NetBox nicht lesbar war; nicht bei verletzter Vorbedingung, die erst
+  eine Änderung in NetBox (oder die 30 min) wieder prüft.
 - Gleich nach dem Start (nach 20 s) und nach „Fehler aufheben“ oder „Freigeben“.
 
 Entschieden wird ohne Gerät (`auto_rollout::decide`, getestet in `decide/test.rs`):
@@ -75,13 +95,15 @@ Metriken an `/metrics`, für den Alarm im Alertmanager:
 In `state_dir/auto_rollout.json` (`saved_job::state_file`), damit ein Neustart nichts
 vergisst: der Zustand jeder automatischen Site (bereit, Fehler mit Grund, Geräten und
 Zeitpunkt), die Grundlinien der manuellen Geräte, die Diffs der anhaltenden (`holding`, zum
-Übernehmen), die freigegebenen Geräte und die letzte
-Runde (Ergebnis, angewendete, zurückgestellte und anhaltende Geräte).
+Übernehmen), die freigegebenen Geräte, die letzte
+Runde (Ergebnis, angewendete, zurückgestellte und anhaltende Geräte) und die Geräte, an denen
+sie die Vorbedingung verletzt fand (`unmet`).
 
 ## Auf der Seite der Site
 
 Die Karte „Automatisches Rollout“ (`components::site::auto_rollout`, nur bei einer Site mit
-`auto_rollout`; `SiteAccess.autoRollout`) zeigt, ob die Site bereit ist oder im Fehler, die
+`auto_rollout`; `SiteAccess.autoRollout`) zeigt eine verletzte Vorbedingung mit dem, was bei
+welchem Gerät fehlt, ob die Site bereit ist oder im Fehler, die
 letzte Runde, die zurückgestellten Geräte und die anhaltenden manuellen, jedes mit „Freigeben
 und mit ausrollen“ und „Als Stand übernehmen“. Sie abonniert den Zustand: jede Änderung daran meldet
 `facts::Change::AutoRollout`.

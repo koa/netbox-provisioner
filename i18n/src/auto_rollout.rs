@@ -54,6 +54,7 @@ pub enum Outcome<'a> {
     Busy,
     Failed,
     NetboxUnreadable,
+    PreconditionUnmet,
     Other(&'a str),
 }
 
@@ -77,6 +78,9 @@ pub fn last_round(outcome: Outcome, ago: &str, applied: &[String]) -> String {
         ),
         Outcome::Failed => format!("gescheitert auf {applied}, alle gingen zurück"),
         Outcome::NetboxUnreadable => "NetBox war nicht lesbar".to_string(),
+        Outcome::PreconditionUnmet => {
+            "nichts gelesen und nichts angewendet, die Vorbedingung ist verletzt".to_string()
+        }
         Outcome::Other(other) => other.to_string(),
     };
     format!("Letzte Runde {ago}: {what}")
@@ -93,3 +97,28 @@ pub const HELD_BY: &str = "Diese manuellen Geräte haben eine neue Abweichung vo
     Automatik wartet, bis sie von Hand angewendet, freigegeben (ihre Abweichung geht mit hinaus) \
     oder als Stand übernommen sind (sie bleibt auf dem Gerät, erst eine weitere Änderung hält \
     wieder an):";
+
+pub const UNMET: &str = "Ausgesetzt: Die Vorbedingung ist in NetBox verletzt, an keiner \
+    automatischen Site rollt etwas aus. Sobald NetBox sie wieder erfüllt, läuft die Automatik \
+    von selbst weiter. Es fehlt:";
+
+/// What an automatic device lacks for the precondition (`Lack`).
+pub enum Lack<'a> {
+    LoopbackIpv4,
+    LoopbackIpv6,
+    Connection,
+    Other(&'a str),
+}
+
+pub fn lack(lack: Lack) -> String {
+    match lack {
+        Lack::LoopbackIpv4 => "Loopback IPv4 (/32 auf lo)".into(),
+        Lack::LoopbackIpv6 => "Loopback IPv6 (/128 auf lo)".into(),
+        Lack::Connection => {
+            "OSPF-Verbindung zu den übrigen automatischen Geräten (ein ospf-Interface im selben \
+             Netz wie ein Nachbar)"
+                .into()
+        }
+        Lack::Other(other) => other.into(),
+    }
+}

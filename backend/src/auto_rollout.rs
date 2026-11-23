@@ -10,8 +10,12 @@
 //! applies the automatic devices with changes as one batch that needs the internet before and
 //! after (`batch::apply`). A batch that fails puts the sites of its devices into their error
 //! state; their devices wait until an admin clears it.
+//!
+//! Before reading, a round checks the precondition in NetBox (`precondition`): unmet, it
+//! applies nothing and the next round, after the next change in NetBox, checks again.
 pub mod decide;
 pub mod graphql;
+pub mod precondition;
 pub mod webhook;
 
 use crate::{
@@ -29,6 +33,7 @@ use crate::{
 };
 use decide::{Diff, Fingerprint, Seen};
 use log::{info, warn};
+use precondition::Unmet;
 use prometheus::{IntGauge, IntGaugeVec, Opts, Registry};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -73,6 +78,10 @@ pub struct State {
     pub holding: BTreeMap<DeviceId, Fingerprint>,
     /// the last round
     pub last: Option<RoundDone>,
+    /// the automatic devices the precondition failed on at the last round: none apply until
+    /// it is met again
+    #[serde(default)]
+    pub unmet: Box<[Unmet]>,
 }
 
 /// A device a round names.
@@ -144,6 +153,8 @@ pub enum RoundOutcome {
     Failed,
     /// NetBox couldn't be read
     NetboxUnreadable,
+    /// the precondition failed on an automatic device: nothing read, nothing applied
+    PreconditionUnmet,
 }
 
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(Default::default);
@@ -307,6 +318,17 @@ async fn round(topology: Arc<Topology>) -> Duration {
         .filter_map(|device| device.site())
         .map(|site| (site.id(), site.name().into()))
         .collect();
+    let unmet = precondition::unmet(&automatic);
+    {
+        let mut state = STATE.lock_anyway();
+        state.unmet = unmet.clone().into();
+        save(&state);
+    }
+    if !unmet.is_empty() {
+        let devices = unmet.iter().map(|u| u.device.clone()).collect::<Vec<_>>();
+        warn!("auto rollout: precondition unmet on {}", listed(&devices));
+        return finish(RoundOutcome::PreconditionUnmet, &[], &[], &[]);
+    }
     let sites: BTreeSet<SiteId> = site_names.keys().copied().collect();
     let new_sites: BTreeSet<SiteId> = sites
         .iter()

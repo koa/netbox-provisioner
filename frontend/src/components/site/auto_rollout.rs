@@ -8,7 +8,7 @@ use crate::{
     graphql::{
         authenticated::{
             auto_rollout::{
-                AcceptAutoRolloutDiff, ClearAutoRolloutError, LastRound, ReleaseAutoRollout,
+                AcceptAutoRolloutDiff, ClearAutoRolloutError, Lack, LastRound, ReleaseAutoRollout,
                 ReleaseVariables, RoundDevice, RoundOutcome, SiteAutoRollout, SiteAutoRolloutQuery,
                 SiteError, SiteVariables,
             },
@@ -38,7 +38,7 @@ pub struct AutoRollout {
 }
 
 pub enum AutoRolloutMsg {
-    Loaded(Option<SiteAutoRollout>),
+    Loaded(Option<Box<SiteAutoRollout>>),
     AllowApply(bool),
     Error(FrontendError),
     Clear,
@@ -61,7 +61,10 @@ impl Component for AutoRollout {
             move |data| {
                 scope.send_message(match data {
                     Ok(data) => AutoRolloutMsg::Loaded(
-                        data.topology.site_by_id.and_then(|site| site.auto_rollout),
+                        data.topology
+                            .site_by_id
+                            .and_then(|site| site.auto_rollout)
+                            .map(Box::new),
                     ),
                     Err(error) => AutoRolloutMsg::Error(error),
                 })
@@ -84,7 +87,7 @@ impl Component for AutoRollout {
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             AutoRolloutMsg::Loaded(state) => {
-                self.state = state;
+                self.state = state.map(|state| *state);
                 self.error = None;
             }
             AutoRolloutMsg::AllowApply(allowed) => self.allow_apply = allowed,
@@ -152,7 +155,22 @@ impl Component for AutoRollout {
                 </Alert>
             }
         });
-        let ready = (state.seen && state.error.is_none()).then(|| html!(<p>{t::READY}</p>));
+        let unmet = (!state.unmet.is_empty()).then(|| {
+            html! {
+                <Alert inline=true r#type={AlertType::Danger} title={t::UNMET}>
+                    <dl class="neighbor-results">
+                        { for state.unmet.iter().map(|unmet| html! {
+                            <>
+                                <dt>{unmet.device.name.clone()}</dt>
+                                <dd>{unmet.lacks.iter().map(lack).collect::<Vec<_>>().join(", ")}</dd>
+                            </>
+                        }) }
+                    </dl>
+                </Alert>
+            }
+        });
+        let ready = (state.seen && state.error.is_none() && state.unmet.is_empty())
+            .then(|| html!(<p>{t::READY}</p>));
         let not_seen = (!state.seen).then(|| html!(<p>{t::NOT_SEEN}</p>));
         let last = state
             .last_round
@@ -163,6 +181,7 @@ impl Component for AutoRollout {
                 <CardHeader><CardTitle>{t::TITLE}</CardTitle></CardHeader>
                 <CardBody>
                     {self.error.as_ref().map(FrontendError::to_html)}
+                    {unmet}
                     {error}
                     {ready}
                     {not_seen}
@@ -184,6 +203,7 @@ impl AutoRollout {
             RoundOutcome::Busy => t::Outcome::Busy,
             RoundOutcome::Failed => t::Outcome::Failed,
             RoundOutcome::NetboxUnreadable => t::Outcome::NetboxUnreadable,
+            RoundOutcome::PreconditionUnmet => t::Outcome::PreconditionUnmet,
             RoundOutcome::Other(other) => t::Outcome::Other(other),
         };
         let line = t::last_round(outcome, &t::ago(last.age.into()), &names(&last.applied));
@@ -242,6 +262,15 @@ impl AutoRollout {
             </>
         }
     }
+}
+
+fn lack(lack: &Lack) -> String {
+    t::lack(match lack {
+        Lack::LoopbackIpv4 => t::Lack::LoopbackIpv4,
+        Lack::LoopbackIpv6 => t::Lack::LoopbackIpv6,
+        Lack::Connection => t::Lack::Connection,
+        Lack::Other(other) => t::Lack::Other(other),
+    })
 }
 
 fn names(devices: &[RoundDevice]) -> Vec<String> {
