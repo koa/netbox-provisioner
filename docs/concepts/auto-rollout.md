@@ -102,8 +102,6 @@ sicher, aber das ganze Netz kurz weg; wer das nicht will, nimmt dieses Gerät au
 
 ## Selbst angestossen und Stand pro Änderung
 
-- Schreibt der Provisioner selbst (Anwohner, Helfer), stösst er die Runde direkt an, statt auf
-  den Webhook zu warten.
 - Pro Änderung: wer sie ausgelöst hat (im Changelog von NetBox steht immer der Dienst-Benutzer
   des Provisioners; die Support-Ansicht will „koa (Admin) für Familie Meier“), welche Geräte sie
   betrifft und deren Stand (ausstehend, ausgerollt, wartet, zurückgestellt, gescheitert). Das

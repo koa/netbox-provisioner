@@ -77,7 +77,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
-| C20 | Automatisches Rollout, Rest: der Journal-Eintrag nennt die Änderungen pro Tabelle (Z56); anhalten mit Grund (`HoldReason`), Rest: beim Umstecken und bei Ankündigungen nach aussen (Z58); selbst anstossen, wenn der Provisioner schreibt; Stand pro Änderung und Gerät für das Anwohner-UI (Z51); Vorschau beim Aufheben des Fehlers | [Automatisches Rollout](concepts/auto-rollout.md) | M–L | Bereich, Runden, Transaktion, Fehlerzustand, Karte, Vorbedingung, Prüfung nach dem Skript, Anhalten bei Warnungen und Richtfunk erledigt |
+| C20 | Automatisches Rollout, Rest: der Journal-Eintrag nennt die Änderungen pro Tabelle (Z56); anhalten mit Grund (`HoldReason`), Rest: beim Umstecken und bei Ankündigungen nach aussen (Z58); Stand pro Änderung und Gerät für das Anwohner-UI (Z51); Vorschau beim Aufheben des Fehlers | [Automatisches Rollout](concepts/auto-rollout.md) | M–L | Bereich, Runden, Transaktion, Fehlerzustand, Karte, Vorbedingung, Prüfung nach dem Skript, Anhalten bei Warnungen und Richtfunk erledigt |
 
 ## E. Erweiterungen umgesetzter Teile
 

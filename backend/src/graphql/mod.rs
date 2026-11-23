@@ -193,11 +193,13 @@ impl SubscriptionAuthenticated {
     }
 }
 
-/// Fetches the topology after a write to NetBox, so the next page shows it.
+/// Fetches the topology after a write to NetBox, so the next page shows it, and tells the
+/// automatic rollout, which doesn't wait for NetBox's webhook then (the 20 s of quiet join both).
 pub(crate) async fn refetch(topology: &TopologyHolder) {
     if let Err(error) = topology.fetch().await {
         log::error!("Cannot fetch the topology after writing to NetBox: {error}");
     }
+    crate::auto_rollout::netbox_changed();
 }
 
 impl MutationAuthenticated {

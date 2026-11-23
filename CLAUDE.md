@@ -828,7 +828,8 @@ CHR test `ospf_credentials_move_with_both_ends_of_a_segment`.
 `auto_rollout` (C20, `docs/auto-rollout.md`) applies NetBox changes to the RouterOS devices of
 sites with the custom field `auto_rollout` (a device's `false` leaves it out; `allow_apply`
 only): rounds after NetBox's webhook (`/netbox-webhook`, HMAC-SHA512 with
-`netbox_webhook_secret`, `auto_rollout::webhook`; 20 s quiet), every 30 min (manual changes go
+`netbox_webhook_secret`, `auto_rollout::webhook`; 20 s quiet) or the provisioner's own write
+(`graphql::refetch`), every 30 min (manual changes go
 back) and 5 min after a deferral. A round reads the diffs of the automatic devices and the
 manual ones next to them (`related`), decides without a device (`auto_rollout::decide`:
 unreached devices and their radio partners deferred, a manual device whose diff fingerprint

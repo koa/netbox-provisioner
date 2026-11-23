@@ -59,6 +59,9 @@ Wann eine Runde läuft:
 - **Webhook:** NetBox meldet jede Änderung an `/netbox-webhook` (Event Rule, signiert mit
   `netbox_webhook_secret`, [Betrieb](deployment.md)). Die Runde beginnt, wenn 20 s lang keine
   weitere kam (`QUIET`): was ein Plan oder ein Admin nacheinander schreibt, geht zusammen.
+- **Nach einem Schreiben des Provisioners** in NetBox (Helfer, Anwohner, Rückgängig;
+  `graphql::refetch`): wie ein Webhook, ohne auf ihn zu warten; kommt er dazu, fassen die 20 s
+  Ruhe beide zusammen.
 - **Alle 30 min** (`EVERY`), damit eine Änderung von Hand spätestens dann zurückgeht.
 - **Nach 5 min** (`RETRY`), wenn die letzte ein Gerät zurückstellte, das Internet fehlte, ein
   Gerät beschäftigt, NetBox nicht lesbar oder die Vorbedingung verletzt war.
