@@ -35,8 +35,8 @@ und im Stand pro Änderung der Anwohner; der Admin gibt frei (für genau diesen 
 Fingerabdruck; ein weiter geänderter hält wieder an) oder wendet von Hand an. Im Zweifel hält
 sie an.
 
-**Vorbedingung:** Die Automatik läuft nur, solange NetBox für jedes RouterOS-Gerät der
-automatischen Sites (ohne die ausgenommenen) hat:
+**Vorbedingung:** Die Automatik läuft nur, solange jedes RouterOS-Gerät der automatischen
+Sites (ohne die ausgenommenen) in NetBox hat:
 
 - eine Loopback-Adresse IPv4 (`/32`) und eine IPv6 (`/128`) auf `lo`;
 - voraussichtlich eine IP-Verbindung zu jedem anderen dieser Geräte: Im Graphen der
@@ -45,9 +45,16 @@ automatischen Sites (ohne die ausgenommenen) hat:
   Bereichs. Eine Funkbrücke ohne RouterOS fasst der Provisioner nicht an; für die Automatik ist
   sie wie ein Kabel.
 
+und auf dem Gerät einen Device-Mode mit `scheduler`: Über ihn lädt der Fallback des Anwendens
+die Sicherung. Ohne ihn wendet der Provisioner heute trotzdem an (`FallbackUnavailable`, nur
+eine Warnung), und ein Gerät, das sich abschneidet, bleibt weg, bis jemand vor Ort ist. Den
+Scheduler schaltet nur eine Bestätigung am Gerät ein (Device-Mode auf der Geräteseite). Die
+Runde liest den Device-Mode jedes erreichten Geräts mit seinem Diff; ein nicht erreichtes wird
+ohnehin zurückgestellt.
+
 Jedes gültige RouterOS-Gerät hat OSPF, auch CAPs, Switches und Brückengeräte, teils nur für
-die Erreichbarkeit des Managements. Die Vorbedingung liest nur NetBox, wird vor jeder Runde
-gerechnet und fängt ab, was ein versehentliches Löschen in NetBox gefährlich macht: eine
+die Erreichbarkeit des Managements. Der Teil aus NetBox wird vor jeder Runde gerechnet, ohne ein
+Gerät zu lesen, und fängt ab, was ein versehentliches Löschen in NetBox gefährlich macht: eine
 gelöschte Loopback oder die letzte Verbindung eines Geräts. Ist sie verletzt, setzt die ganze
 Automatik aus und die Karte zeigt den Fehlerzustand mit dem, was bei welchem Gerät fehlt.
 Anders als die Fehlerzustände einer Site braucht er keinen Admin: Ist die Vorbedingung wieder
@@ -57,23 +64,20 @@ erreichbar, und es lässt sich in NetBox wiederherstellen.
 
 **Anhalten:**
 
-1. **Kein Fallback** (1a): Ein Mitglied, das keinen Fallback bekäme (Device-Mode ohne
-   `scheduler`, heute `FallbackUnavailable`), hält an. Ohne Fallback bleibt ein Gerät, das sich
-   abschneidet, weg, bis jemand vor Ort ist; heute wendet die Automatik es trotzdem an.
-2. **Umstecken:** Ein Kabel in NetBox zeigt auf einen anderen Port, als an dem das Gerät live
+1. **Umstecken:** Ein Kabel in NetBox zeigt auf einen anderen Port, als an dem das Gerät live
    gesehen wird (`neighbors::evaluate`, wie `seenUplinks` der Anwohner). Der Fallback nähme
    die Änderung zurück, bevor jemand umgesteckt hat. Löst sich von selbst: Sieht der Nachbar das
    Gerät am neuen Port, geht die nächste Runde.
-3. **Nach aussen:** Der Diff ändert OSPF oder Adressen an einem Interface, dessen Gegenstelle
+2. **Nach aussen:** Der Diff ändert OSPF oder Adressen an einem Interface, dessen Gegenstelle
    kein RouterOS-Gerät in NetBox ist (Uplink, `internet`, `nat`), `propagate_default_route`,
    oder kündigt ein Netz ausserhalb der freigegebenen Bereiche an. Das Lab hat einmal eine
    Default-Route in die Produktion exportiert.
-4. **Warnungen des Anwendens:** `PoeCut`, `CapOffOutsideWlanGroup`, `ApiClientsOutside`: Nach
+3. **Warnungen des Anwendens:** `PoeCut`, `CapOffOutsideWlanGroup`, `ApiClientsOutside`: Nach
    dem Anwenden fehlt etwas, das die Prüfung nicht als Fehler sieht.
-5. **Richtfunk:** Der Diff ändert ein Radio mit RF-Rolle (`PlannedApply::radio_wait` an einer
+4. **Richtfunk:** Der Diff ändert ein Radio mit RF-Rolle (`PlannedApply::radio_wait` an einer
    Strecke, nicht an einem AP): bis zu 24 min ohne Verbindung (DFS), mit allem dahinter.
 
-**Prüfen nach dem Skript** (1b): Bevor die Fallbacks weggehen, antwortet jedes RouterOS-Gerät
+**Prüfen nach dem Skript:** Bevor die Fallbacks weggehen, antwortet jedes RouterOS-Gerät
 der automatischen Sites, das vor der Runde erreichbar war, nicht nur die Mitglieder; sonst
 gehen alle zurück (wie `BatchIncomplete`). Heute prüft der Batch nur seine Mitglieder: Bricht
 der Weg zu einem Gerät ohne eigenen Diff (etwa über einen Switch ohne RouterOS), meldet er
@@ -97,7 +101,7 @@ sicher, aber das ganze Netz kurz weg; wer das nicht will, nimmt dieses Gerät au
   mit dem Scope einer Site in NetBox; alles andere hält an.
 - Richtfunk (5) immer anhalten oder in einem Wartungsfenster erlauben (Z19: vorerst keins).
 - Was ein Anwohner sieht, wenn seine Änderung anhält: nur den Grund oder auch, wen er fragt.
-- Wie lange die Prüfung 1b braucht: ein Login an jedes Gerät der automatischen Sites muss in
+- Wie lange die Prüfung nach dem Skript braucht: ein Login an jedes Gerät der automatischen Sites muss in
   das Fenster des Fallbacks (90 s) passen, auch bei grossen Sites.
 
 ## Selbst angestossen und Stand pro Änderung
@@ -127,10 +131,12 @@ sicher, aber das ganze Netz kurz weg; wer das nicht will, nimmt dieses Gerät au
 
 ## Entschieden (2026-11-23)
 
-- **Weg des Provisioners:** nicht vorhersagen und anhalten, sondern nach dem Skript prüfen
-  (1b); dafür nie automatisch ohne Fallback (1a). Die übrigen Gründe zum Anhalten (Umstecken,
-  nach aussen, Warnungen, Richtfunk) wie oben.
+- **Weg des Provisioners:** nicht vorhersagen und anhalten, sondern nach dem Skript prüfen.
+  Die Gründe zum Anhalten (Umstecken, nach aussen, Warnungen, Richtfunk) wie oben.
 - **Statt einer Mengenbremse** eine Vorbedingung aus NetBox (Loopback IPv4 und IPv6, eine
   IP-Verbindung zu allen anderen automatischen Geräten); verletzt setzt die Automatik aus, bis
   sie wieder erfüllt ist. Nach dem Skript antwortet jedes RouterOS-Gerät der automatischen
   Sites. Funkbrücken ohne RouterOS zählen wie Kabel.
+- **Scheduler:** Ein Fallback beim Anwenden fehlt nur, wo der Device-Mode den Scheduler
+  abschaltet; das ist ein Fehler. Ein Device-Mode mit `scheduler` auf jedem Gerät gehört zur
+  Vorbedingung.
