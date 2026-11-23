@@ -465,7 +465,7 @@ div.pf-v6-c-card.interfaces {
 
 /* a modal above the page (a helper `components::helper_flow`, a diff, a resident's preview and
    room); on a phone full width */
-div.pf-v6-c-backdrop:is(.helper-flow, .diff-details, .resident-preview, .resident-room) {
+div.pf-v6-c-backdrop:is(.helper-flow, .diff-details, .resident-preview, .resident-room, .resident-qr-dialog) {
     position: fixed;
     inset: 0;
 
@@ -508,7 +508,7 @@ div.pf-v6-c-backdrop:is(.helper-flow, .diff-details, .resident-preview, .residen
 }
 
 @media (max-width: 576px) {
-    div.pf-v6-c-backdrop:is(.helper-flow, .diff-details, .resident-preview, .resident-room) .pf-v6-c-modal-box {
+    div.pf-v6-c-backdrop:is(.helper-flow, .diff-details, .resident-preview, .resident-room, .resident-qr-dialog) .pf-v6-c-modal-box {
         width: 100vw;
         max-width: 100vw;
         max-height: 100vh;
@@ -808,6 +808,22 @@ dl.site-diff > dd > .pf-v6-c-button {
 .resident-field {
     display: flex;
     gap: var(--pf-t--global--spacer--xs);
+}
+
+/* the QR code centered, on white also in the dark theme: a camera needs the contrast */
+.resident-qr-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--pf-t--global--spacer--md);
+
+    & > dl {
+        align-self: stretch;
+    }
+}
+
+.resident-qr {
+    background: #ffffff;
 }
 .resident-network {
     display: flex;

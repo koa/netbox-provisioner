@@ -5,6 +5,7 @@ use super::{
     drafts::{Drafts, WlanDraft},
     network_devices::NetworkDevicesView,
     ports,
+    qr_dialog::QrDialog,
 };
 use crate::graphql::resident::residents::{PortKind, Resident, ResidentNetwork, ResidentWlan};
 use i18n::resident as t;
@@ -130,6 +131,8 @@ pub enum Editing {
 pub struct WlanFields {
     editing: Option<Editing>,
     show_psk: bool,
+    /// the QR code is shown
+    qr: bool,
 }
 
 pub enum WlanFieldsMsg {
@@ -140,6 +143,7 @@ pub enum WlanFieldsMsg {
     Take,
     Cancel,
     ShowPsk,
+    Qr(bool),
 }
 
 impl Component for WlanFields {
@@ -150,6 +154,7 @@ impl Component for WlanFields {
         WlanFields {
             editing: None,
             show_psk: false,
+            qr: false,
         }
     }
 
@@ -190,6 +195,7 @@ impl Component for WlanFields {
             }
             WlanFieldsMsg::Cancel => self.editing = None,
             WlanFieldsMsg::ShowPsk => self.show_psk = !self.show_psk,
+            WlanFieldsMsg::Qr(open) => self.qr = open,
         }
         true
     }
@@ -272,6 +278,17 @@ impl Component for WlanFields {
                 <FormGroup label={t::PSK} helper_text={helper}>{field}</FormGroup>
             }
         });
+        // with the drafts: the code a phone joins once they are rolled out
+        let qr = self.qr.then(|| {
+            html! {
+                <QrDialog
+                    ssid={ssid.to_string()}
+                    psk={draft.psk.clone().or_else(|| wlan.psk.clone())}
+                    unsaved={!draft.is_empty()}
+                    on_close={link.callback(|()| WlanFieldsMsg::Qr(false))}
+                />
+            }
+        });
         html! {
             <>
                 {switch}
@@ -279,7 +296,15 @@ impl Component for WlanFields {
                     <FormGroup label={t::SSID} helper_text={ssid_helper}>{ssid_field}</FormGroup>
                     {psk_field}
                 </Form>
+                <div>
+                    <Button
+                        variant={ButtonVariant::Secondary}
+                        label={t::QR_BUTTON}
+                        onclick={link.callback(|_| WlanFieldsMsg::Qr(true))}
+                    />
+                </div>
                 <p class="pf-v6-c-helper-text">{t::access_points(wlan.access_points)}</p>
+                {qr}
             </>
         }
     }

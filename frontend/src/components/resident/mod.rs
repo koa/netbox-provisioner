@@ -26,6 +26,7 @@ mod drafts;
 mod network_devices;
 mod networks;
 mod ports;
+mod qr_dialog;
 mod room_dialog;
 mod save_dialog;
 

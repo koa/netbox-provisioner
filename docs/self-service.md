@@ -244,6 +244,10 @@ Badge. Eine Auswahl, die dem gespeicherten Stand entspricht, ist kein Entwurf.
   - Name und Passwort, je mit „Ändern“ und „Übernehmen“ (geprüft wie im Backend);
   - das Passwort zeigen oder „Zufällig erzeugen“ (16 Zeichen aus der Zufallsquelle des
     Browsers, ohne 0, O, 1, l und I);
+  - „QR-Code zum Verbinden“: ein Dialog mit dem Code für die Kamera eines Telefons
+    (`WIFI:T:WPA;S:…;P:…;;`, ein offenes WLAN mit `T:nopass`, Sonderzeichen maskiert; gezeichnet
+    mit der Crate `qrcode`), dem Namen und dem Passwort. Mit einem Entwurf zeigt er den Entwurf
+    und warnt, dass der Code erst gilt, wenn die Änderung auf den Geräten ist;
   - die Zahl der Access Points.
 
   Ausgeschaltet steht „Aus: Das Netz gibt es nur per Kabel.“ Darunter „Per Kabel an“: die

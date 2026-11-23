@@ -29,6 +29,7 @@ gloo = { version = "0.11.0", features = ["futures"] }
 futures = "0.3"
 i18n = { path = "../i18n" }
 cynic = "3.14"
+qrcode = { version = "0.15.0", default-features = false }
 
 [build-dependencies]
 backend = { path = "../backend" }

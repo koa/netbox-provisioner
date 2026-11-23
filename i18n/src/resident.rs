@@ -289,6 +289,21 @@ pub fn access_points(count: i32) -> String {
     }
 }
 
+/// the button opening a WLAN's QR code
+pub const QR_BUTTON: &str = "QR-Code zum Verbinden";
+pub fn qr_title(ssid: &str) -> String {
+    format!("„{ssid}“ verbinden")
+}
+pub const QR_HINT: &str = "Mit der Kamera des Telefons scannen.";
+/// the QR code's alternative text
+pub fn qr_label(ssid: &str) -> String {
+    format!("QR-Code für das WLAN {ssid}")
+}
+pub const QR_UNSAVED: &str =
+    "Noch nicht gespeichert: Der Code gilt erst, wenn die Änderung auf den Geräten ist.";
+pub const WLAN: &str = "WLAN";
+pub const DONE: &str = "Fertig";
+
 // the admins' support view
 
 pub const SUPPORT_TITLE: &str = "Anwohner";
