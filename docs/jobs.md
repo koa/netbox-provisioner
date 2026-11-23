@@ -541,6 +541,14 @@ Funkstrecke: Einzeln geändert schneidet das erste Ende dem zweiten den Weg ab.
   Skript müssen an jedem gewechselten Port die erwarteten Nachbarn wieder `Full` oder `TwoWay`
   sein; sonst gehen alle zurück (`BatchIncomplete.ospfMissing`, Grund `OspfMissing`). Ein
   Lesefehler eines Geräts dabei hält alle an (`BatchStopped`).
+- **Geräte ausserhalb** (`batch::Bystander`): Von Hand die Geräte, die im Management-Baum
+  hinter einem Mitglied hängen (`batch::behind`), im automatischen Rollout jedes andere
+  automatische Gerät. Vor dem Aussetzen der Watchdogs wird jedes angemeldet (neue Anmeldung,
+  höchstens 25 s, vier zugleich); die antworten, müssen es wieder tun, sobald alle Mitglieder in
+  Reihe sind, sonst gehen alle zurück (`BatchIncomplete.cutOff`, Grund `BatchIncomplete`).
+  Vorher nicht erreichbare werden nicht geprüft. Event `BystandersWatched` mit beiden Listen.
+  Ein weitergeführter Batch (nach einem Neustart) prüft sie nicht: welche vorher antworteten,
+  ist nicht gespeichert.
 
 **Bewusst nicht:** Teilerfolg. Lieber alles zurück als eine halbe Funkstrecke.
 
@@ -552,7 +560,7 @@ die Gruppe:
 | `Planen → FallbackSetzen` (oder `WatchdogsAussetzen`) | `[alle Geräte der Gruppe haben geplant]`; das Aussetzen geschieht eins nach dem anderen |
 | `SkriptSchreiben → SkriptStarten` | `[alle haben ihr Skript geschrieben]`, dann starten alle gleichzeitig |
 | `Planen → InternetPrüfen` | mit Internet als Bedingung, `[alle haben geplant]`, dann prüfen alle gleichzeitig; `[alle erreichen es über IPv4 und IPv6]`, sonst endet jedes Gerät dort (`NO_INTERNET` bzw. `BatchStopped`) |
-| `SkriptLäuft → FallbackWegnehmen` | `[alle sind durch, erreicht und in Reihe]`, `[an den gewechselten OSPF-Segmenten sind die Nachbarn zurück]`, mit Internet als Bedingung auch `[alle erreichen es über IPv4 und IPv6]`, sonst gehen alle nach `NichtErreicht` (`BatchIncomplete`) und der Auftrag endet dort, ohne auf den Fallback zu warten. Nachgeprüft wird schon in `SkriptLäuft`, nach `FallbackWegnehmen` folgt direkt `Nacharbeit` |
+| `SkriptLäuft → FallbackWegnehmen` | `[alle sind durch, erreicht und in Reihe]`, `[an den gewechselten OSPF-Segmenten sind die Nachbarn zurück]`, mit Internet als Bedingung auch `[alle erreichen es über IPv4 und IPv6]`, `[die Geräte ausserhalb, die vorher antworteten, antworten wieder]`, sonst gehen alle nach `NichtErreicht` (`BatchIncomplete`) und der Auftrag endet dort, ohne auf den Fallback zu warten. Nachgeprüft wird schon in `SkriptLäuft`, nach `FallbackWegnehmen` folgt direkt `Nacharbeit` |
 
 Ein Fehler eines Geräts vor dem Start nimmt bei allen den Fallback weg (`BatchStopped`).
 

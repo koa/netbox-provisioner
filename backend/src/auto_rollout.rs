@@ -447,7 +447,13 @@ async fn round(topology: Arc<Topology>) -> Duration {
         .collect();
     let applied = names(&decision.members);
     info!("auto rollout: applying {}", listed(&applied));
-    let outcome = apply(&members).await;
+    // every other automatic device has to answer after the scripts as before
+    let bystanders: Vec<DeviceAccess> = topology
+        .list_devices()
+        .filter(DeviceAccess::rolls_out_automatically)
+        .filter(|device| !decision.members.contains(&device.id()))
+        .collect();
+    let outcome = apply(&members, bystanders).await;
     {
         let mut state = STATE.lock_anyway();
         state.released.retain(|id| !decision.members.contains(id));
@@ -486,8 +492,9 @@ enum Applied {
     Failed(Vec<DeviceAccess>),
 }
 
-/// Applies `members` as one batch needing the internet, and waits for its end.
-async fn apply(members: &[DeviceAccess]) -> Applied {
+/// Applies `members` as one batch needing the internet and `bystanders` answering after it as
+/// before, and waits for its end.
+async fn apply(members: &[DeviceAccess], bystanders: Vec<DeviceAccess>) -> Applied {
     let (sent, outcome) = tokio::sync::oneshot::channel();
     let devices = members.to_vec();
     let started = job::start_all(
@@ -495,7 +502,7 @@ async fn apply(members: &[DeviceAccess]) -> Applied {
         JobKind::Apply,
         |_| Started::Automatic,
         |logs| async move {
-            let results = batch::apply(devices.clone(), logs, true).await;
+            let results = batch::apply(devices.clone(), logs, true, bystanders).await;
             let failed: Vec<DeviceAccess> = devices
                 .iter()
                 .zip(&results)

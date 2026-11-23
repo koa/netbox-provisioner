@@ -78,7 +78,9 @@ Entschieden wird ohne Gerät (`auto_rollout::decide`, getestet in `decide/test.r
   auf dem Gerät; erst ein weiter geänderter Diff hält wieder an. Einen Diff, den es schon hatte,
   behält es als Grundlinie: was ein Operator dort liegen liess, hält nichts an.
 
-Die Transaktion ist ein Gemeinsam anwenden (`job::start_all`, `batch::apply` mit Internet),
+Die Transaktion ist ein Gemeinsam anwenden (`job::start_all`, `batch::apply` mit Internet und
+jedem anderen automatischen Gerät als Gerät ausserhalb: was vorher antwortet, muss es danach
+wieder, sonst gehen alle zurück),
 im Journal „Vom automatischen Rollout gestartet“. Ist eines der Geräte mit einem anderen
 Auftrag beschäftigt, startet keiner (`Busy`), die Runde kommt nach 5 min wieder. Erreicht eines
 vorher das Internet nicht über IPv4 und IPv6, wird nichts angewendet (`NoInternet`); das ist

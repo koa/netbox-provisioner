@@ -252,6 +252,24 @@ pub mod event {
             family(v6)
         )
     }
+    /// The devices outside the batch it looks at after the scripts, and those it leaves out.
+    pub fn bystanders_watched(watched: &[String], not_answering: &[String]) -> String {
+        let mut text = match watched.is_empty() {
+            true => "Kein Gerät ausserhalb antwortet, nach den Skripten wird keines geprüft".into(),
+            false => format!(
+                "Nach den Skripten müssen auch diese Geräte ausserhalb wieder antworten, sonst \
+                 gehen alle zurück: {}",
+                watched.join(", ")
+            ),
+        };
+        if !not_answering.is_empty() {
+            text.push_str(&format!(
+                "; schon vorher nicht erreichbar, nicht geprüft: {}",
+                not_answering.join(", ")
+            ));
+        }
+        text
+    }
     pub fn batch_stopped(device: &str) -> String {
         format!(
             "Gemeinsames Anwenden abgebrochen, bevor etwas angewendet wurde: {device} ging nicht"
@@ -262,6 +280,7 @@ pub mod event {
         not_applied: &[String],
         no_internet: &[String],
         ospf_missing: &[String],
+        cut_off: &[String],
     ) -> String {
         let mut parts = Vec::new();
         if !unreached.is_empty() {
@@ -277,6 +296,12 @@ pub mod event {
             parts.push(format!(
                 "OSPF-Nachbar mit neuem Schlüssel fehlt: {}",
                 ospf_missing.join(", ")
+            ));
+        }
+        if !cut_off.is_empty() {
+            parts.push(format!(
+                "abgeschnitten, vorher erreichbar: {}",
+                cut_off.join(", ")
             ));
         }
         format!(

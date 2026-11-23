@@ -1,9 +1,9 @@
 //! Scope: Tests of `device::batch` and the fixtures they share; the steps' rules are in `run`.
 mod run;
 
-use super::wireless_partners;
+use super::{behind, wireless_partners};
 use crate::topology::{
-    Cable, CablePort, Device, DeviceId, Interface, InterfaceId, PortType, RadioLink,
+    Cable, CablePort, Device, DeviceId, Interface, InterfaceId, IpAddressData, PortType, RadioLink,
     WirelessLinkEnd, builder::TopologyBuilder,
 };
 use std::sync::Arc;
@@ -118,4 +118,57 @@ fn finds_the_other_end_of_a_radio_link() {
         .collect();
     assert_eq!(partners, ["link-5-station"]);
     assert!(wireless_partners(&get(burri)).is_empty());
+}
+
+/// An `ospf` port of `device` with `ip`.
+fn ospf_port(builder: &mut TopologyBuilder, device: DeviceId, name: &str, ip: &str) {
+    let address = builder.ip_addresses.next_id();
+    builder.ip_addresses.insert(
+        address,
+        IpAddressData {
+            ip: ip.parse().unwrap(),
+            interface: None,
+            prefix: None,
+        },
+    );
+    let id = builder.interfaces.next_id();
+    builder.interfaces.insert(
+        id,
+        Interface {
+            name: name.into(),
+            device,
+            port_type: Some(PortType::Ethernet),
+            ips: Box::new([address]),
+            use_ospf: true,
+            ..Interface::default()
+        },
+    );
+}
+
+/// core (root) - middle - leaf, and core - other: behind `middle` is `leaf` only, behind
+/// `core` all but itself and the members.
+#[test]
+fn finds_the_devices_behind_the_members() {
+    let mut b = TopologyBuilder::default();
+    let core = device(&mut b, "core");
+    b.devices.get_mut(&core).unwrap().propagate_default_route = true;
+    let middle = device(&mut b, "middle");
+    let leaf = device(&mut b, "leaf");
+    let other = device(&mut b, "other");
+    ospf_port(&mut b, core, "ether1", "10.0.0.0/31");
+    ospf_port(&mut b, middle, "ether1", "10.0.0.1/31");
+    ospf_port(&mut b, middle, "ether2", "10.0.0.2/31");
+    ospf_port(&mut b, leaf, "ether1", "10.0.0.3/31");
+    ospf_port(&mut b, core, "ether2", "10.0.0.4/31");
+    ospf_port(&mut b, other, "ether1", "10.0.0.5/31");
+    let topology = Arc::new(b.build());
+    let get = |id| topology.get_device_by_id(&id).expect("device");
+    let names = |devices: Vec<crate::topology::access::device::DeviceAccess>| {
+        let mut names: Vec<String> = devices.iter().map(|d| d.name().to_string()).collect();
+        names.sort();
+        names
+    };
+    assert_eq!(names(behind(&[get(middle)])), ["leaf"]);
+    assert_eq!(names(behind(&[get(core), get(middle)])), ["leaf", "other"]);
+    assert!(behind(&[get(leaf)]).is_empty());
 }

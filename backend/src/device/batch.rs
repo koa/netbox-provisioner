@@ -19,6 +19,12 @@
 //! through, lab-w60-b was). A problem before the scripts start stops the batch with nothing
 //! applied; cancelling any of its jobs cancels all.
 //!
+//! Devices outside the batch that may be cut off by it (`Bystander`: in the automatic rollout
+//! every other device of its sites, by hand those behind the members in the management tree)
+//! are looked at before the scripts; those answering then have to answer again once every
+//! member is in line, or all go back (`BatchIncomplete.cut_off`): a change on the way to a
+//! device without changes of its own was seen as a success before, and the device stayed away.
+//!
 //! A device whose plan changes a radio suspends its ping watchdog and those depending on it
 //! before the fallbacks (`radio_hold`), and restores them once all are through or nothing is
 //! applied; while the fallbacks may still fire they stay suspended.
@@ -89,6 +95,54 @@ pub struct BatchIncomplete {
     pub not_applied: Box<[Box<str>]>,
     pub no_internet: Box<[Box<str>]>,
     pub ospf_missing: Box<[Box<str>]>,
+    /// devices outside the batch answering before it and not after
+    pub cut_off: Box<[Box<str>]>,
+}
+
+/// The devices outside the batch it looks at after the scripts (`watched`: they answered
+/// before), and those it leaves out, not answering before.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct BystandersWatched {
+    pub watched: Box<[Box<str>]>,
+    pub not_answering: Box<[Box<str>]>,
+}
+
+/// How many bystanders are looked at at once: they share the way through the management proxy.
+const BYSTANDERS_AT_ONCE: usize = 4;
+/// How long a look at a bystander may take.
+const BYSTANDER_TIMEOUT: Duration = Duration::from_secs(25);
+
+/// A device outside the batch that has to answer after the scripts as it did before them.
+pub(crate) trait Bystander: Send + Sync {
+    fn name(&self) -> &str;
+    /// Whether the provisioner logs in to it anew, within [`BYSTANDER_TIMEOUT`].
+    fn answers(&self) -> impl Future<Output = bool> + Send;
+}
+
+impl Bystander for DeviceAccess {
+    fn name(&self) -> &str {
+        DeviceAccess::name(self)
+    }
+    async fn answers(&self) -> bool {
+        tokio::time::timeout(BYSTANDER_TIMEOUT, async {
+            let link = self.connect(DeviceTarget::default()).await.ok()??;
+            link.connect_again().await.ok()
+        })
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    }
+}
+
+/// Which of `bystanders` answer, [`BYSTANDERS_AT_ONCE`] at a time.
+async fn answering<B: Bystander>(bystanders: &[&B]) -> Vec<bool> {
+    let permits = tokio::sync::Semaphore::new(BYSTANDERS_AT_ONCE);
+    join_all(bystanders.iter().map(|bystander| async {
+        let _permit = permits.acquire().await;
+        bystander.answers().await
+    }))
+    .await
 }
 
 /// How long setting up the fallback and leaving the script on a device may take.
@@ -626,11 +680,13 @@ pub(crate) struct Timing {
 /// Applies the config to `devices` together, each emitting to its log in `logs`; each job's
 /// outcome, in the order of `devices`. With `needs_internet` (the automatic rollout) every
 /// device has to reach the internet over IPv4 and IPv6 before, or nothing is applied, and
-/// after its script, or all go back.
+/// after its script, or all go back. Each of `bystanders` (outside the batch) answering before
+/// has to answer after the scripts too, or all go back.
 pub async fn apply(
     devices: Vec<DeviceAccess>,
     logs: Vec<Log>,
     needs_internet: bool,
+    bystanders: Vec<DeviceAccess>,
 ) -> Vec<Result<(), Error>> {
     let names: Vec<Box<str>> = devices.iter().map(|d| d.name().into()).collect();
     let ids: Vec<DeviceId> = devices.iter().map(DeviceAccess::id).collect();
@@ -644,7 +700,40 @@ pub async fn apply(
             claimed: claimed.clone(),
         })
         .collect();
-    run(members, ids, names, logs, batch_timing(), needs_internet).await
+    run(
+        members,
+        ids,
+        names,
+        logs,
+        batch_timing(),
+        needs_internet,
+        bystanders,
+    )
+    .await
+}
+
+/// The devices behind `members` in the management tree, without the members: what a batch by
+/// hand may cut off.
+pub fn behind(members: &[DeviceAccess]) -> Vec<DeviceAccess> {
+    let Some(first) = members.first() else {
+        return Vec::new();
+    };
+    let topology = first.topology();
+    let tree = crate::topology::management::ManagementTree::of_device(first);
+    let ids: BTreeSet<DeviceId> = members.iter().map(DeviceAccess::id).collect();
+    let mut found = BTreeSet::new();
+    let mut todo: Vec<DeviceId> = ids.iter().copied().collect();
+    while let Some(device) = todo.pop() {
+        for child in tree.children(device) {
+            if found.insert(child) {
+                todo.push(child);
+            }
+        }
+    }
+    found
+        .difference(&ids)
+        .filter_map(|id| topology.get_device_by_id(id))
+        .collect()
 }
 
 fn batch_timing() -> Timing {
@@ -691,14 +780,16 @@ fn first_failure(results: Vec<Result<(), Error>>) -> Option<Failure> {
         .find_map(|(member, r)| r.err().map(|error| Failure { member, error }))
 }
 
-/// The batch over `members` (named `names`, logging to `logs`).
-pub(crate) async fn run<M: Planning>(
+/// The batch over `members` (named `names`, logging to `logs`), looking at `bystanders` after
+/// the scripts.
+pub(crate) async fn run<M: Planning, B: Bystander>(
     members: Vec<M>,
     devices: Vec<DeviceId>,
     names: Vec<Box<str>>,
     logs: Vec<Log>,
     timing: Timing,
     needs_internet: bool,
+    bystanders: Vec<B>,
 ) -> Vec<Result<(), Error>> {
     let count = members.len();
     let event = BatchApply {
@@ -830,6 +921,28 @@ pub(crate) async fn run<M: Planning>(
         }
     }
 
+    // the devices outside the batch that answer now, to look at after the scripts
+    let bystanders: Vec<&B> = bystanders
+        .iter()
+        .filter(|bystander| !names.iter().any(|name| **name == *bystander.name()))
+        .collect();
+    let bystanders = if bystanders.is_empty() {
+        Vec::new()
+    } else {
+        let answers = answering(&bystanders).await;
+        let (watched, not_answering): (Vec<_>, Vec<_>) = bystanders
+            .into_iter()
+            .zip(answers)
+            .partition(|(_, answers)| *answers);
+        let watched: Vec<&B> = watched.into_iter().map(|(b, _)| b).collect();
+        let event = BystandersWatched {
+            watched: watched.iter().map(|b| b.name().into()).collect(),
+            not_answering: not_answering.iter().map(|(b, _)| b.name().into()).collect(),
+        };
+        running.iter().for_each(|m| m.log.emit(event.clone()));
+        watched
+    };
+
     // the watchdogs a changed radio may set off, one device after the other
     for index in 0..running.len() {
         let m = &mut running[index];
@@ -944,6 +1057,7 @@ pub(crate) async fn run<M: Planning>(
         delay,
         results,
         needs_internet,
+        &bystanders,
     )
     .await
 }
@@ -1000,6 +1114,8 @@ pub async fn resume(
         .collect();
     let results = logs.iter().map(|_| None).collect();
     let timing = batch_timing();
+    // which devices outside it answered before isn't saved
+    let bystanders: [&DeviceAccess; 0] = [];
     watch(
         running,
         &logs,
@@ -1008,13 +1124,18 @@ pub async fn resume(
         delay,
         results,
         needs_internet,
+        &bystanders,
     )
     .await
 }
 
-/// The batch once its scripts run: waits until every device is reached and checked, then
-/// takes all fallbacks away, or leaves all.
-pub(crate) async fn watch<M: Watched>(
+/// The batch once its scripts run: waits until every device is reached and checked and every
+/// one of `bystanders` answers again, then takes all fallbacks away, or leaves all.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the state of the batch at its scripts' start"
+)]
+pub(crate) async fn watch<M: Watched, B: Bystander>(
     mut running: Vec<Running<M>>,
     logs: &[Log],
     timing: &Timing,
@@ -1022,7 +1143,9 @@ pub(crate) async fn watch<M: Watched>(
     delay: Duration,
     mut results: Vec<Option<Result<(), Error>>>,
     needs_internet: bool,
+    bystanders: &[&B],
 ) -> Vec<Result<(), Error>> {
+    let mut answered = vec![false; bystanders.len()];
     let finish = |results: Vec<Option<Result<(), Error>>>| {
         results
             .into_iter()
@@ -1085,6 +1208,15 @@ pub(crate) async fn watch<M: Watched>(
         let online = |m: &Running<M>| {
             (!needs_internet || m.internet.is_some_and(|i| i.both())) && m.ospf == Some(true)
         };
+        // the devices outside once every member is in line: before, the change cutting one
+        // off may not have come yet
+        if running.iter().all(|m| in_line(m) && online(m)) {
+            let open: Vec<usize> = (0..bystanders.len()).filter(|i| !answered[*i]).collect();
+            let looked = open.iter().map(|i| bystanders[*i]).collect::<Vec<_>>();
+            for (i, answers) in open.into_iter().zip(answering(&looked).await) {
+                answered[i] = answers;
+            }
+        }
         let pending: Vec<_> = running.iter().filter_map(|m| m.member.pending()).collect();
         // one that fired takes the batch back, waiting on the others is for nothing
         let fired = pending.iter().any(|seen| seen.pending == Pending::Gone);
@@ -1100,9 +1232,11 @@ pub(crate) async fn watch<M: Watched>(
             .chain([latest])
             .min()
             .unwrap_or(latest);
+        let all_back = answered.iter().all(|answered| *answered);
         let done = running
             .iter()
-            .all(|m| m.checked.is_some() && (!in_line(m) || online(m)));
+            .all(|m| m.checked.is_some() && (!in_line(m) || online(m)))
+            && (all_back || !running.iter().all(in_line));
         if done || fired || Instant::now() >= give_up {
             break;
         }
@@ -1110,6 +1244,13 @@ pub(crate) async fn watch<M: Watched>(
             .iter()
             .filter(|m| m.checked.is_none() || (in_line(m) && !online(m)))
             .map(|m| m.name.as_ref())
+            .chain(
+                bystanders
+                    .iter()
+                    .zip(&answered)
+                    .filter(|(_, answered)| !**answered)
+                    .map(|(b, _)| b.name()),
+            )
             .collect();
         info!("batch: waiting for {}", waiting.join(", "));
     }
@@ -1153,10 +1294,17 @@ pub(crate) async fn watch<M: Watched>(
         .filter(|m| in_line(m) && m.ospf != Some(true))
         .map(|m| m.name.clone())
         .collect();
+    let cut_off: Vec<Box<str>> = bystanders
+        .iter()
+        .zip(&answered)
+        .filter(|(_, answered)| !**answered)
+        .map(|(b, _)| b.name().into())
+        .collect();
     if unreached.is_empty()
         && not_applied.is_empty()
         && no_internet.is_empty()
         && ospf_missing.is_empty()
+        && cut_off.is_empty()
     {
         let stopped = join_all(running.iter().map(|m| async {
             let stopped = match m.fallback {
@@ -1194,12 +1342,14 @@ pub(crate) async fn watch<M: Watched>(
             not_applied: not_applied.clone().into(),
             no_internet: no_internet.clone().into(),
             ospf_missing: ospf_missing.clone().into(),
+            cut_off: cut_off.clone().into(),
         };
         let list: Box<str> = unreached
             .iter()
             .chain(&not_applied)
             .chain(&no_internet)
             .chain(&ospf_missing)
+            .chain(&cut_off)
             .map(AsRef::as_ref)
             .collect::<Vec<&str>>()
             .join(", ")

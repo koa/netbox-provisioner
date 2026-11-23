@@ -5,7 +5,7 @@ Bereich pro Site, Runden auf Webhook und alle 30 min, eine Transaktion über `ap
 dem Internet vorher und nachher, Zurückstellen nicht erreichbarer Geräte samt ihren
 Funkpartnern, Anhalten durch manuelle Geräte mit Freigabe, Fehlerzustand pro Site, Zustand in
 `state_dir`, Karte auf der Seite der Site, Metriken, die Vorbedingung (Loopbacks, OSPF-Verbindung,
-Device-Mode mit `scheduler`). Aufgabe C20 in [todo.md](../todo.md).
+Device-Mode mit `scheduler`), die Prüfung der Geräte ausserhalb nach dem Skript. Aufgabe C20 in [todo.md](../todo.md).
 Voraussetzung für den [Self-Service](self-service.md).
 
 Was noch fehlt:
@@ -78,13 +78,9 @@ erreichbar, und es lässt sich in NetBox wiederherstellen.
 4. **Richtfunk:** Der Diff ändert ein Radio mit RF-Rolle (`PlannedApply::radio_wait` an einer
    Strecke, nicht an einem AP): bis zu 24 min ohne Verbindung (DFS), mit allem dahinter.
 
-**Prüfen nach dem Skript:** Bevor die Fallbacks weggehen, antwortet jedes RouterOS-Gerät
-der automatischen Sites, das vor der Runde erreichbar war, nicht nur die Mitglieder; sonst
-gehen alle zurück (wie `BatchIncomplete`). Heute prüft der Batch nur seine Mitglieder: Bricht
-der Weg zu einem Gerät ohne eigenen Diff (etwa über einen Switch ohne RouterOS), meldet er
-Erfolg, und das Gerät bleibt weg, ohne Fallback. Beim Gemeinsam anwenden von Hand gilt dasselbe
-für die Geräte, die im Management-Baum hinter einem Mitglied hängen. Damit ist auch die Reihenfolge bei einer MTU-Änderung kein Fall für den
-Menschen mehr: Beide Enden sind im selben Batch, und die Prüfung sieht, was dahinter hängt.
+**Prüfen nach dem Skript:** umgesetzt ([Gemeinsam anwenden](../jobs.md#gemeinsam-anwenden),
+Geräte ausserhalb). Offen nur: wie lange die Anmeldungen bei grossen Sites in das Fenster des
+Fallbacks passen (vier zugleich, je höchstens 25 s).
 
 **Automatisch** geht alles andere, vor allem was Anwohner ändern: Kunden-Ports, VLANs und
 Bridges, WLAN (SSID, Passwort, ein und aus), Kunden-Netze, DHCP, Leases, DNS, Freigaben,

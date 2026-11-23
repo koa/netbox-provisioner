@@ -2,7 +2,7 @@
 //!
 //! The rules of a batch, with stand-ins for the devices.
 use crate::device::batch::{
-    Applying, PendingSeen, Planning, Reading, Running, Timing, Watched, run, watch,
+    Applying, Bystander, PendingSeen, Planning, Reading, Running, Timing, Watched, run, watch,
 };
 use crate::device::internet::InternetReached;
 use crate::device::ospf_auth::{Decision, MemberRead};
@@ -187,6 +187,36 @@ impl Watched for Fake {
     }
 }
 
+/// A device outside the batch: whether it answers before the scripts and after them.
+struct Outside {
+    name: &'static str,
+    before: bool,
+    after: bool,
+    looks: Mutex<usize>,
+}
+
+impl Outside {
+    fn new(name: &'static str, before: bool, after: bool) -> Self {
+        Outside {
+            name,
+            before,
+            after,
+            looks: Mutex::new(0),
+        }
+    }
+}
+
+impl Bystander for Outside {
+    fn name(&self) -> &str {
+        self.name
+    }
+    async fn answers(&self) -> bool {
+        let mut looks = self.looks.lock().unwrap();
+        *looks += 1;
+        if *looks == 1 { self.before } else { self.after }
+    }
+}
+
 /// What a batch of stand-ins did: the calls in their order, each member's result and log.
 struct Outcome {
     calls: Vec<String>,
@@ -202,6 +232,16 @@ async fn batch(near: Fake, far: Fake) -> Outcome {
 /// [`batch`], every device needing the internet before and after (the automatic rollout) with
 /// `needs_internet`.
 async fn batch_needing(near: Fake, far: Fake, needs_internet: bool) -> Outcome {
+    batch_with(near, far, needs_internet, Vec::new()).await
+}
+
+/// [`batch_needing`] with `bystanders` outside the batch.
+async fn batch_with(
+    near: Fake,
+    far: Fake,
+    needs_internet: bool,
+    bystanders: Vec<Outside>,
+) -> Outcome {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let delays = Arc::new(Mutex::new(Vec::new()));
     let near = Fake {
@@ -232,6 +272,7 @@ async fn batch_needing(near: Fake, far: Fake, needs_internet: bool) -> Outcome {
             margin: Duration::ZERO,
         },
         needs_internet,
+        bystanders,
     )
     .await;
     // every path of the batch keeps to the apply's state machine
@@ -430,6 +471,7 @@ async fn a_radio_change_lengthens_every_fallback() {
             margin: Duration::ZERO,
         },
         false,
+        Vec::<Outside>::new(),
     )
     .await;
     assert!(results.iter().all(Result::is_ok), "{results:?}");
@@ -737,6 +779,7 @@ async fn resumed(near: Fake, far: Fake) -> Outcome {
         timing.delay,
         vec![None, None],
         false,
+        &[] as &[&Outside],
     )
     .await;
     for log in &logs {
@@ -895,4 +938,67 @@ async fn a_batch_by_hand_doesnt_ask_for_the_internet() {
         !calls.iter().any(|call| call.starts_with("internet")),
         "{calls:?}"
     );
+}
+
+/// A device outside the batch answering before and after: the fallbacks go.
+#[tokio::test]
+async fn a_device_outside_answering_again_lets_the_fallbacks_go() {
+    let Outcome { calls, results, .. } = batch_with(
+        Fake::default(),
+        Fake::default(),
+        false,
+        vec![Outside::new("behind", true, true)],
+    )
+    .await;
+    assert_eq!(calls.iter().filter(|c| c.starts_with("stop")).count(), 2);
+    assert!(results.iter().all(Result::is_ok), "{results:?}");
+}
+
+/// A device outside the batch cut off by it sends all back, though every member is in line.
+#[tokio::test]
+async fn a_device_outside_cut_off_sends_all_back() {
+    let Outcome {
+        calls,
+        results,
+        logs,
+    } = batch_with(
+        Fake::default(),
+        Fake::default(),
+        true,
+        vec![Outside::new("behind", true, false)],
+    )
+    .await;
+    assert!(
+        !calls.iter().any(|call| call.starts_with("stop")),
+        "{calls:?}"
+    );
+    assert!(
+        results
+            .iter()
+            .all(|r| matches!(r, Err(Error::BatchIncomplete(d)) if &**d == "behind")),
+        "{results:?}"
+    );
+    assert_eq!(left(&logs[0]), [FallbackLeftReason::BatchIncomplete]);
+    assert!(logs[0].events().iter().any(|event| matches!(
+        event,
+        Event::BatchIncomplete(incomplete) if *incomplete.cut_off == ["behind".into()]
+    )));
+}
+
+/// A device outside not answering before the batch isn't waited for.
+#[tokio::test]
+async fn a_device_outside_away_before_is_left_out() {
+    let Outcome { results, logs, .. } = batch_with(
+        Fake::default(),
+        Fake::default(),
+        false,
+        vec![Outside::new("away", false, false)],
+    )
+    .await;
+    assert!(results.iter().all(Result::is_ok), "{results:?}");
+    assert!(logs[0].events().iter().any(|event| matches!(
+        event,
+        Event::BystandersWatched(watched)
+            if watched.watched.is_empty() && *watched.not_answering == ["away".into()]
+    )));
 }

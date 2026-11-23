@@ -833,12 +833,13 @@ impl MutationAuthenticated {
             }
         }
         let members = devices.clone();
+        let behind = crate::device::batch::behind(&devices);
         let user = user_label(ctx);
         Ok(job::start_all(
             &devices,
             JobKind::Apply,
             |_| Started::By(user.clone()),
-            |logs| crate::device::batch::apply(members, logs, false),
+            |logs| crate::device::batch::apply(members, logs, false, behind),
         )?)
     }
     /// Drops the live checks of a device's interfaces: who shows them reads them anew, a

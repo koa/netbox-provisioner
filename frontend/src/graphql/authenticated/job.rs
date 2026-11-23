@@ -90,6 +90,7 @@ pub enum Event {
     BatchApply(BatchApply),
     BatchStopped(BatchStopped),
     BatchIncomplete(BatchIncomplete),
+    BystandersWatched(BystandersWatched),
     InternetChecked(InternetChecked),
     SetupStarted(SetupStarted),
     ConsoleOutput(ConsoleOutput),
@@ -404,6 +405,14 @@ pub struct BatchIncomplete {
     pub not_applied: Vec<String>,
     pub no_internet: Vec<String>,
     pub ospf_missing: Vec<String>,
+    pub cut_off: Vec<String>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct BystandersWatched {
+    pub watched: Vec<String>,
+    pub not_answering: Vec<String>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

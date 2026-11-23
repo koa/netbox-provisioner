@@ -569,7 +569,11 @@ fn describe(event: &Logged) -> Html {
             &incomplete.not_applied,
             &incomplete.no_internet,
             &incomplete.ospf_missing,
+            &incomplete.cut_off,
         ),
+        Event::BystandersWatched(watched) => {
+            e::bystanders_watched(&watched.watched, &watched.not_answering)
+        }
         Event::InternetChecked(checked) => {
             e::internet_checked(checked.v4, checked.v6, checked.after_script)
         }
