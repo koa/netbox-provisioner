@@ -263,6 +263,11 @@ pub enum SetupError {
     NoPortsFound(AsciiString),
     #[error("Declared port {0} not found on device")]
     PortNotFound(PhysicalPortId),
+    #[error(
+        "Ports carry the names generated for other ports: {}",
+        ports.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")
+    )]
+    PortsMoved { ports: Box<[MovedPort]> },
     #[error("DHCP server on {interface}: no NetBox prefix {ip} for its pool")]
     MissingPrefixOnIpAddress { ip: IpNet, interface: AsciiString },
     #[error("Address on Prefix {prefix} not found")]
@@ -355,6 +360,27 @@ pub enum SetupError {
         far_end: Box<str>,
         far_speed: Option<Box<str>>,
     },
+}
+
+/// A port whose name the generator gives another port ([`cfg::moved_ports`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MovedPort {
+    /// its name on the device
+    pub name: AsciiString,
+    /// what RouterOS reports as its factory name
+    pub default_name: AsciiString,
+    /// the port whose generated name it carries
+    pub named_for: AsciiString,
+}
+
+impl std::fmt::Display for MovedPort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} (default-name {}, named for {})",
+            self.name, self.default_name, self.named_for
+        )
+    }
 }
 
 impl BaseDeviceDataTarget {

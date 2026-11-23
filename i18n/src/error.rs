@@ -455,6 +455,13 @@ pub fn server(problem: &impl Problem) -> String {
             p("model")
         ),
         "PORT_NOT_FOUND" => format!("Port {} aus NetBox gibt es auf dem Gerät nicht", p("port")),
+        "PORTS_MOVED" => format!(
+            "RouterOS meldet für Ports andere Werksnamen (default-name), als sie hatten, als der \
+             Provisioner sie benannte: {}. Umbenennen nach den Werksnamen legte Namen, Adressen \
+             und Bridges auf andere Buchsen, darum wird nichts erzeugt. Am Gerät klären, an \
+             welcher Buchse welches Kabel steckt",
+            p("ports")
+        ),
         "MISSING_PACKAGE" => format!(
             "RouterOS-Paket {} fehlt (ein RouterOS-Update installiert es)",
             p("package")

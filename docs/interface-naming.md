@@ -48,6 +48,21 @@ Design-Hinweis aus dem Code: Es wird bewusst nur der **erste** passende Fernende
 verwendet, nicht mehrere kombiniert — eine frühere Version erzeugte redundante Drei-Teil-Namen wie
 `e02-hegglin-ether1` statt des beabsichtigten `e02-hegglin`.
 
+## Werksnamen, die sich geändert haben
+
+Umbenannt wird über den Werksnamen (`/interface/ethernet set [find default-name=ether17]
+name=e17-…`). Ein Port mit einem Namen, den der Generator einem anderen Port des Boards gibt
+(dessen Kurzname allein oder vor einem `-`), hatte also beim Benennen jenen Werksnamen. Meldet
+RouterOS heute einen anderen (`cfg::moved_ports`), erzeugt der Provisioner keine Konfiguration
+(`PORTS_MOVED`, mit jedem solchen Port): Nach den Werksnamen umbenannt, kämen Namen, Adressen
+und Bridges auf andere Buchsen. So bei wng-926-sw1 (CRS326-24G-2S+ r2, 7.24.6): `e01` bis `e24`
+nach den Werksnamen benannt, nach einem Neustart meldete jeder Port einen um 14 verschobenen
+Werksnamen (`e01` als `ether15`, `e17-cap-whg-926` als `ether7`), während Namen, Adressen und
+Kabel blieben; das nächste Anwenden hätte den Uplink auf eine leere Buchse gelegt. Ein weiterer
+Neustart brachte die richtigen Werksnamen zurück (2026-11-23). Ein Name von
+Hand oder nach dem eigenen Werksnamen hält nichts an. Am Gerät ist zu klären, welches Kabel in
+welcher Buchse steckt.
+
 ## Bereinigung von Freitext
 
 Labels, Gerätenamen, VLAN-, VXLAN- und Bridge-Namen aus NetBox gehen durch `name_part`:

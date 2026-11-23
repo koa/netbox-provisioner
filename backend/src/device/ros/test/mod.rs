@@ -6,6 +6,7 @@ mod dhcp;
 mod firewall;
 mod hand_made;
 mod mac_server;
+mod moved_ports;
 mod mtu;
 mod netbox_example;
 mod ospf_auth;

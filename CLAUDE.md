@@ -118,7 +118,10 @@ without radios, CAPsMAN being in the base package since 7.13. A 60 GHz radio is 
 name (`/interface/w60g` reports no `default-name`), so it is never renamed: it stays `wlan60-<N>`.
 A radio's bridge port (`wlan<N>`, `wlan60-<N>`) leaves `hw` unset: RouterOS doesn't report it there. A
 `wlan<N>`/`wifi<N>` in NetBox on a 60 GHz board is `PortNotFound` (its misnamed `wlan60-<N>`).
-The diff sees the device as it is after the renames of its ports and radios
+Ports are renamed by `default-name`, so one carrying the generated name of another port of
+the board (`cfg::moved_ports`) means RouterOS changed its factory names since: generating fails
+with `PORTS_MOVED` (wng-926-sw1, CRS326 r2 on 7.24.6, every factory name shifted by 14, names,
+addresses and cables staying). The diff sees the device as it is after the renames of its ports and radios
 (`following_renames`): a bridge port, list member or bridge VLAN follows a rename on RouterOS
 (CHR 7.24.5). Paired by the old names, the bridge ports of relabeled ports each looked like
 another's, one was set onto an interface another port still held and the script stopped

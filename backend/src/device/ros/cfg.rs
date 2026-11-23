@@ -15,8 +15,9 @@ use crate::{
         access,
         ospf_auth::{self, Decision, MemberRead},
         ros::{
-            BaseDeviceDataCurrent, BaseDeviceDataTarget, SetupError, W60GDeviceDataCurrent,
-            W60GDeviceDataTarget, WirelessDeviceDataCurrent, WirelessDeviceDataTarget,
+            BaseDeviceDataCurrent, BaseDeviceDataTarget, MovedPort, SetupError,
+            W60GDeviceDataCurrent, W60GDeviceDataTarget, WirelessDeviceDataCurrent,
+            WirelessDeviceDataTarget,
             graphql::GraphqlSystemRouterboard,
             hw_facts::{RadioPackage, SwitchChips, build_w60g_ports, radio_package},
             needed_radio_package,
@@ -139,6 +140,14 @@ impl DeviceCfg {
         device: &DeviceAccess,
         name_generator: N,
     ) -> Result<(), SetupError> {
+        // RouterOS gave the ports other factory names than when they were named: renaming by
+        // them would put names, addresses and bridges on other sockets
+        let moved = moved_ports(&self.base_target, &self.base_current);
+        if !moved.is_empty() {
+            return Err(SetupError::PortsMoved {
+                ports: moved.into(),
+            });
+        }
         self.base_target.set_name_and_loopback(device);
 
         // a legacy radio CAPsMAN manages keeps its name and settings, as the CAP has them
@@ -850,6 +859,45 @@ pub(super) fn remote_address(remote: &str) -> Option<IpAddr> {
         .trim_end_matches(']')
         .parse()
         .ok()
+}
+
+/// The ports of `current` carrying the name the generator gives another port of the board
+/// (its short name, alone or before a `-`: `e17-cap-whg-926` is `ether17`'s). The provisioner
+/// renames by factory name (`default-name`), so a port so named was that port then: when
+/// RouterOS reports another factory name now, it changed them (wng-926-sw1, a CRS326-24G-2S+ r2
+/// on 7.24.6: every port's shifted by 14, its name, addresses and bridge port staying with the
+/// socket). Renaming by them would move all onto other sockets.
+pub(super) fn moved_ports(
+    target: &BaseDeviceDataTarget,
+    current: &BaseDeviceDataCurrent,
+) -> Vec<MovedPort> {
+    let shorts = target
+        .ethernet
+        .keys()
+        .filter_map(|default_name| {
+            let port = default_name.to_string().parse::<PhysicalPortId>().ok()?;
+            Some((port.short_name().to_string(), default_name))
+        })
+        .collect::<Vec<_>>();
+    current
+        .ethernet
+        .iter()
+        .filter_map(|port| {
+            let name = port.data.name.to_string();
+            let (_, named_for) = shorts
+                .iter()
+                .filter(|(short, _)| {
+                    name.strip_prefix(short.as_str())
+                        .is_some_and(|rest| rest.is_empty() || rest.starts_with('-'))
+                })
+                .max_by_key(|(short, _)| short.len())?;
+            (**named_for != port.default_name).then(|| MovedPort {
+                name: port.data.name.clone(),
+                default_name: port.default_name.clone(),
+                named_for: (*named_for).clone(),
+            })
+        })
+        .collect()
 }
 
 /// An interface the plan renames.
