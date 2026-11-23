@@ -25,6 +25,7 @@ fn client(address: &str, ssid: &str) -> WlanClient {
         signal: -60,
         signal_to_noise: None,
         uptime: Duration::ZERO,
+        band: None,
     }
 }
 

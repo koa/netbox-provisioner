@@ -135,6 +135,7 @@ fn snapshot() -> Snapshot {
                 signal: -61,
                 signal_to_noise: None,
                 uptime: Duration::from_secs(90),
+                band: None,
             }]),
             radios: Box::new([
                 WirelessRadio {

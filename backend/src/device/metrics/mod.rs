@@ -13,6 +13,8 @@
 //!   radio of its master interface, the radio names the CAP (`identity@address`, and
 //!   `remote-cap-identity` in the legacy CAPsMAN); and of `/interface/wireless` for its own
 //!   radios outside a CAPsMAN (a radio link, a standalone AP), with their signal to noise.
+//!   Their band: `/interface/wifi` says it per client (`5ghz-ax`); for the others it is the
+//!   frequency their radio is on (`current-channel`, `monitor`), without the standard.
 //! - **Radios** of `/interface/wireless`: SSID and band, noise floor and frequency (`monitor`,
 //!   its `channel` `5500/20-Ceee/ac/…`), for each running one; and at a controller of the
 //!   legacy CAPsMAN its CAPs' radios (`/caps-man/interface`).
@@ -32,6 +34,7 @@ use super::{
     access::{Reader, Row, collect_if_present, field, observe},
 };
 use crate::{Error, facts::Freshness};
+use async_graphql::{Enum, SimpleObject};
 use mikrotik_model::value::RosValue;
 use mikrotik_model::{
     MacAddress,
@@ -87,6 +90,81 @@ pub struct WlanClient {
     /// dB, only `/interface/wireless` reports it
     pub signal_to_noise: Option<i16>,
     pub uptime: Duration,
+    /// none where the registration or its radio doesn't tell
+    pub band: Option<WlanBand>,
+}
+
+/// The band a WLAN client is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, SimpleObject)]
+pub struct WlanBand {
+    pub frequency: WlanFrequency,
+    /// only `/interface/wifi` reports the client's
+    pub standard: Option<WlanStandard>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum WlanFrequency {
+    Ghz2,
+    Ghz5,
+    Ghz6,
+}
+
+impl WlanFrequency {
+    /// The band of a channel at `mhz`.
+    pub(crate) fn of_mhz(mhz: u32) -> Option<Self> {
+        match mhz {
+            2400..=2500 => Some(WlanFrequency::Ghz2),
+            4900..=5924 => Some(WlanFrequency::Ghz5),
+            5925..=7125 => Some(WlanFrequency::Ghz6),
+            _ => None,
+        }
+    }
+}
+
+/// IEEE 802.11 by its letters: `ax` is Wi-Fi 6.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum WlanStandard {
+    A,
+    B,
+    G,
+    N,
+    Ac,
+    Ax,
+    Be,
+}
+
+/// `band` of `/interface/wifi/registration-table`: `5ghz-ax`, `2ghz-n`; a standard not known
+/// here leaves it out.
+pub(crate) fn wifi_band(band: &str) -> Option<WlanBand> {
+    let (frequency, standard) = band.split_once('-')?;
+    let frequency = match frequency {
+        "2ghz" => WlanFrequency::Ghz2,
+        "5ghz" => WlanFrequency::Ghz5,
+        "6ghz" => WlanFrequency::Ghz6,
+        _ => return None,
+    };
+    let standard = match standard {
+        "a" => Some(WlanStandard::A),
+        "b" => Some(WlanStandard::B),
+        "g" => Some(WlanStandard::G),
+        "n" => Some(WlanStandard::N),
+        "ac" => Some(WlanStandard::Ac),
+        "ax" => Some(WlanStandard::Ax),
+        "be" => Some(WlanStandard::Be),
+        _ => None,
+    };
+    Some(WlanBand {
+        frequency,
+        standard,
+    })
+}
+
+/// The band of a client whose radio is on `mhz`: no standard.
+fn band_at(mhz: Option<u32>) -> Option<WlanBand> {
+    Some(WlanBand {
+        frequency: WlanFrequency::of_mhz(mhz?)?,
+        standard: None,
+    })
 }
 
 /// A running radio of `/interface/wireless`, or of a CAP of the legacy CAPsMAN (`/caps-man`)
@@ -253,6 +331,7 @@ async fn wifi_clients(client: &Reader) -> Result<Vec<WlanClient>, Error> {
                 signal: client.signal,
                 signal_to_noise: None,
                 uptime: client.uptime,
+                band: wifi_band(&client.band.to_string()),
             }
         })
         .collect())
@@ -282,6 +361,21 @@ impl LegacyCapsman {
             .find(|i| i.cfg.name == *interface)
             .and_then(|i| i.cfg.master_interface.as_ref()?.value())
             .unwrap_or(interface)
+    }
+
+    /// The frequency (MHz) `interface` sends on, from its `current-channel` or its master's.
+    fn frequency_of(&self, interface: &AsciiString) -> Option<u32> {
+        [interface, self.radio_of(interface)]
+            .into_iter()
+            .find_map(|name| {
+                self.interfaces
+                    .iter()
+                    .find(|i| i.cfg.name == *name)?
+                    .status
+                    .current_channel
+                    .as_ref()
+            })
+            .and_then(|channel| channel_frequency(&channel.to_string()))
     }
 
     /// The identity of the CAP `interface` is on; empty if not known.
@@ -318,6 +412,7 @@ async fn legacy_clients(
             signal: client.rx_signal,
             signal_to_noise: None,
             uptime: client.uptime,
+            band: band_at(capsman.frequency_of(&client.interface)),
         })
         .collect())
 }
@@ -352,11 +447,7 @@ async fn wireless(client: &Reader) -> Result<Wireless, Error> {
         .filter_map(|radio| Some((&radio.cfg.name, radio.cfg.ssid.as_ref()?)))
         .filter(|(_, ssid)| !ssid.0.is_empty())
         .collect::<HashMap<_, _>>();
-    let clients = collect_resource::<InterfaceWirelessRegistrationTableState>(client)
-        .await?
-        .iter()
-        .filter_map(|registration| standalone_client(registration, &ssids))
-        .collect();
+    let registrations = collect_resource::<InterfaceWirelessRegistrationTableState>(client).await?;
     let names = running
         .iter()
         .map(|radio| radio.cfg.name.to_string())
@@ -368,6 +459,19 @@ async fn wireless(client: &Reader) -> Result<Wireless, Error> {
         .iter()
         .zip(&monitor)
         .map(|(radio, monitor)| wireless_radio(radio, monitor))
+        .collect::<Vec<_>>();
+    // a client's band is the frequency its radio is on
+    let frequencies = running_radios
+        .iter()
+        .filter_map(|radio| Some((&*radio.name, radio.frequency_mhz?)))
+        .collect::<HashMap<_, _>>();
+    let clients = registrations
+        .iter()
+        .filter_map(|registration| standalone_client(registration, &ssids))
+        .map(|client| WlanClient {
+            band: band_at(frequencies.get(&*client.interface).copied()),
+            ..client
+        })
         .collect();
     Ok(Wireless {
         clients,
@@ -402,6 +506,8 @@ pub(crate) fn standalone_client(
             .ok()?,
         signal_to_noise: registration.signal_to_noise,
         uptime: registration.uptime,
+        // the frequency of its radio, from `monitor` (`wireless`)
+        band: None,
     })
 }
 

@@ -54,10 +54,22 @@ pub fn devices_unreachable(devices: &[&str]) -> String {
 }
 
 /// devices in a network: one connected over WLAN, at an access point (empty: not known)
-pub fn wlan_connection(access_point: &str, signal: i32) -> String {
+/// `band`: [`wlan_band`]'s, empty where not known
+pub fn wlan_connection(access_point: &str, band: &str, signal: i32) -> String {
+    let band = match band {
+        "" => String::new(),
+        band => format!("{band}, "),
+    };
     match access_point {
-        "" => format!("WLAN, {signal} dBm"),
-        ap => format!("WLAN über {ap}, {signal} dBm"),
+        "" => format!("WLAN, {band}{signal} dBm"),
+        ap => format!("WLAN über {ap}, {band}{signal} dBm"),
+    }
+}
+/// a WLAN band: `ghz` like „2,4“, with the IEEE 802.11 standard („ax“) where known
+pub fn wlan_band(ghz: &str, standard: Option<&str>) -> String {
+    match standard {
+        Some(standard) => format!("{ghz} GHz ({standard})"),
+        None => format!("{ghz} GHz"),
     }
 }
 

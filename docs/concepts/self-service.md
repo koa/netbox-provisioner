@@ -76,8 +76,6 @@ Offen nach dem Prototyp:
 - **Dosen und Geräte:** rechts neben einem Port das Netz mit den Geräten, die dahinter eine
   Adresse bezogen haben (Name aus dem Lease, leer ohne; MAC als Tooltip auf der IP), siehe
   [Leases](#leases).
-- **Netze:** bei den verbundenen Geräten das Band, siehe [Clients](#clients). „Per Kabel an“
-  und der QR-Code sind gebaut.
 - **Änderungen:** ein dritter Tab, jede gespeicherte Änderung mit Fortschritt und dem Stand pro
   Gerät (aus dem automatischen Rollout, C20).
 - **Zurücknehmen** einer ausgerollten Änderung macht aus dem Stand davor neue Entwürfe (auch
@@ -102,8 +100,12 @@ Lease steckt (Geräte pro Dose im UI). Das sagt die Host-Tabelle der Bridge
 
 ## Clients
 
-Die Clients der WLANs liest `networkDevices` beim Controller. Das Band (2.4/5 GHz, Standard)
-fehlt `WlanClient` noch (E28).
+Die Clients der WLANs liest `networkDevices` beim Controller, mit ihrem Band (`WlanBand`, E28):
+`/interface/wifi` nennt es pro Client (`band`, `5ghz-ax`: Frequenz und Standard), beim alten
+CAPsMAN und `/interface/wireless` ist es die Frequenz, auf der das Radio sendet
+(`current-channel`, `monitor`), ohne Standard. Im Lab gibt es nur Clients von
+`/interface/wireless` (lab-sxt-a/b, 5680 MHz); das Format von `band` bei `/interface/wifi` ist
+nicht live gesehen.
 
 ## Entschieden (2026-10-23)
 

@@ -1,8 +1,9 @@
 //! Scope: Tests of `device::metrics`'s parsing; nothing else.
 
 use super::{
-    Capsman, LegacyCapsman, bits_per_second, capsman_radio_rows, ethernet_counters, ethernet_link,
-    interface_counters, standalone_client, wireless_radio,
+    Capsman, LegacyCapsman, WlanBand, WlanFrequency, WlanStandard, bits_per_second,
+    capsman_radio_rows, ethernet_counters, ethernet_link, interface_counters, standalone_client,
+    wifi_band, wireless_radio,
 };
 use crate::device::{access::Row, answer::parsed as parse};
 use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetState};
@@ -216,6 +217,35 @@ fn the_radios_of_the_legacy_caps() {
         ]
     );
     assert!(found.iter().all(|radio| radio.capsman == Capsman::Legacy));
+    // a client's band is its radio's frequency, a virtual interface's its master's
+    assert_eq!(capsman.frequency_of(&ascii("cap-solar-gast")), Some(2437));
+    assert_eq!(capsman.frequency_of(&ascii("cap-solar-2")), None);
+}
+
+/// `/interface/wifi/registration-table` names frequency and standard; the others only the
+/// frequency of the radio.
+#[test]
+fn the_band_of_a_client() {
+    let band = |frequency, standard| {
+        Some(WlanBand {
+            frequency,
+            standard,
+        })
+    };
+    assert_eq!(
+        wifi_band("5ghz-ax"),
+        band(WlanFrequency::Ghz5, Some(WlanStandard::Ax))
+    );
+    assert_eq!(
+        wifi_band("2ghz-n"),
+        band(WlanFrequency::Ghz2, Some(WlanStandard::N))
+    );
+    assert_eq!(wifi_band("6ghz-zz"), band(WlanFrequency::Ghz6, None));
+    assert_eq!(wifi_band(""), None);
+    assert_eq!(WlanFrequency::of_mhz(2437), Some(WlanFrequency::Ghz2));
+    assert_eq!(WlanFrequency::of_mhz(5500), Some(WlanFrequency::Ghz5));
+    assert_eq!(WlanFrequency::of_mhz(5955), Some(WlanFrequency::Ghz6));
+    assert_eq!(WlanFrequency::of_mhz(60480), None);
 }
 
 /// lab-sxt-a's `w01` as `/interface/wireless/print` gives it (7.24.6), the keys replaced.

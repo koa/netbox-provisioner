@@ -42,6 +42,43 @@ pub struct WlanConnection {
     pub ssid: String,
     pub access_point: String,
     pub signal: i32,
+    pub band: Option<WlanBand>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct WlanBand {
+    pub frequency: WlanFrequency,
+    pub standard: Option<WlanStandard>,
+}
+
+#[derive(cynic::Enum, Debug, Clone, Copy, PartialEq, Eq)]
+#[cynic(schema = "resident")]
+pub enum WlanFrequency {
+    #[cynic(rename = "GHZ_2")]
+    Ghz2,
+    #[cynic(rename = "GHZ_5")]
+    Ghz5,
+    #[cynic(rename = "GHZ_6")]
+    Ghz6,
+    /// a band of a newer server
+    #[cynic(fallback)]
+    Other,
+}
+
+#[derive(cynic::Enum, Debug, Clone, Copy, PartialEq, Eq)]
+#[cynic(schema = "resident")]
+pub enum WlanStandard {
+    A,
+    B,
+    G,
+    N,
+    Ac,
+    Ax,
+    Be,
+    /// a standard of a newer server
+    #[cynic(fallback)]
+    Other,
 }
 
 #[derive(cynic::QueryVariables, Debug)]

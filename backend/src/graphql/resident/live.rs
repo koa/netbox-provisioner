@@ -16,7 +16,7 @@ use crate::{
     Error,
     device::{
         interface_live::client_name,
-        metrics::{Lease, WlanClient},
+        metrics::{Lease, WlanBand, WlanClient},
         neighbors::{self, SeenNeighbor},
     },
     error_info::ApiError,
@@ -63,6 +63,8 @@ pub struct WlanConnection {
     access_point: Box<str>,
     /// dBm
     signal: i32,
+    /// none where the controller doesn't say
+    band: Option<WlanBand>,
 }
 
 /// Where the routers see the resident's devices plugged in, where it isn't NetBox's Anschluss.
@@ -367,6 +369,7 @@ fn joined(leases: &[Lease], clients: &[WlanClient]) -> Box<[NetworkDevice]> {
             ssid: client.ssid.clone(),
             access_point: client.ap.clone(),
             signal: client.signal.into(),
+            band: client.band,
         };
         devices
             .entry(mac.clone())
