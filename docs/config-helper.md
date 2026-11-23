@@ -49,7 +49,7 @@ ist eine Prüfung:
   Fehler, wo das Gerät `ospf` hat, sonst eine Warnung) oder mit Primary IPv4 nicht auf `lo`.
 - Eine Primary IPv4 auf `lo` ohne `ospf` an irgendeinem Interface (`LoopbackWithoutOspf`, Fehler):
   Niemand kündigt sie an, der Provisioner erreicht das Gerät dort nicht.
-- Ein Gerät mit `ospf`, das über seine OSPF-Nachbarn keine Wurzel erreicht und selbst keine ist
+- Ein Gerät, das über seine OSPF-Nachbarn keine Wurzel erreicht und selbst keine ist
   (`NoWayToRoot`, Warnung): Sein Ping-Watchdog überwacht nichts ([Watchdog](watchdog.md)). Kein
   Befund, wo `watchdog_target` sagt, was es überwacht; ein unlesbarer Wert dort ist
   `WatchdogTargetInvalid` (Fehler).

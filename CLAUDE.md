@@ -228,7 +228,9 @@ Z2: `nat` needs it). A WLAN group without `controller` is left out of `wlan_grou
 (`WlanGroupWithoutController`), generating fails there (`MissingController`). A device whose
 radios need its site's country (`radio::needs_country`) without a known one is an error
 (`NoCountry`, from `radio::country_settings`). A primary IPv4 on `lo` without `ospf` on any interface is an error
-(`LoopbackWithoutOspf`): nothing announces it, and it ends a radio bridge's DHCP fallback. A radio
+(`LoopbackWithoutOspf`): nothing announces it. A pure L2 radio bridge doesn't run RouterOS
+and isn't touched (NetBox only needs the DHCP server and IP range for its management address);
+the generator's DHCP client for a RouterOS bridge without an address is a leftover. A radio
 bridge is an OSPF router through a static address and `ospf` on its `bridge` (management only,
 forwarding stays L2), with OSPF priority 0 (v2 and v3, `setup_ospf`) so it is never DR or BDR of
 the segment it shares with the routers (they keep RouterOS's 128); CHR test
@@ -1353,7 +1355,8 @@ a root, a cabled one first (lab-sxt-b watched lab-np1 across its own radio befor
 device's custom field `watchdog_target` (`topology::WatchdogTarget`: empty the parent, `none`
 nothing, else a fixed IPv4) replaces that (`watched_address`); an update suspends the devices
 whose fixed target is one of its addresses and not its dependents watching something else
-(`device::watchdog::watchers`). A device with `ospf` reaching no root is the finding
+(`device::watchdog::watchers`). A device reaching no root over its OSPF neighbors (every valid RouterOS
+device has `ospf`, CAPs, switches and bridge devices too) is the finding
 `NoWayToRoot` (warning, not with a `watchdog_target`), an unreadable value
 `WatchdogTargetInvalid` (error, watched as if empty). The findings know the management proxy's
 device from the topology (`Topology::management_proxy`, given to `build_topology_from`,

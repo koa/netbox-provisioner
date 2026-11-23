@@ -13,17 +13,18 @@ auf beiden Seiten. Das L2 dafür entsteht wie überall aus dem NetBox-Modell (si
 [l2-generation.md](l2-generation.md)). Der Funk-Port wird dabei wie ein Ethernet-Port behandelt und
 bekommt einen eigenen Namen (`w01`); ein 60-GHz-Radio bleibt `wlan60-<N>`.
 
-Erreichbar ist eine Brücke auf zwei Arten:
-
-- **Als OSPF-Router** (das Ziel): das NetBox-Interface `bridge` hat eine statische Adresse im Netz
+Erreichbar ist eine RouterOS-Brücke als OSPF-Router: das NetBox-Interface `bridge` hat eine statische Adresse im Netz
   des Router-Ports und das Tag `ospf`, `lo` die Loopback (Primary IP, Router-ID). OSPF läuft nur
   für das Management über die Bridge, die Nutzdaten bleiben auf L2 (`test_radio_bridge_with_a_static_address_runs_ospf`),
   mit OSPF-Priorität 0: nie DR oder BDR (CHR-Test `bridge_devices_are_never_dr_or_bdr_of_their_segment`).
-- **Rein L2**: ohne IP-Adresse in NetBox bekommt ihre Bridge automatisch einen DHCP-Client
-  (`setup_ip_addresses`).
 
-Eine Loopback ohne `ospf` an irgendeinem Interface hebt das reine L2 auf (kein DHCP-Client mehr),
-ohne dass jemand sie ankündigt: das Gerät ist danach nicht erreichbar (schopf-burri). Der Befund
+Eine reine L2-Brücke läuft nicht mit RouterOS: Der Provisioner fasst sie nicht an, NetBox
+braucht für sie nur den DHCP-Server und die IP-Range, aus denen sie ihre Management-Adressen
+bekommt; sonst ist sie wie ein Kabel ohne Verwaltung. Dass der Generator einer RouterOS-Brücke
+ohne IP-Adresse in NetBox einen DHCP-Client gibt (`setup_ip_addresses`), ist ein Überbleibsel.
+
+Eine Loopback ohne `ospf` an irgendeinem Interface wird nicht angekündigt: das Gerät ist danach
+nicht erreichbar (schopf-burri). Der Befund
 `LoopbackWithoutOspf` meldet das als Fehler. Der Helfer „Funkbrücke“ trägt beides in NetBox ein
 ([config-helper.md](config-helper.md#funkbrücke)).
 

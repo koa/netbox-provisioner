@@ -150,12 +150,14 @@ fn mtu_and_ospf_differing_on_a_cable_are_errors() {
     net.interface(net.e2).mtu = Some(2000);
     net.interface(net.e2).use_ospf = false;
     let (e1, e2) = (net.e1, net.e2);
-    // r2 has no `ospf` left at all
-    let (unannounced, findings): (Vec<_>, Vec<_>) = net
-        .findings()
-        .into_iter()
-        .partition(|f| matches!(f.kind, FindingKind::LoopbackWithoutOspf(_)));
-    assert_eq!(unannounced.len(), 1, "{unannounced:#?}");
+    // r2 has no `ospf` left at all, so no way to the root either
+    let (unannounced, findings): (Vec<_>, Vec<_>) = net.findings().into_iter().partition(|f| {
+        matches!(
+            f.kind,
+            FindingKind::LoopbackWithoutOspf(_) | FindingKind::NoWayToRoot(_)
+        )
+    });
+    assert_eq!(unannounced.len(), 2, "{unannounced:#?}");
     assert_eq!(findings.len(), 2, "{findings:#?}");
     for finding in &findings {
         assert_eq!(finding.severity, Severity::Error);
@@ -191,11 +193,14 @@ fn a_link_without_ospf_is_a_hint() {
     let (e1, e2) = (net.e1, net.e2);
     net.interface(e1).use_ospf = false;
     net.interface(e2).use_ospf = false;
-    let (unannounced, findings): (Vec<_>, Vec<_>) = net
-        .findings()
-        .into_iter()
-        .partition(|f| matches!(f.kind, FindingKind::LoopbackWithoutOspf(_)));
-    assert_eq!(unannounced.len(), 2, "{unannounced:#?}");
+    // r2 loses its way to the root r1
+    let (unannounced, findings): (Vec<_>, Vec<_>) = net.findings().into_iter().partition(|f| {
+        matches!(
+            f.kind,
+            FindingKind::LoopbackWithoutOspf(_) | FindingKind::NoWayToRoot(_)
+        )
+    });
+    assert_eq!(unannounced.len(), 3, "{unannounced:#?}");
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert_eq!(findings[0].severity, Severity::Hint);
     assert!(matches!(
@@ -214,16 +219,20 @@ fn a_link_to_a_device_without_routeros_is_not_checked() {
     assert_eq!(net.findings(), vec![]);
 }
 
-/// A radio bridge device is L2 only: its end has neither address nor `ospf`, the router's
-/// OSPF goes through it to the other side. With a loopback but no `ospf` nothing announces
-/// it (schopf-burri).
+/// A device whose end has neither address nor `ospf`: with a loopback but no `ospf` nothing
+/// announces it (schopf-burri), and it has no way to a root. A pure L2 radio bridge doesn't
+/// run RouterOS.
 #[test]
-fn ospf_to_a_bridge_device_without_address_is_no_finding() {
+fn a_loopback_without_ospf_is_an_error() {
     let mut net = Net::new();
     let (r2, e2) = (net.r2, net.e2);
     net.interface(e2).use_ospf = false;
     net.interface(e2).ips = Box::new([]);
-    let findings = net.findings();
+    let (no_way, findings): (Vec<_>, Vec<_>) = net
+        .findings()
+        .into_iter()
+        .partition(|f| matches!(f.kind, FindingKind::NoWayToRoot(_)));
+    assert_eq!(no_way.len(), 1, "{no_way:#?}");
     assert_eq!(findings.len(), 1, "{findings:#?}");
     assert_eq!(findings[0].severity, Severity::Error);
     assert_eq!(&*findings[0].devices, [r2]);
@@ -231,7 +240,7 @@ fn ospf_to_a_bridge_device_without_address_is_no_finding() {
         matches!(&findings[0].kind, FindingKind::LoopbackWithoutOspf(l)
         if &*l.address.address == "172.16.1.2/32")
     );
-    // without its loopback it is reached by DHCP
+    // without a loopback, nothing to announce
     net = Net::new();
     net.interface(e2).use_ospf = false;
     net.interface(e2).ips = Box::new([]);
@@ -554,9 +563,9 @@ fn nat_without_internet_is_a_warning() {
     assert_eq!(uplink(true).1, vec![]);
 }
 
-/// Without a management root on its way the watchdog watches nothing: a warning at a device
-/// with `ospf`, unless `watchdog_target` says what it watches; one that can't be read is an
-/// error.
+/// Without a management root on its way the watchdog watches nothing: a warning, also at a
+/// device without `ospf` (every RouterOS device has it), unless `watchdog_target` says what
+/// it watches; one that can't be read is an error.
 #[test]
 fn a_device_without_a_way_to_a_root_is_a_warning() {
     fn findings(change: impl Fn(&mut Net)) -> Vec<Finding> {
@@ -581,6 +590,22 @@ fn a_device_without_a_way_to_a_root_is_a_warning() {
             .propagate_default_route = true;
     });
     assert_eq!(rooted, vec![]);
+    // r1 without `ospf` loses its way to the root r2
+    let no_ospf = findings(|net| {
+        net.builder
+            .devices
+            .get_mut(&net.r2)
+            .unwrap()
+            .propagate_default_route = true;
+        net.builder.interfaces.get_mut(&net.e1).unwrap().use_ospf = false;
+    });
+    assert!(
+        no_ospf
+            .iter()
+            .any(|finding| finding.severity == Severity::Warning
+                && matches!(&finding.kind, FindingKind::NoWayToRoot(f) if &*f.device.name == "r1")),
+        "{no_ospf:#?}"
+    );
     let set = |net: &mut Net, target: Option<&str>| {
         for id in [net.r1, net.r2] {
             net.builder.devices.get_mut(&id).unwrap().watchdog_target =

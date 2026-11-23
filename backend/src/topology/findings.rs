@@ -455,9 +455,7 @@ fn watchdogs(topo: &Arc<Topology>, devices: &[DeviceAccess], findings: &mut Vec<
                 })
             }
             WatchdogTarget::Parent
-                if device.interfaces().iter().any(InterfaceAccess::use_ospf)
-                    && !tree.is_root(device.id())
-                    && tree.parent(device.id()).is_none() =>
+                if !tree.is_root(device.id()) && tree.parent(device.id()).is_none() =>
             {
                 FindingKind::NoWayToRoot(NoWayToRoot {
                     device: device_ref(device),
