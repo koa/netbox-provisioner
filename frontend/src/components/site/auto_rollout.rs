@@ -8,9 +8,9 @@ use crate::{
     graphql::{
         authenticated::{
             auto_rollout::{
-                AcceptAutoRolloutDiff, ClearAutoRolloutError, Lack, LastRound, ReleaseAutoRollout,
-                ReleaseVariables, RoundDevice, RoundOutcome, SiteAutoRollout, SiteAutoRolloutQuery,
-                SiteError, SiteVariables,
+                AcceptAutoRolloutDiff, ClearAutoRolloutError, HoldReason, Lack, LastRound,
+                ReleaseAutoRollout, ReleaseVariables, RoundDevice, RoundOutcome, SiteAutoRollout,
+                SiteAutoRolloutQuery, SiteError, SiteVariables,
             },
             device::AllowApply,
         },
@@ -162,7 +162,7 @@ impl Component for AutoRollout {
                         { for state.unmet.iter().map(|unmet| html! {
                             <>
                                 <dt>{unmet.device.name.clone()}</dt>
-                                <dd>{unmet.lacks.iter().map(lack).collect::<Vec<_>>().join(", ")}</dd>
+                                <dd>{joined(&unmet.lacks, lack, ", ")}</dd>
                             </>
                         }) }
                     </dl>
@@ -223,12 +223,50 @@ impl AutoRollout {
                 </Alert>
             }
         });
+        let held = (!last.held.is_empty()).then(|| {
+            html! {
+                <Alert inline=true r#type={AlertType::Warning} title={t::HELD}>
+                    <dl class="neighbor-results">
+                        { for last.held.iter().map(|held| html! {
+                            <>
+                                <dt>{held.device.name.clone()}</dt>
+                                <dd>
+                                    <p>{joined(&held.reasons, hold_reason, "; ")}</p>
+                                    {self.release_only(ctx, &held.device, state)}
+                                </dd>
+                            </>
+                        }) }
+                    </dl>
+                </Alert>
+            }
+        });
         html! {
             <>
                 <p>{line}</p>
                 {deferred}
+                {held}
                 {held_by}
             </>
+        }
+    }
+
+    /// What an admin does about an automatic device whose changes wait: release them.
+    fn release_only(
+        &self,
+        ctx: &Context<Self>,
+        device: &RoundDevice,
+        state: &SiteAutoRollout,
+    ) -> Html {
+        let id = device.id;
+        if state.released.contains(&id) {
+            return html!({ t::RELEASED });
+        }
+        let release = ctx.link().callback(move |_| AutoRolloutMsg::Release(id));
+        html! {
+            <Button variant={ButtonVariant::Secondary} disabled={!self.allow_apply}
+                onclick={release}>
+                {t::RELEASE}
+            </Button>
         }
     }
 
@@ -262,6 +300,21 @@ impl AutoRollout {
             </>
         }
     }
+}
+
+/// `items` worded by `word`, separated by `separator`.
+fn joined<T>(items: &[T], word: impl Fn(&T) -> String, separator: &str) -> String {
+    items.iter().map(word).collect::<Vec<_>>().join(separator)
+}
+
+fn hold_reason(reason: &HoldReason) -> String {
+    t::hold_reason(match reason {
+        HoldReason::PoeCut => t::HoldReason::PoeCut,
+        HoldReason::CapOff => t::HoldReason::CapOff,
+        HoldReason::ApiClientsOutside => t::HoldReason::ApiClientsOutside,
+        HoldReason::RadioLink => t::HoldReason::RadioLink,
+        HoldReason::Other(other) => t::HoldReason::Other(other),
+    })
 }
 
 fn lack(lack: &Lack) -> String {

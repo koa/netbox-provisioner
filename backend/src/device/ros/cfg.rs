@@ -593,6 +593,19 @@ impl GeneratedCfg {
     pub fn planned(&self) -> &super::diff_view::CfgDiff {
         &self.diff
     }
+    /// What applying it would do that the operator should know before.
+    pub fn apply_warnings(&self) -> &[ApplyWarning] {
+        &self.warnings
+    }
+    /// Whether the script changes a radio (`/interface/wireless…`, `/interface/wifi…`,
+    /// `/interface/w60g…`), which may stay off a while after (`apply::RADIO_RESTART`).
+    pub fn changes_radio(&self) -> bool {
+        self.diff.tables.iter().any(|table| {
+            ["interface/wireless", "interface/wifi", "interface/w60g"]
+                .iter()
+                .any(|radio| table.table.trim_start_matches('/').starts_with(radio))
+        })
+    }
     /// What an apply would change, as a hash (SHA-256, hex) of its script, the same across
     /// restarts; `None` when an apply has nothing to do (`auto_rollout`). Setting the current
     /// password (A9) or WebFig's certificate counts as a change too.

@@ -1,6 +1,7 @@
 //! Scope: The automatic rollout as a site's page shows it; not the rounds (`auto_rollout`).
 use super::{
-    RoundDevice, RoundDone, RoundOutcome, SiteError, SiteState, precondition::Unmet, state,
+    HeldDevice, RoundDevice, RoundDone, RoundOutcome, SiteError, SiteState, precondition::Unmet,
+    state,
 };
 use crate::topology::SiteId;
 use async_graphql::SimpleObject;
@@ -15,10 +16,10 @@ pub struct SiteAutoRollout {
     pub error: Option<SiteAutoRolloutError>,
     /// the last round, over every automatic site
     pub last_round: Option<LastRound>,
-    /// manual devices an admin released, applied with the next round
+    /// devices whose diff an admin released, applied with the next round (unless it changed)
     pub released: Box<[u32]>,
-    /// manual devices holding back whose diff an admin may still take over; one of the last
-    /// round's `heldBy` missing here is taken over already
+    /// devices holding back whose diff an admin may still release or (a manual one's) take
+    /// over; one of the last round's `heldBy` missing here is taken over already
     pub holding: Box<[u32]>,
     /// the automatic devices, of every site, the precondition failed on at the last round:
     /// nothing rolls out until NetBox meets it again
@@ -39,6 +40,8 @@ pub struct LastRound {
     pub applied: Box<[RoundDevice]>,
     pub deferred: Box<[RoundDevice]>,
     pub held_by: Box<[RoundDevice]>,
+    /// automatic devices whose changes wait for an admin, and why
+    pub held: Box<[HeldDevice]>,
     /// seconds since
     pub age: u64,
 }
@@ -73,15 +76,17 @@ pub fn of_site(site: SiteId) -> SiteAutoRollout {
                  applied,
                  deferred,
                  held_by,
+                 held,
              }| LastRound {
                 outcome,
                 applied,
                 deferred,
                 held_by,
+                held,
                 age: age(at),
             },
         ),
-        released: state.released.iter().map(|id| id.0).collect(),
+        released: state.released_diffs.keys().map(|id| id.0).collect(),
         holding: state.holding.keys().map(|id| id.0).collect(),
         unmet: state.unmet,
     }

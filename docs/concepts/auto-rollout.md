@@ -5,7 +5,8 @@ Bereich pro Site, Runden auf Webhook und alle 30 min, eine Transaktion über `ap
 dem Internet vorher und nachher, Zurückstellen nicht erreichbarer Geräte samt ihren
 Funkpartnern, Anhalten durch manuelle Geräte mit Freigabe, Fehlerzustand pro Site, Zustand in
 `state_dir`, Karte auf der Seite der Site, Metriken, die Vorbedingung (Loopbacks, OSPF-Verbindung,
-Device-Mode mit `scheduler`), die Prüfung der Geräte ausserhalb nach dem Skript. Aufgabe C20 in [todo.md](../todo.md).
+Device-Mode mit `scheduler`), die Prüfung der Geräte ausserhalb nach dem Skript, Anhalten mit
+Grund bei Warnungen des Anwendens und Richtfunk. Aufgabe C20 in [todo.md](../todo.md).
 Voraussetzung für den [Self-Service](self-service.md).
 
 Was noch fehlt:
@@ -73,10 +74,8 @@ erreichbar, und es lässt sich in NetBox wiederherstellen.
    kein RouterOS-Gerät in NetBox ist (Uplink, `internet`, `nat`), `propagate_default_route`,
    oder kündigt ein Netz ausserhalb der freigegebenen Bereiche an. Das Lab hat einmal eine
    Default-Route in die Produktion exportiert.
-3. **Warnungen des Anwendens:** `PoeCut`, `CapOffOutsideWlanGroup`, `ApiClientsOutside`: Nach
-   dem Anwenden fehlt etwas, das die Prüfung nicht als Fehler sieht.
-4. **Richtfunk:** Der Diff ändert ein Radio mit RF-Rolle (`PlannedApply::radio_wait` an einer
-   Strecke, nicht an einem AP): bis zu 24 min ohne Verbindung (DFS), mit allem dahinter.
+3. **Warnungen des Anwendens:** umgesetzt ([Automatisches Rollout](../auto-rollout.md#runden)).
+4. **Richtfunk:** umgesetzt, vorerst immer (ohne Wartungsfenster).
 
 **Prüfen nach dem Skript:** umgesetzt ([Gemeinsam anwenden](../jobs.md#gemeinsam-anwenden),
 Geräte ausserhalb). Offen nur: wie lange die Anmeldungen bei grossen Sites in das Fenster des

@@ -80,7 +80,26 @@ pub struct LastRound {
     pub applied: Vec<RoundDevice>,
     pub deferred: Vec<RoundDevice>,
     pub held_by: Vec<RoundDevice>,
+    pub held: Vec<HeldDevice>,
     pub age: i32,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct HeldDevice {
+    pub device: RoundDevice,
+    pub reasons: Vec<HoldReason>,
+}
+
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum HoldReason {
+    PoeCut,
+    CapOff,
+    ApiClientsOutside,
+    RadioLink,
+    #[cynic(fallback)]
+    Other(String),
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

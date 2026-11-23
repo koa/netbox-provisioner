@@ -9,6 +9,7 @@ fn auto(device: u32, diff: Diff) -> Seen {
         site: Some(SITE),
         diff,
         partners: Box::new([]),
+        hold: Box::new([]),
     }
 }
 
@@ -33,7 +34,19 @@ fn ids(ids: &[u32]) -> BTreeSet<DeviceId> {
 }
 
 fn plain(seen: &[Seen]) -> Decision {
-    decide(seen, &BTreeMap::new(), &BTreeSet::new(), &BTreeSet::new())
+    decide(seen, &BTreeMap::new(), &BTreeMap::new(), &BTreeSet::new())
+}
+
+fn holding(mut seen: Seen, reasons: &[HoldReason]) -> Seen {
+    seen.hold = reasons.into();
+    seen
+}
+
+fn released(releases: &[(u32, &str)]) -> BTreeMap<DeviceId, Fingerprint> {
+    releases
+        .iter()
+        .map(|(device, script)| (DeviceId(*device), (*script).into()))
+        .collect()
 }
 
 /// The automatic devices with changes go out together, those in line not.
@@ -81,14 +94,14 @@ fn a_changed_manual_device_holds_the_round_back() {
     let again = decide(
         &seen,
         &decision.baselines,
-        &BTreeSet::new(),
+        &BTreeMap::new(),
         &BTreeSet::new(),
     );
     assert_eq!(again.held_by, ids(&[9]));
     let by_hand = decide(
         &[auto(1, changes("a")), manual(9, Diff::InLine)],
         &again.baselines,
-        &BTreeSet::new(),
+        &BTreeMap::new(),
         &BTreeSet::new(),
     );
     assert_eq!(by_hand.members, ids(&[1]));
@@ -102,7 +115,7 @@ fn a_manual_device_as_before_doesnt_hold_back() {
     let decision = decide(
         &[auto(1, changes("a")), manual(9, changes("m"))],
         &baselines,
-        &BTreeSet::new(),
+        &BTreeMap::new(),
         &BTreeSet::new(),
     );
     assert_eq!(decision.members, ids(&[1]));
@@ -115,10 +128,19 @@ fn a_released_manual_device_goes_with_them() {
     let decision = decide(
         &[auto(1, changes("a")), manual(9, changes("m"))],
         &BTreeMap::new(),
-        &ids(&[9]),
+        &released(&[(9, "m")]),
         &BTreeSet::new(),
     );
     assert_eq!(decision.members, ids(&[1, 9]));
+    // released for another diff, it holds back again
+    let decision = decide(
+        &[auto(1, changes("a")), manual(9, changes("m2"))],
+        &BTreeMap::new(),
+        &released(&[(9, "m")]),
+        &BTreeSet::new(),
+    );
+    assert_eq!(decision.held_by, ids(&[9]));
+    assert!(decision.members.is_empty());
 }
 
 /// A manual device not reached keeps what was seen of it; one in line drops it.
@@ -128,7 +150,7 @@ fn the_manual_diffs_are_kept_for_the_next_round() {
     let decision = decide(
         &[manual(8, Diff::Unreached), manual(9, Diff::InLine)],
         &baselines,
-        &BTreeSet::new(),
+        &BTreeMap::new(),
         &BTreeSet::new(),
     );
     assert_eq!(
@@ -147,9 +169,51 @@ fn a_site_switched_on_must_be_in_line() {
     let decision = decide(
         &[auto(1, changes("a")), auto(2, Diff::InLine), other],
         &BTreeMap::new(),
-        &BTreeSet::new(),
+        &BTreeMap::new(),
         &[SITE].into(),
     );
     assert_eq!(decision.not_in_line, [SITE].into());
     assert_eq!(decision.members, ids(&[5]));
+}
+
+/// An automatic device with a reason to wait holds the whole round back with its reasons,
+/// until exactly that diff is released.
+#[test]
+fn an_automatic_device_with_a_reason_holds_the_round_back() {
+    let seen = [
+        auto(1, changes("a")),
+        holding(auto(2, changes("b")), &[HoldReason::RadioLink]),
+    ];
+    let decision = plain(&seen);
+    assert!(decision.members.is_empty());
+    assert_eq!(
+        decision.held,
+        [(DeviceId(2), Box::from([HoldReason::RadioLink]))].into()
+    );
+    let decision = decide(
+        &seen,
+        &BTreeMap::new(),
+        &released(&[(2, "b")]),
+        &BTreeSet::new(),
+    );
+    assert_eq!(decision.members, ids(&[1, 2]));
+    assert!(decision.held.is_empty());
+    let decision = decide(
+        &seen,
+        &BTreeMap::new(),
+        &released(&[(2, "older")]),
+        &BTreeSet::new(),
+    );
+    assert!(decision.members.is_empty());
+}
+
+/// A reason on a device without changes, or one passed over, holds nothing.
+#[test]
+fn a_reason_without_changes_holds_nothing() {
+    let decision = plain(&[
+        auto(1, changes("a")),
+        holding(auto(2, Diff::InLine), &[HoldReason::PoeCut]),
+    ]);
+    assert_eq!(decision.members, ids(&[1]));
+    assert!(decision.held.is_empty());
 }

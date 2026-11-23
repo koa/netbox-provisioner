@@ -77,6 +77,23 @@ Entschieden wird ohne Gerät (`auto_rollout::decide`, getestet in `decide/test.r
   (`acceptAutoRolloutDiff`), dann wird der Diff, mit dem es anhielt, seine Grundlinie und bleibt
   auf dem Gerät; erst ein weiter geänderter Diff hält wieder an. Einen Diff, den es schon hatte,
   behält es als Grundlinie: was ein Operator dort liegen liess, hält nichts an.
+- **Automatisches Gerät mit Grund** (`auto_rollout::hold`, `HoldReason`, aus dem Diff der Runde):
+  Was der Fallback nicht sicher zurücknimmt, hält die ganze Runde ebenso an, bis ein Admin den
+  Diff freigibt oder von Hand anwendet:
+  - **Warnungen des Anwendens:** `PoeCut` (ein Port, der etwas speist, verliert PoE),
+    `CapOffOutsideWlanGroup` (`CapOff`, die Radios senden danach kein WLAN),
+    `ApiClientsOutside` (die API sperrt einen verbundenen Client aus). `WatchTargetSilent` und
+    `OspfAuthKept` halten nicht an: Sie sagen, was absichtlich bleibt.
+  - **Richtfunk** (`RadioLink`): Das Skript ändert eine Tabelle unter `/interface/wireless`,
+    `/interface/wifi` oder `/interface/w60g` (`GeneratedCfg::changes_radio`) eines Geräts mit
+    einer Funkstrecke (`batch::wireless_partners`): Strecke und alles dahinter können bis zu
+    24 min weg sein (DFS). Im Zweifel hält es an, auch wenn das geänderte Radio ein WLAN-Radio
+    desselben Geräts ist.
+
+  Die Karte zeigt jedes mit seinen Gründen und „Freigeben und mit ausrollen“ (kein „Als Stand
+  übernehmen“: ein automatisches Gerät soll wie in NetBox sein).
+- **Freigeben** gilt für genau den Diff, mit dem das Gerät anhielt (`State.released_diffs`, mit
+  seinem Fingerabdruck aus `holding`): Ändert er sich bis zur nächsten Runde, hält es wieder an.
 
 Die Transaktion ist ein Gemeinsam anwenden (`job::start_all`, `batch::apply` mit Internet und
 jedem anderen automatischen Gerät als Gerät ausserhalb: was vorher antwortet, muss es danach
@@ -104,8 +121,9 @@ Metriken an `/metrics`, für den Alarm im Alertmanager:
 In `state_dir/auto_rollout.json` (`saved_job::state_file`), damit ein Neustart nichts
 vergisst: der Zustand jeder automatischen Site (bereit, Fehler mit Grund, Geräten und
 Zeitpunkt), die Grundlinien der manuellen Geräte, die Diffs der anhaltenden (`holding`, zum
-Übernehmen), die freigegebenen Geräte, die letzte
-Runde (Ergebnis, angewendete, zurückgestellte und anhaltende Geräte) und die Geräte, an denen
+Übernehmen oder Freigeben), die freigegebenen Diffs, die letzte
+Runde (Ergebnis, angewendete, zurückgestellte und anhaltende Geräte, die automatischen mit
+ihren Gründen) und die Geräte, an denen
 sie die Vorbedingung verletzt fand (`unmet`).
 
 ## Auf der Seite der Site
@@ -127,3 +145,14 @@ von lab-hex in NetBox: 20 s nach dem Webhook die Runde, 53 s nach der Änderung 
 umbenannte Port auf dem Gerät; das Label gelöscht, ebenso zurück. Ein Label an einem freien
 Port von lab-np2 (manuell) hielt die Runde an; im Browser als Stand übernommen, ging die
 nächste Runde weiter, ohne lab-np2 anzuwenden.
+
+## Im Lab geprüft (2026-11-23)
+
+- **Vorbedingung:** Die IPv6-Loopback von lab-hex auf `/127` gesetzt: Die Runde las kein Gerät,
+  die Karte nannte „lab-hex: Loopback IPv6 (/128 auf lo)“; zurückgesetzt, lief die nächste
+  Runde weiter. Alle automatischen Lab-Geräte haben `scheduler`; den Fall ohne prüfen nur die
+  Unit-Tests (Ausschalten braucht eine Bestätigung am Gerät).
+- **Geräte ausserhalb:** Ein Label an `ether4` von lab-hex ging automatisch hinaus, die fünf
+  anderen automatischen Geräte vorher und nachher angemeldet; ebenso zurück.
+- **Richtfunk:** Ein Label am Radio von lab-sxt-a hielt die Runde an („RadioLink“, auf der
+  Karte mit „Freigeben“); nicht freigegeben, das Label entfernt, dann nichts zu tun.

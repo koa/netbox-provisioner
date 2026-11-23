@@ -9,7 +9,11 @@
 //! - a manual device next to automatic ones whose diff changed since the round before holds
 //!   the whole round back until an admin releases it (then it is applied with them) or applies
 //!   it by hand: no partial rollout;
+//! - so does an automatic device with a reason to wait for an admin (`hold`), until that diff
+//!   is released;
+//! - a release counts for the diff it was given for (its fingerprint) only;
 //! - every other automatic device with changes is applied, all together.
+use super::hold::HoldReason;
 use crate::topology::{DeviceId, SiteId};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -37,6 +41,8 @@ pub struct Seen {
     pub diff: Diff,
     /// the other ends of its radio links
     pub partners: Box<[DeviceId]>,
+    /// why its changes wait for an admin (an automatic device)
+    pub hold: Box<[HoldReason]>,
 }
 
 /// What the round does.
@@ -48,6 +54,8 @@ pub struct Decision {
     pub deferred: BTreeSet<DeviceId>,
     /// manual devices whose diff changed, holding the round back
     pub held_by: BTreeSet<DeviceId>,
+    /// automatic devices whose changes wait for an admin, holding the round back
+    pub held: BTreeMap<DeviceId, Box<[HoldReason]>>,
     /// sites seen automatic for the first time with changes on their devices
     pub not_in_line: BTreeSet<SiteId>,
     /// what is kept of the manual devices for the next round
@@ -55,11 +63,11 @@ pub struct Decision {
 }
 
 /// The decision of a round over `seen`, with the manual devices' diffs of the round before
-/// (`baselines`), the manual devices an admin released and the sites seen for the first time.
+/// (`baselines`), the diffs an admin released and the sites seen for the first time.
 pub fn decide(
     seen: &[Seen],
     baselines: &BTreeMap<DeviceId, Fingerprint>,
-    released: &BTreeSet<DeviceId>,
+    released: &BTreeMap<DeviceId, Fingerprint>,
     new_sites: &BTreeSet<SiteId>,
 ) -> Decision {
     let mut decision = Decision::default();
@@ -71,7 +79,7 @@ pub fn decide(
     for seen in seen {
         match (&seen.site, &seen.diff) {
             (None, Diff::Changes(fingerprint)) => {
-                if released.contains(&seen.device) {
+                if released.get(&seen.device) == Some(fingerprint) {
                     decision.members.insert(seen.device);
                     decision.baselines.insert(seen.device, fingerprint.clone());
                 } else if baselines.get(&seen.device) == Some(fingerprint) {
@@ -93,9 +101,11 @@ pub fn decide(
             (Some(site), Diff::Changes(_)) if new_sites.contains(site) => {
                 decision.not_in_line.insert(*site);
             }
-            (Some(_), Diff::Changes(_)) => {
+            (Some(_), Diff::Changes(fingerprint)) => {
                 if seen.partners.iter().any(|p| unreached.contains(p)) {
                     decision.deferred.insert(seen.device);
+                } else if !seen.hold.is_empty() && released.get(&seen.device) != Some(fingerprint) {
+                    decision.held.insert(seen.device, seen.hold.clone());
                 } else {
                     decision.members.insert(seen.device);
                 }
@@ -117,6 +127,7 @@ pub fn decide(
         .collect();
     decision.members.retain(|device| !in_new.contains(device));
     decision.deferred.retain(|device| !in_new.contains(device));
+    decision.held.retain(|device, _| !in_new.contains(device));
     // a member whose partner was passed over waits with it, along a chain of links too
     loop {
         let waiting: Vec<DeviceId> = seen
@@ -133,7 +144,7 @@ pub fn decide(
             decision.deferred.insert(device);
         }
     }
-    if !decision.held_by.is_empty() {
+    if !decision.held_by.is_empty() || !decision.held.is_empty() {
         decision.members.clear();
     }
     decision

@@ -67,7 +67,7 @@ pub fn last_round(outcome: Outcome, ago: &str, applied: &[String]) -> String {
         }
         Outcome::Applied => format!("ausgerollt auf {applied}"),
         Outcome::HeldBack => {
-            "angehalten: ein manuelles Gerät daneben hat eine neue Abweichung".to_string()
+            "angehalten, bis ein Admin die Geräte unten freigibt oder von Hand anwendet".to_string()
         }
         Outcome::NoInternet => format!(
             "nichts angewendet, ein Gerät erreichte das Internet nicht über IPv4 und IPv6 \
@@ -124,5 +124,33 @@ pub fn lack(lack: Lack) -> String {
             einschalten mit „Device-Mode“ auf der Geräteseite und Bestätigung am Gerät)"
             .into(),
         Lack::Other(other) => other.into(),
+    }
+}
+
+pub const HELD: &str = "Diese automatischen Geräte haben Änderungen, die ein Admin freigeben \
+    muss (oder von Hand anwendet); bis dahin rollt nichts aus:";
+
+/// Why an automatic device's changes wait for an admin (`HoldReason`).
+pub enum HoldReason<'a> {
+    PoeCut,
+    CapOff,
+    ApiClientsOutside,
+    RadioLink,
+    Other(&'a str),
+}
+
+pub fn hold_reason(reason: HoldReason) -> String {
+    match reason {
+        HoldReason::PoeCut => "schaltet PoE an einem Port ab, der etwas speist".into(),
+        HoldReason::CapOff => "seine Radios senden danach kein WLAN".into(),
+        HoldReason::ApiClientsOutside => {
+            "sperrt die API für einen Client, der jetzt verbunden ist".into()
+        }
+        HoldReason::RadioLink => {
+            "ändert ein Radio an einer Funkstrecke: sie und alles dahinter kann bis zu 24 min \
+             weg sein"
+                .into()
+        }
+        HoldReason::Other(other) => other.into(),
     }
 }

@@ -16,6 +16,7 @@
 //! round, after [`RETRY`] or a change in NetBox, checks again.
 pub mod decide;
 pub mod graphql;
+pub mod hold;
 pub mod precondition;
 pub mod webhook;
 
@@ -33,6 +34,7 @@ use crate::{
     },
 };
 use decide::{Diff, Fingerprint, Seen};
+use hold::HoldReason;
 use log::{info, warn};
 use precondition::Unmet;
 use prometheus::{IntGauge, IntGaugeVec, Opts, Registry};
@@ -71,9 +73,12 @@ pub struct State {
     pub site_names: BTreeMap<SiteId, Box<str>>,
     /// the diffs of the manual devices next to automatic ones, as the last round saw them
     pub baselines: BTreeMap<DeviceId, Fingerprint>,
-    /// manual devices an admin released: the next round applies them with the automatic ones
-    pub released: BTreeSet<DeviceId>,
-    /// the diffs of the manual devices holding the last round back, which an admin may take
+    /// the diffs an admin released (of a manual device, or an automatic one with a reason to
+    /// wait): the next round applies them with the others, a diff changed since holds again
+    #[serde(default)]
+    pub released_diffs: BTreeMap<DeviceId, Fingerprint>,
+    /// the diffs of the devices holding the last round back, which an admin may release, or take
+    /// over (a manual device's)
     /// over as their baselines ([`accept`])
     #[serde(default)]
     pub holding: BTreeMap<DeviceId, Fingerprint>,
@@ -99,6 +104,13 @@ impl RoundDevice {
             name: device.name().into(),
         }
     }
+}
+
+/// An automatic device whose changes wait for an admin, and why.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, async_graphql::SimpleObject)]
+pub struct HeldDevice {
+    pub device: RoundDevice,
+    pub reasons: Box<[HoldReason]>,
 }
 
 /// An automatic site, as the rounds see it.
@@ -134,6 +146,9 @@ pub struct RoundDone {
     pub deferred: Box<[RoundDevice]>,
     /// manual devices whose diff changed, holding it back
     pub held_by: Box<[RoundDevice]>,
+    /// automatic devices whose changes wait for an admin, holding it back
+    #[serde(default)]
+    pub held: Box<[HeldDevice]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, async_graphql::Enum)]
@@ -240,11 +255,16 @@ pub fn clear_error(site: SiteId) -> bool {
     cleared
 }
 
-/// Releases the manual devices holding the rounds back: the next applies them too.
+/// Releases the diffs with which devices hold the rounds back: the next applies them too, a
+/// diff changed since holds again.
 pub fn release(devices: &[DeviceId]) {
     {
         let mut state = STATE.lock_anyway();
-        state.released.extend(devices);
+        for device in devices {
+            if let Some(fingerprint) = state.holding.get(device).cloned() {
+                state.released_diffs.insert(*device, fingerprint);
+            }
+        }
         save(&state);
     }
     wake();
@@ -289,11 +309,11 @@ pub fn start(topology: TopologyHolder) {
             let again = match topology.fetch().await {
                 Ok(()) => match topology.current().await {
                     Some(current) => round(current).await,
-                    None => finish(RoundOutcome::NetboxUnreadable, &[], &[], &[]),
+                    None => finish(RoundOutcome::NetboxUnreadable, &[], &[], &[], &[]),
                 },
                 Err(error) => {
                     warn!("auto rollout: NetBox not read: {error}");
-                    finish(RoundOutcome::NetboxUnreadable, &[], &[], &[])
+                    finish(RoundOutcome::NetboxUnreadable, &[], &[], &[], &[])
                 }
             };
             next = Instant::now() + again;
@@ -308,7 +328,7 @@ async fn round(topology: Arc<Topology>) -> Duration {
         (
             state.sites.clone(),
             state.baselines.clone(),
-            state.released.clone(),
+            state.released_diffs.clone(),
         )
     };
     let automatic: Vec<DeviceAccess> = topology
@@ -329,7 +349,7 @@ async fn round(topology: Arc<Topology>) -> Duration {
     if !unmet.is_empty() {
         let devices = unmet.iter().map(|u| u.device.clone()).collect::<Vec<_>>();
         warn!("auto rollout: precondition unmet on {}", listed(&devices));
-        return finish(RoundOutcome::PreconditionUnmet, &[], &[], &[]);
+        return finish(RoundOutcome::PreconditionUnmet, &[], &[], &[], &[]);
     }
     let sites: BTreeSet<SiteId> = site_names.keys().copied().collect();
     let new_sites: BTreeSet<SiteId> = sites
@@ -366,24 +386,28 @@ async fn round(topology: Arc<Topology>) -> Duration {
         state.unmet = unmet.into();
         save(&state);
         drop(state);
-        return finish(RoundOutcome::PreconditionUnmet, &[], &[], &[]);
+        return finish(RoundOutcome::PreconditionUnmet, &[], &[], &[], &[]);
     }
-    let diffs: BTreeMap<DeviceId, Diff> = reads
-        .into_iter()
-        .map(|(device, read)| (device, read.diff))
-        .collect();
+    let mut reads = reads;
     let seen: Vec<Seen> = automatic
         .iter()
         .map(|device| (device, device.site().map(|site| site.id())))
         .chain(manual.values().map(|device| (device, None)))
-        .map(|(device, site)| Seen {
-            device: device.id(),
-            site,
-            diff: diffs.get(&device.id()).cloned().unwrap_or(Diff::Unreached),
-            partners: batch::wireless_partners(device)
-                .iter()
-                .map(DeviceAccess::id)
-                .collect(),
+        .map(|(device, site)| {
+            let read = reads.remove(&device.id());
+            Seen {
+                device: device.id(),
+                site,
+                hold: match site {
+                    Some(_) => read.as_ref().map(|r| r.hold.clone()).unwrap_or_default(),
+                    None => Box::new([]),
+                },
+                diff: read.map_or(Diff::Unreached, |read| read.diff),
+                partners: batch::wireless_partners(device)
+                    .iter()
+                    .map(DeviceAccess::id)
+                    .collect(),
+            }
         })
         .collect();
     let decision = decide::decide(&seen, &baselines, &released, &new_sites);
@@ -402,7 +426,9 @@ async fn round(topology: Arc<Topology>) -> Duration {
         state.baselines = decision.baselines.clone();
         state.holding = seen
             .iter()
-            .filter(|s| decision.held_by.contains(&s.device))
+            .filter(|s| {
+                decision.held_by.contains(&s.device) || decision.held.contains_key(&s.device)
+            })
             .filter_map(|s| match &s.diff {
                 Diff::Changes(fingerprint) => Some((s.device, fingerprint.clone())),
                 _ => None,
@@ -429,16 +455,28 @@ async fn round(topology: Arc<Topology>) -> Duration {
     }
     let deferred = names(&decision.deferred);
     let held_by = names(&decision.held_by);
-    if !decision.held_by.is_empty() {
-        info!("auto rollout: held back by {}", listed(&held_by));
-        return finish(RoundOutcome::HeldBack, &[], &deferred, &held_by);
+    let held: Vec<HeldDevice> = decision
+        .held
+        .iter()
+        .map(|(device, reasons)| HeldDevice {
+            device: name(device),
+            reasons: reasons.clone(),
+        })
+        .collect();
+    if !held_by.is_empty() || !held.is_empty() {
+        let devices = held.iter().map(|h| h.device.clone()).chain(held_by.clone());
+        info!(
+            "auto rollout: held back by {}",
+            listed(&devices.collect::<Vec<_>>())
+        );
+        return finish(RoundOutcome::HeldBack, &[], &deferred, &held_by, &held);
     }
     if decision.members.is_empty() {
         let outcome = match decision.not_in_line.is_empty() {
             true => RoundOutcome::NothingToDo,
             false => RoundOutcome::NotInLine,
         };
-        return finish(outcome, &[], &deferred, &[]);
+        return finish(outcome, &[], &deferred, &[], &[]);
     }
     let members: Vec<DeviceAccess> = decision
         .members
@@ -456,7 +494,9 @@ async fn round(topology: Arc<Topology>) -> Duration {
     let outcome = apply(&members, bystanders).await;
     {
         let mut state = STATE.lock_anyway();
-        state.released.retain(|id| !decision.members.contains(id));
+        state
+            .released_diffs
+            .retain(|id, _| !decision.members.contains(id));
         if let Applied::Failed(failed) = &outcome {
             let failed: Box<[RoundDevice]> = failed.iter().map(RoundDevice::of).collect();
             for site in members.iter().filter_map(|d| d.site()) {
@@ -480,7 +520,7 @@ async fn round(topology: Arc<Topology>) -> Duration {
         Applied::Busy => RoundOutcome::Busy,
         Applied::Failed(_) => RoundOutcome::Failed,
     };
-    finish(outcome, &applied, &deferred, &[])
+    finish(outcome, &applied, &deferred, &[], &[])
 }
 
 /// How a round's batch ended.
@@ -535,6 +575,7 @@ fn finish(
     applied: &[RoundDevice],
     deferred: &[RoundDevice],
     held_by: &[RoundDevice],
+    held: &[HeldDevice],
 ) -> Duration {
     let mut state = STATE.lock_anyway();
     state.last = Some(RoundDone {
@@ -543,6 +584,7 @@ fn finish(
         applied: applied.into(),
         deferred: deferred.into(),
         held_by: held_by.into(),
+        held: held.into(),
     });
     save(&state);
     let again = !deferred.is_empty()
@@ -569,6 +611,8 @@ struct Read {
     diff: Diff,
     /// its device mode has the scheduler off
     without_scheduler: bool,
+    /// why its changes would wait for an admin (`hold::reasons`)
+    hold: Box<[HoldReason]>,
 }
 
 /// The diff of each of `devices` and whether it has the scheduler, [`AT_ONCE`] at a time.
@@ -585,6 +629,7 @@ async fn read_diffs(devices: Vec<DeviceAccess>) -> BTreeMap<DeviceId, Read> {
                 .unwrap_or(Read {
                     diff: Diff::Unreached,
                     without_scheduler: false,
+                    hold: Box::new([]),
                 });
             (device.id(), read)
         });
@@ -605,6 +650,7 @@ async fn diff_of(device: DeviceAccess, started: Instant) -> Result<Read, Error> 
         return Ok(Read {
             diff: Diff::Unreached,
             without_scheduler: false,
+            hold: Box::new([]),
         });
     };
     let generated = link.generated_cfg(Freshness::Since(started)).await?;
@@ -616,6 +662,11 @@ async fn diff_of(device: DeviceAccess, started: Instant) -> Result<Read, Error> 
             None => Diff::InLine,
         },
         without_scheduler,
+        hold: hold::reasons(
+            &device,
+            generated.apply_warnings(),
+            generated.changes_radio(),
+        ),
     })
 }
 
