@@ -6,7 +6,7 @@ dem Internet vorher und nachher, Zurückstellen nicht erreichbarer Geräte samt 
 Funkpartnern, Anhalten durch manuelle Geräte mit Freigabe, Fehlerzustand pro Site, Zustand in
 `state_dir`, Karte auf der Seite der Site, Metriken, die Vorbedingung (Loopbacks, OSPF-Verbindung,
 Device-Mode mit `scheduler`), die Prüfung der Geräte ausserhalb nach dem Skript, Anhalten mit
-Grund bei Warnungen des Anwendens und Richtfunk. Aufgabe C20 in [todo.md](../todo.md).
+Grund bei Warnungen des Anwendens, Richtfunk und Umstecken. Aufgabe C20 in [todo.md](../todo.md).
 Voraussetzung für den [Self-Service](self-service.md).
 
 Was noch fehlt:
@@ -66,10 +66,7 @@ erreichbar, und es lässt sich in NetBox wiederherstellen.
 
 **Anhalten:**
 
-1. **Umstecken:** Ein Kabel in NetBox zeigt auf einen anderen Port, als an dem das Gerät live
-   gesehen wird (`neighbors::evaluate`, wie `seenUplinks` der Anwohner). Der Fallback nähme
-   die Änderung zurück, bevor jemand umgesteckt hat. Löst sich von selbst: Sieht der Nachbar das
-   Gerät am neuen Port, geht die nächste Runde.
+1. **Umstecken:** umgesetzt ([Automatisches Rollout](../auto-rollout.md#runden)).
 2. **Nach aussen:** Der Diff ändert OSPF oder Adressen an einem Interface, dessen Gegenstelle
    kein RouterOS-Gerät in NetBox ist (Uplink, `internet`, `nat`), `propagate_default_route`,
    oder kündigt ein Netz ausserhalb der freigegebenen Bereiche an. Das Lab hat einmal eine

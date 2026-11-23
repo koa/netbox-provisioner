@@ -62,6 +62,7 @@ pub enum HoldReason {
     CapOff,
     ApiClientsOutside,
     RadioLink,
+    Rewire,
     #[cynic(fallback)]
     Other(String),
 }

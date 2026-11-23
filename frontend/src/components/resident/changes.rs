@@ -167,6 +167,7 @@ fn hold_reason(reason: &HoldReason) -> String {
         HoldReason::CapOff => rollout::HoldReason::CapOff,
         HoldReason::ApiClientsOutside => rollout::HoldReason::ApiClientsOutside,
         HoldReason::RadioLink => rollout::HoldReason::RadioLink,
+        HoldReason::Rewire => rollout::HoldReason::Rewire,
         HoldReason::Other(other) => rollout::HoldReason::Other(other),
     })
 }

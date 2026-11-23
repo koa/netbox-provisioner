@@ -839,8 +839,8 @@ unreached devices and their radio partners deferred, a manual device whose diff 
 changed holds all back until released or its diff accepted as baseline
 (`accept`, from `State.holding`), a site seen automatic first with diffs goes into
 `NotInLine`; an automatic device with a `HoldReason`, `auto_rollout::hold`: `PoeCut`,
-`CapOffOutsideWlanGroup`, `ApiClientsOutside` warnings or a radio change on a device with a radio
-link, holds all back too until its diff is released, releases being per fingerprint,
+`CapOffOutsideWlanGroup`, `ApiClientsOutside` warnings, a radio change on a device with a radio
+link or a cable NetBox has elsewhere than the device sees it, `hold::rewired`, holds all back too until its diff is released, releases being per fingerprint,
 `State.released_diffs`) and starts one `batch::apply` with `needs_internet` (`Started::Automatic`). Before
 reading, it checks the precondition in NetBox (`auto_rollout::precondition`: both loopbacks on
 `lo` and an OSPF path, `ManagementTree::reached`, to the biggest group of the automatic devices);

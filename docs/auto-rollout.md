@@ -92,6 +92,15 @@ Entschieden wird ohne Gerät (`auto_rollout::decide`, getestet in `decide/test.r
     einer Funkstrecke (`batch::wireless_partners`): Strecke und alles dahinter können bis zu
     24 min weg sein (DFS). Im Zweifel hält es an, auch wenn das geänderte Radio ein WLAN-Radio
     desselben Geräts ist.
+  - **Umstecken** (`Rewire`, `hold::rewired`): Die Nachbar-Prüfung des Geräts
+    (`neighbors::read`, nur bei einem Gerät mit Änderungen) sagt, dass ein Kabel woanders
+    steckt, als NetBox es hat: Am Port des NetBox-Kabels sieht es ein anderes Gerät oder einen
+    anderen Port (`CableElsewhere`, `OtherFarPort`), oder es sieht ein NetBox-Gerät an einem
+    Port ohne Kabel, während das NetBox-Kabel zu diesem Gerät an einem anderen Port niemanden
+    sieht. Angewendet bekäme der neue Port das Netz, bevor jemand umgesteckt hat, und der
+    Fallback nähme es zurück. Sieht das Gerät den Nachbarn am neuen Port, fällt der Grund weg,
+    und die nächste Runde rollt aus. Ein Nachbar an einem Port, wo NetBox gar kein Kabel hat,
+    hält nichts an (ein Link, der in NetBox fehlt).
 
   Die Karte zeigt jedes mit seinen Gründen und „Freigeben und mit ausrollen“ (kein „Als Stand
   übernehmen“: ein automatisches Gerät soll wie in NetBox sein).
@@ -182,3 +191,6 @@ nächste Runde weiter, ohne lab-np2 anzuwenden.
 - **Stand pro Änderung:** Als Meier die SSID des Lab-WLANs geändert: lab-np2 (Controller,
   manuell) „von Hand anwenden“, die Runde hielt an; lab-wap (CAP, ohne eigene Änderung)
   „ausgerollt“. Ein Raum eines Geräts ohne RouterOS: „ändert nur NetBox“. Beides zurückgesetzt.
+- **Umstecken:** Das Kabel von lab-crs125 zu lab-np2 in NetBox von `ether1` auf `ether2`
+  gelegt (dazu ein Label an `ether3` für einen Diff): Die Runde hielt mit „Rewire“ an. Kabel
+  zurück, Label weg: nichts zu tun.

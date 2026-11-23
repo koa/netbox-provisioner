@@ -24,7 +24,7 @@ pub mod webhook;
 use crate::{
     Error,
     config::CONFIG,
-    device::{batch, ros::fallback},
+    device::{batch, neighbors, ros::fallback},
     facts::Freshness,
     job::{self, JobKind},
     journal::Started,
@@ -760,8 +760,14 @@ async fn diff_of(device: DeviceAccess, started: Instant) -> Result<Read, Error> 
     let generated = link.generated_cfg(Freshness::Since(started)).await?;
     let reader = link.reader().at(Freshness::Since(started));
     let without_scheduler = fallback::without_scheduler(&reader).await?.is_some();
+    let fingerprint = generated.fingerprint();
+    // where the cables are only matters for what is applied
+    let neighbors = match fingerprint {
+        Some(_) => Some(neighbors::read(&reader, &device).await?.findings),
+        None => None,
+    };
     Ok(Read {
-        diff: match generated.fingerprint() {
+        diff: match fingerprint {
             Some(fingerprint) => Diff::Changes(fingerprint),
             None => Diff::InLine,
         },
@@ -770,6 +776,7 @@ async fn diff_of(device: DeviceAccess, started: Instant) -> Result<Read, Error> 
             &device,
             generated.apply_warnings(),
             generated.changes_radio(),
+            neighbors.as_deref(),
         ),
     })
 }

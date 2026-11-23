@@ -136,6 +136,7 @@ pub enum HoldReason<'a> {
     CapOff,
     ApiClientsOutside,
     RadioLink,
+    Rewire,
     Other(&'a str),
 }
 
@@ -149,6 +150,11 @@ pub fn hold_reason(reason: HoldReason) -> String {
         HoldReason::RadioLink => {
             "ändert ein Radio an einer Funkstrecke: sie und alles dahinter kann bis zu 24 min \
              weg sein"
+                .into()
+        }
+        HoldReason::Rewire => {
+            "ein Kabel ist in NetBox an einem anderen Port, als das Gerät es sieht: geht von \
+             selbst, sobald es umgesteckt ist"
                 .into()
         }
         HoldReason::Other(other) => other.into(),
