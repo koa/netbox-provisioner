@@ -1090,8 +1090,10 @@ between different MTUs and has no `mtu-ignore`, so a link is cut until both ends
 single apply therefore goes outward from the management proxy's device: `connect` reaches a
 device cut off from OSPF through the neighbor already changed (see the bootstrap fallback below),
 and its apply brings the link back. A batch changes both ends at once; that the devices behind
-its members answer afterwards is still to be checked (Z58, C20), and the automatic rollout
-doesn't predict changes to the provisioner's way (`docs/concepts/auto-rollout.md`). A new MTU
+its members (in the automatic rollout every device of its sites) answer afterwards is still
+to be checked (Z58, C20). The automatic rollout doesn't predict changes to the provisioner's
+way; it is to run only while NetBox gives every device of its sites both loopbacks and an
+OSPF path to all the others (`docs/concepts/auto-rollout.md`). A new MTU
 restarts a `wlan` radio; on a DFS weather radar channel (5600-5650 MHz) it listens for radar for
 10 minutes (ETSI) before it sends again. The lab's links have none, as in production.
 NetBox's interface `speed` (kbit/s) fixes an Ethernet port's speed without auto-negotiation
