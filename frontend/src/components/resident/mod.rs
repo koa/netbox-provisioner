@@ -22,6 +22,7 @@ use yew::{
     Callback, Component, Context, Html, MouseEvent, Properties, html, platform::spawn_local,
 };
 
+mod changes;
 mod drafts;
 mod network_devices;
 mod networks;
@@ -41,6 +42,7 @@ pub struct ResidentViewProps {
 pub enum View {
     Ports,
     Networks,
+    Changes,
 }
 
 /// A resident's sockets and devices, and its networks, with its drafts; where the routers see
@@ -248,6 +250,9 @@ impl Component for ResidentView {
                     <Tab<View> index={View::Networks} title={self.tab_title(View::Networks)}>
                         {networks}
                     </Tab<View>>
+                    <Tab<View> index={View::Changes} title={self.tab_title(View::Changes)}>
+                        <changes::ChangesTab resident={resident.id}/>
+                    </Tab<View>>
                 </Tabs<View>>
                 {room}
                 {preview}
@@ -262,6 +267,7 @@ impl ResidentView {
         let title = match view {
             View::Ports => t::TAB_PORTS,
             View::Networks => t::TAB_NETWORKS,
+            View::Changes => t::TAB_CHANGES,
         };
         let badge = match self.drafts.len_in(view) {
             0 => None,

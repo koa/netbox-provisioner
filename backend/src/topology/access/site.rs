@@ -79,7 +79,7 @@ impl SiteAccess {
     #[graphql(name = "autoRollout")]
     async fn api_auto_rollout(&self) -> Option<crate::auto_rollout::graphql::SiteAutoRollout> {
         self.auto_rollout()
-            .then(|| crate::auto_rollout::graphql::of_site(self.id))
+            .then(|| crate::auto_rollout::graphql::of_site(&self.topology, self.id))
     }
 }
 

@@ -14,6 +14,7 @@
 //! Before reading, a round checks the precondition in NetBox (`precondition`), and with the
 //! diffs the device mode of each automatic device: unmet, it applies nothing and the next
 //! round, after [`RETRY`] or a change in NetBox, checks again.
+pub mod changes;
 pub mod decide;
 pub mod graphql;
 pub mod hold;
@@ -88,6 +89,68 @@ pub struct State {
     /// it is met again
     #[serde(default)]
     pub unmet: Box<[Unmet]>,
+    /// how the rounds saw each device, for the state of each change
+    #[serde(default)]
+    pub devices: changes::Devices,
+    /// the changes the provisioner wrote, the newest [`changes::KEPT`]
+    #[serde(default)]
+    pub changes: Vec<changes::Change>,
+    /// the id of the next change
+    #[serde(default)]
+    pub next_change: u32,
+}
+
+/// Keeps a change the job `job` wrote to NetBox: by whom, for which resident, and the
+/// RouterOS devices whose configuration it changes.
+pub fn note_change(job: u32, by: &str, owner: Option<u32>, devices: Box<[RoundDevice]>) {
+    let mut state = STATE.lock_anyway();
+    let id = state.next_change;
+    state.next_change = id.wrapping_add(1);
+    changes::keep(
+        &mut state.changes,
+        changes::Change {
+            id,
+            job,
+            at: SystemTime::now(),
+            by: by.into(),
+            owner,
+            devices,
+        },
+    );
+    save(&state);
+}
+
+/// Those of `devices` with RouterOS, as a change names them.
+pub fn configured(devices: impl IntoIterator<Item = DeviceAccess>) -> Box<[RoundDevice]> {
+    let mut seen = BTreeSet::new();
+    devices
+        .into_iter()
+        .filter(|device| device.has_routeros() && seen.insert(device.id()))
+        .map(|device| RoundDevice::of(&device))
+        .collect()
+}
+
+/// The change the job `job` wrote, to note its undo for the same resident and devices.
+pub fn change_of_job(job: u32) -> Option<changes::Change> {
+    STATE
+        .lock_anyway()
+        .changes
+        .iter()
+        .find(|change| change.job == job)
+        .cloned()
+}
+
+/// Notes how the round started `at` saw each of `devices`.
+fn note_devices<'a>(
+    at: SystemTime,
+    devices: impl IntoIterator<Item = &'a DeviceId>,
+    observed: changes::Observed,
+) {
+    let mut state = STATE.lock_anyway();
+    for device in devices {
+        state.devices.note(*device, at, observed.clone());
+    }
+    save(&state);
 }
 
 /// A device a round names.
@@ -323,6 +386,7 @@ pub fn start(topology: TopologyHolder) {
 
 /// One round over `topology`; when the next one is due.
 async fn round(topology: Arc<Topology>) -> Duration {
+    let started = SystemTime::now();
     let (states, baselines, released) = {
         let state = STATE.lock_anyway();
         (
@@ -349,6 +413,8 @@ async fn round(topology: Arc<Topology>) -> Duration {
     if !unmet.is_empty() {
         let devices = unmet.iter().map(|u| u.device.clone()).collect::<Vec<_>>();
         warn!("auto rollout: precondition unmet on {}", listed(&devices));
+        let ids = automatic.iter().map(DeviceAccess::id).collect::<Vec<_>>();
+        note_devices(started, &ids, changes::Observed::Waiting);
         return finish(RoundOutcome::PreconditionUnmet, &[], &[], &[], &[]);
     }
     let sites: BTreeSet<SiteId> = site_names.keys().copied().collect();
@@ -363,7 +429,27 @@ async fn round(topology: Arc<Topology>) -> Duration {
             .and_then(|site| states.get(&site.id()))
             .is_some_and(|state| matches!(state, SiteState::Error { .. }))
     };
-    let automatic: Vec<DeviceAccess> = automatic.into_iter().filter(|d| !in_error(d)).collect();
+    let (automatic, in_error): (Vec<DeviceAccess>, Vec<DeviceAccess>) =
+        automatic.into_iter().partition(|d| !in_error(d));
+    for device in &in_error {
+        let failed = device
+            .site()
+            .and_then(|site| states.get(&site.id()))
+            .is_some_and(|state| {
+                matches!(
+                    state,
+                    SiteState::Error {
+                        reason: SiteError::ApplyFailed,
+                        ..
+                    }
+                )
+            });
+        let seen = match failed {
+            true => changes::Observed::Failed,
+            false => changes::Observed::Waiting,
+        };
+        note_devices(started, [&device.id()], seen);
+    }
     let mut manual: BTreeMap<DeviceId, DeviceAccess> = BTreeMap::new();
     for device in &automatic {
         for next in related(device) {
@@ -382,10 +468,13 @@ async fn round(topology: Arc<Topology>) -> Duration {
     if !unmet.is_empty() {
         let devices = unmet.iter().map(|u| u.device.clone()).collect::<Vec<_>>();
         warn!("auto rollout: no scheduler on {}", listed(&devices));
-        let mut state = STATE.lock_anyway();
-        state.unmet = unmet.into();
-        save(&state);
-        drop(state);
+        {
+            let mut state = STATE.lock_anyway();
+            state.unmet = unmet.into();
+            save(&state);
+        }
+        let ids = automatic.iter().map(DeviceAccess::id).collect::<Vec<_>>();
+        note_devices(started, &ids, changes::Observed::Waiting);
         return finish(RoundOutcome::PreconditionUnmet, &[], &[], &[], &[]);
     }
     let mut reads = reads;
@@ -453,6 +542,13 @@ async fn round(topology: Arc<Topology>) -> Duration {
         }
         save(&state);
     }
+    {
+        let mut state = STATE.lock_anyway();
+        for (device, observed) in changes::observed(&seen, &decision) {
+            state.devices.note(device, started, observed);
+        }
+        save(&state);
+    }
     let deferred = names(&decision.deferred);
     let held_by = names(&decision.held_by);
     let held: Vec<HeldDevice> = decision
@@ -494,6 +590,14 @@ async fn round(topology: Arc<Topology>) -> Duration {
     let outcome = apply(&members, bystanders).await;
     {
         let mut state = STATE.lock_anyway();
+        let noted = match &outcome {
+            Applied::Done => changes::Observed::Applied,
+            Applied::NoInternet | Applied::Busy => changes::Observed::Waiting,
+            Applied::Failed(_) => changes::Observed::Failed,
+        };
+        for device in &decision.members {
+            state.devices.note(*device, started, noted.clone());
+        }
         state
             .released_diffs
             .retain(|id, _| !decision.members.contains(id));

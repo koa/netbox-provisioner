@@ -154,3 +154,34 @@ pub fn hold_reason(reason: HoldReason) -> String {
         HoldReason::Other(other) => other.into(),
     }
 }
+
+pub const OPEN_CHANGES: &str = "Änderungen, die noch nicht überall sind:";
+
+/// How far a change has reached a device.
+pub enum RolloutState {
+    Pending,
+    RolledOut,
+    Waiting,
+    WaitingForAdmin,
+    Deferred,
+    Failed,
+    Manual,
+}
+
+/// How far a change has reached a device, for an admin.
+pub fn rollout_state(state: RolloutState) -> &'static str {
+    match state {
+        RolloutState::Pending => "kommt mit der nächsten Runde",
+        RolloutState::RolledOut => "ausgerollt",
+        RolloutState::Waiting => "wartet, die Runde hält an",
+        RolloutState::WaitingForAdmin => "wartet auf Freigabe",
+        RolloutState::Deferred => "zurückgestellt, nicht erreicht",
+        RolloutState::Failed => "gescheitert, Fehlerzustand der Site",
+        RolloutState::Manual => "manuelles Gerät, von Hand anwenden",
+    }
+}
+
+/// A change and who saved it, for an admin.
+pub fn change_head(ago: &str, by: &str) -> String {
+    format!("{ago} von {by}")
+}

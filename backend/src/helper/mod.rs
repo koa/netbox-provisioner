@@ -272,6 +272,55 @@ impl NetboxPlan {
     pub fn device(&self) -> &DeviceAccess {
         &self.device
     }
+    /// The devices of the topology a step changes something at (a created one's id is a
+    /// preview id, which the topology hasn't); a room is NetBox's only, the device's
+    /// configuration stays.
+    pub fn touched_devices(&self) -> Vec<DeviceAccess> {
+        let mut touched = Vec::<u32>::new();
+        for step in &self.steps {
+            match step {
+                PlanStep::UpdatePortVlan(update) => touched.push(update.interface.device.id),
+                PlanStep::CreateCable(create) => {
+                    touched.extend([create.a.device.id, create.b.device.id])
+                }
+                PlanStep::DeleteCable(delete) => {
+                    touched.push(delete.port.device.id);
+                    touched.extend(delete.far.iter().map(|far| far.device.id));
+                }
+                PlanStep::CreateInterface(create) => touched.push(create.device.id),
+                PlanStep::CreateAddress(create) => touched.push(create.device.id),
+                PlanStep::SetPrimaryIp(set) => touched.push(set.device.id),
+                PlanStep::UpdateInterface(update) => touched.push(update.interface.device.id),
+                PlanStep::DeleteAddress(delete) => touched.push(delete.interface.device.id),
+                PlanStep::UpdatePort(update) => touched.push(update.interface.device.id),
+                PlanStep::DeleteInterface(delete) => touched.push(delete.interface.device.id),
+                PlanStep::CreateWirelessLink(link) => {
+                    touched.extend([link.a.device.id, link.b.device.id])
+                }
+                PlanStep::UpdateWirelessLink(link) => {
+                    touched.extend([link.a.device.id, link.b.device.id])
+                }
+                PlanStep::DeleteWirelessLink(link) => {
+                    touched.extend([link.a.device.id, link.b.device.id])
+                }
+                // a WLAN changes its group's devices (`resident::change`); a new device is no
+                // RouterOS device of the topology yet; a prefix or range changes what the
+                // plan's own steps do with it
+                PlanStep::UpdateWirelessLan(_)
+                | PlanStep::UpdateDeviceLocation(_)
+                | PlanStep::CreateDevice(_)
+                | PlanStep::CreatePrefix(_)
+                | PlanStep::CreateIpRange(_)
+                | PlanStep::DeletePrefix(_) => {}
+            }
+        }
+        let topology = self.device.topology();
+        touched
+            .into_iter()
+            .filter_map(|id| topology.get_device_by_id(&crate::topology::DeviceId(id)))
+            .collect()
+    }
+
     /// `part`'s steps behind this plan's, their references to steps moved along, with what
     /// it found.
     pub fn append(&mut self, part: NetboxPlan) {

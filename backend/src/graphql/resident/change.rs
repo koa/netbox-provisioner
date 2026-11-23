@@ -17,7 +17,7 @@
 //! rollout.
 use super::{Named, PortKind};
 use crate::{
-    Error,
+    Error, auto_rollout,
     config::CONFIG,
     error_info::{ApiError, ErrorInfo},
     graphql::{refetch, user_label},
@@ -505,82 +505,18 @@ fn resident_plan(plan: &NetboxPlan, configured: &[DeviceAccess]) -> ResidentPlan
     let mut cables_added = Vec::new();
     let mut cables_removed = Vec::new();
     let mut rooms = Vec::new();
-    // the devices a step changes something at (a created one's id is a preview id, which the
-    // topology hasn't)
-    let mut touched = Vec::<u32>::new();
     for step in &plan.steps {
         match step {
             PlanStep::UpdateWirelessLan(update) => wlans.push(update.clone()),
-            PlanStep::UpdatePortVlan(update) => {
-                touched.push(update.interface.device.id);
-                ports.push(update.clone());
-            }
-            PlanStep::CreateCable(create) => {
-                touched.extend([create.a.device.id, create.b.device.id]);
-                cables_added.push(create.clone());
-            }
-            PlanStep::DeleteCable(delete) => {
-                touched.push(delete.port.device.id);
-                touched.extend(delete.far.iter().map(|far| far.device.id));
-                cables_removed.push(delete.clone());
-            }
-            // a room is NetBox's only: the device's configuration stays
+            PlanStep::UpdatePortVlan(update) => ports.push(update.clone()),
+            PlanStep::CreateCable(create) => cables_added.push(create.clone()),
+            PlanStep::DeleteCable(delete) => cables_removed.push(delete.clone()),
             PlanStep::UpdateDeviceLocation(update) => rooms.push(update.clone()),
-            PlanStep::CreateInterface(create) => touched.push(create.device.id),
-            PlanStep::CreateAddress(create) => touched.push(create.device.id),
-            PlanStep::SetPrimaryIp(set) => touched.push(set.device.id),
-            PlanStep::UpdateInterface(update) => touched.push(update.interface.device.id),
-            PlanStep::DeleteAddress(delete) => touched.push(delete.interface.device.id),
-            PlanStep::UpdatePort(update) => touched.push(update.interface.device.id),
-            PlanStep::DeleteInterface(delete) => touched.push(delete.interface.device.id),
-            PlanStep::CreateWirelessLink(link) => {
-                touched.extend([link.a.device.id, link.b.device.id])
-            }
-            PlanStep::UpdateWirelessLink(link) => {
-                touched.extend([link.a.device.id, link.b.device.id])
-            }
-            PlanStep::DeleteWirelessLink(link) => {
-                touched.extend([link.a.device.id, link.b.device.id])
-            }
-            // a new device is no RouterOS device of the topology yet; a prefix or range changes
-            // what the plan's own steps do with it
-            PlanStep::CreateDevice(_)
-            | PlanStep::CreatePrefix(_)
-            | PlanStep::CreateIpRange(_)
-            | PlanStep::DeletePrefix(_) => {}
+            _ => {}
         }
     }
-    let topology = plan.device().topology();
-    let touched = touched
+    let devices = changed_devices(plan, configured)
         .into_iter()
-        .filter_map(|id| topology.get_device_by_id(&DeviceId(id)));
-    let aps = wlans
-        .iter()
-        .filter_map(|update| helper::wlan::wlan(topology, update.id).ok())
-        .filter_map(|wlan| wlan.wlan_group())
-        .flat_map(|group| group.aps());
-    // a port's VLAN tunneled over VXLAN: a device joining or leaving it changes the VTEPs of
-    // every other device with it
-    let preview = plan.preview_topology().ok();
-    let vteps = preview.iter().flat_map(|after| {
-        ports.iter().flat_map(move |update| {
-            let device = DeviceId(update.interface.device.id);
-            update
-                .vlan
-                .iter()
-                .chain(&update.vlan_before)
-                .flat_map(move |vlan| vtep_peers(topology, after, VlanId(vlan.id), device))
-        })
-    });
-    // only those the provisioner configures: a switch without RouterOS changes in NetBox only
-    let mut seen = BTreeSet::new();
-    let devices = configured
-        .iter()
-        .cloned()
-        .chain(touched)
-        .chain(aps)
-        .chain(vteps)
-        .filter(|device| device.has_routeros() && seen.insert(device.id()))
         .map(|device| Named {
             id: device.id().0,
             name: device.name().into(),
@@ -603,6 +539,49 @@ fn resident_plan(plan: &NetboxPlan, configured: &[DeviceAccess]) -> ResidentPlan
             .collect(),
         devices,
     }
+}
+
+/// The RouterOS devices whose configuration `plan` changes: `configured`, those the steps touch,
+/// a changed WLAN's group's APs, VXLAN peers. A switch without RouterOS changes in NetBox only.
+fn changed_devices(plan: &NetboxPlan, configured: &[DeviceAccess]) -> Vec<DeviceAccess> {
+    let topology = plan.device().topology();
+    let aps = plan
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            PlanStep::UpdateWirelessLan(update) => helper::wlan::wlan(topology, update.id).ok(),
+            _ => None,
+        })
+        .filter_map(|wlan| wlan.wlan_group())
+        .flat_map(|group| group.aps());
+    // a port's VLAN tunneled over VXLAN: a device joining or leaving it changes the VTEPs of
+    // every other device with it
+    let preview = plan.preview_topology().ok();
+    let vteps = preview.iter().flat_map(|after| {
+        plan.steps
+            .iter()
+            .filter_map(|step| match step {
+                PlanStep::UpdatePortVlan(update) => Some(update),
+                _ => None,
+            })
+            .flat_map(move |update| {
+                let device = DeviceId(update.interface.device.id);
+                update
+                    .vlan
+                    .iter()
+                    .chain(&update.vlan_before)
+                    .flat_map(move |vlan| vtep_peers(topology, after, VlanId(vlan.id), device))
+            })
+    });
+    let mut seen = BTreeSet::new();
+    configured
+        .iter()
+        .cloned()
+        .chain(plan.touched_devices())
+        .chain(aps)
+        .chain(vteps)
+        .filter(|device| device.has_routeros() && seen.insert(device.id()))
+        .collect()
 }
 
 /// The other devices with `vlan` over its VXLAN, when `device` joins or leaves it: before
@@ -686,6 +665,19 @@ impl QueryChange {
         } = checked_plan(&topology, owner, changes).await?;
         Ok(resident_plan(&plan, &configured))
     }
+    /// `resident`'s saved changes, the newest first, and how far each has reached its
+    /// devices (the automatic rollout's state per device).
+    async fn changes(
+        &self,
+        context: &Context<'_>,
+        resident: u32,
+    ) -> Result<Box<[auto_rollout::graphql::ChangeState]>, ApiError> {
+        let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
+        let owner = acting_for(context, &topology, resident)?;
+        Ok(auto_rollout::graphql::changes(&topology, |change| {
+            change.owner == Some(owner.0)
+        }))
+    }
     /// How saving the change of job `job` went, for its resident or an admin.
     async fn saved_change(
         &self,
@@ -728,7 +720,11 @@ impl MutationResident {
         let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
         let owner = acting_for(context, &topology, resident)?;
         // the checks on the plan as previewed; the write refuses a plan changed since
-        let Checked { helpers, .. } = checked_plan(&topology, owner, changes).await?;
+        let Checked {
+            helpers,
+            configured,
+            ..
+        } = checked_plan(&topology, owner, changes).await?;
         // the first change's device runs the job
         let device = helpers
             .first()
@@ -743,9 +739,13 @@ impl MutationResident {
             Started::By(user.clone()),
             |log| async move {
                 let result = helper::write(&helpers, &current, &fingerprint, &user, &log).await;
+                if let (Ok(plan), Some(job)) = (&result, log.job_id()) {
+                    let devices = auto_rollout::configured(changed_devices(plan, &configured));
+                    auto_rollout::note_change(job, &user, Some(owner.0), devices);
+                }
                 log.enter(crate::device_state::NetboxState::Refetching);
                 refetch(&holder).await;
-                result
+                result.map(drop)
             },
         )?;
         let mut saved_for = SAVED_FOR.lock_anyway();

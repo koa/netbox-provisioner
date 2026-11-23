@@ -6,6 +6,7 @@ pub const INTRO: &str = "Deine Dosen und Geräte, und welches deiner Netze darau
     sammelst du und speicherst sie zusammen.";
 pub const TAB_PORTS: &str = "Dosen und Geräte";
 pub const TAB_NETWORKS: &str = "Netze";
+pub const TAB_CHANGES: &str = "Änderungen";
 pub const NO_PORTS: &str = "Dir ist noch keine Dose und kein Gerät zugeordnet.";
 pub const NO_NETWORKS: &str = "Dir ist noch kein Netz zugeordnet.";
 /// a port without a VLAN of the resident
@@ -323,3 +324,32 @@ pub const SUPPORT_HINT: &str =
     "Support-Ansicht: Du siehst das Netz so, wie es dieser Anwohner sieht.";
 pub const PICK_RESIDENT: &str = "Anwohner";
 pub const NO_RESIDENTS: &str = "NetBox nennt keinen Owner an einem Gerät, Port oder VLAN.";
+
+pub const NO_CHANGES: &str = "Noch keine gespeicherten Änderungen.";
+pub const READING_CHANGES: &str = "Lese die Änderungen …";
+pub const CHANGES_HINT: &str = "Jede gespeicherte Änderung und wie weit sie auf den Geräten ist. \
+    Die Geräte bekommen sie in der Regel innert weniger Minuten.";
+
+/// The head of a saved change: when and by whom.
+pub fn change_head(ago: &str, by: &str) -> String {
+    format!("Gespeichert {ago} von {by}")
+}
+
+/// How many of its devices have a change.
+pub fn change_progress(done: usize, of: usize) -> String {
+    format!("{done} von {of} Geräten haben sie")
+}
+
+/// How far a change has reached a device, for its resident.
+pub fn rollout_state(state: crate::auto_rollout::RolloutState) -> &'static str {
+    use crate::auto_rollout::RolloutState;
+    match state {
+        RolloutState::Pending => "wird ausgerollt",
+        RolloutState::RolledOut => "ausgerollt",
+        RolloutState::Waiting => "wartet",
+        RolloutState::WaitingForAdmin => "wartet auf einen Admin",
+        RolloutState::Deferred => "wartet, Gerät nicht erreichbar",
+        RolloutState::Failed => "nicht ausgerollt, ein Admin schaut es an",
+        RolloutState::Manual => "wird von einem Admin angewendet",
+    }
+}

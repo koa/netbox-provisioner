@@ -1,11 +1,14 @@
 //! Scope: The automatic rollout as a site's page shows it; not the rounds (`auto_rollout`).
 use super::{
-    HeldDevice, RoundDevice, RoundDone, RoundOutcome, SiteError, SiteState, precondition::Unmet,
+    HeldDevice, RoundDevice, RoundDone, RoundOutcome, SiteError, SiteState,
+    changes::{self, Change, RolloutState},
+    hold::HoldReason,
+    precondition::Unmet,
     state,
 };
-use crate::topology::SiteId;
+use crate::topology::{DeviceId, SiteId, Topology, access::AccessTopology};
 use async_graphql::SimpleObject;
-use std::time::SystemTime;
+use std::{sync::Arc, time::SystemTime};
 
 /// The automatic rollout of a site with `auto_rollout`.
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -24,6 +27,30 @@ pub struct SiteAutoRollout {
     /// the automatic devices, of every site, the precondition failed on at the last round:
     /// nothing rolls out until NetBox meets it again
     pub unmet: Box<[Unmet]>,
+    /// the provisioner's changes to its devices, the newest first
+    pub changes: Box<[ChangeState]>,
+}
+
+/// A change the provisioner wrote to NetBox and how far it has reached its devices.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct ChangeState {
+    pub id: u32,
+    /// who wrote it, as the job names them
+    pub by: Box<str>,
+    /// the job that wrote it
+    pub job: u32,
+    /// seconds since
+    pub age: u64,
+    /// the RouterOS devices whose configuration it changes; none: NetBox only
+    pub devices: Box<[ChangeDevice]>,
+}
+
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct ChangeDevice {
+    pub device: RoundDevice,
+    pub state: RolloutState,
+    /// why it waits for an admin
+    pub reasons: Box<[HoldReason]>,
 }
 
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -50,10 +77,54 @@ fn age(at: SystemTime) -> u64 {
     at.elapsed().unwrap_or_default().as_secs()
 }
 
-/// What `site` shows; noted, so a subscription answers again when it changes.
-pub fn of_site(site: SiteId) -> SiteAutoRollout {
+/// The changes `wanted` gives, the newest first, with their devices' state in `topology`;
+/// noted, so a subscription answers again when it changes.
+pub fn changes(topology: &Arc<Topology>, wanted: impl Fn(&Change) -> bool) -> Box<[ChangeState]> {
     crate::facts::note_auto_rollout();
     let state = state();
+    state
+        .changes
+        .iter()
+        .rev()
+        .filter(|change| wanted(change))
+        .map(|change| ChangeState {
+            id: change.id,
+            by: change.by.clone(),
+            job: change.job,
+            age: age(change.at),
+            devices: change
+                .devices
+                .iter()
+                .map(|device| {
+                    let id = DeviceId(device.id);
+                    let automatic = topology
+                        .get_device_by_id(&id)
+                        .is_some_and(|device| device.rolls_out_automatically());
+                    let (state, reasons) =
+                        changes::state_of(change.at, id, &state.devices, automatic);
+                    ChangeDevice {
+                        device: device.clone(),
+                        state,
+                        reasons,
+                    }
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// What `site` of `topology` shows; noted, so a subscription answers again when it changes.
+pub fn of_site(topology: &Arc<Topology>, site: SiteId) -> SiteAutoRollout {
+    crate::facts::note_auto_rollout();
+    let state = state();
+    let of_site = |change: &Change| {
+        change.devices.iter().any(|device| {
+            topology
+                .get_device_by_id(&DeviceId(device.id))
+                .and_then(|device| device.site())
+                .is_some_and(|other| other.id() == site)
+        })
+    };
     let site_state = state.sites.get(&site);
     SiteAutoRollout {
         seen: site_state.is_some(),
@@ -89,5 +160,6 @@ pub fn of_site(site: SiteId) -> SiteAutoRollout {
         released: state.released_diffs.keys().map(|id| id.0).collect(),
         holding: state.holding.keys().map(|id| id.0).collect(),
         unmet: state.unmet,
+        changes: changes(topology, of_site),
     }
 }

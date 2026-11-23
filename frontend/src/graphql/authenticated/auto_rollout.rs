@@ -43,6 +43,37 @@ pub struct SiteAutoRollout {
     pub released: Vec<i32>,
     pub holding: Vec<i32>,
     pub unmet: Vec<Unmet>,
+    pub changes: Vec<ChangeState>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct ChangeState {
+    pub id: i32,
+    pub by: String,
+    pub age: i32,
+    pub devices: Vec<ChangeDevice>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct ChangeDevice {
+    pub device: RoundDevice,
+    pub state: RolloutState,
+    pub reasons: Vec<HoldReason>,
+}
+
+#[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
+#[cynic(schema = "authenticated")]
+pub enum RolloutState {
+    Pending,
+    RolledOut,
+    Waiting,
+    Deferred,
+    Failed,
+    Manual,
+    #[cynic(fallback)]
+    Other(String),
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

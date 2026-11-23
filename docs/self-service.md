@@ -210,7 +210,7 @@ Nach dem Login fragt das UI zuerst `me { role }` am Endpunkt der Anwohner (`app:
   Routen der Admins. Hat er mehrere Owner, steht jeder mit seinem Namen da.
 - **Niemand** bekommt den Hinweis, dass ein Admin ihn bei seinem Haushalt eintragen muss.
 
-Die Ansicht (`components::resident`) hat zwei Tabs nach dem Prototyp. Geändert wird direkt
+Die Ansicht (`components::resident`) hat drei Tabs nach dem Prototyp. Geändert wird direkt
 in den Karten; jede Änderung ist ein **Entwurf** (`drafts`, einer pro Element): Die Karte trägt
 „ungespeichert“ und „Zurücksetzen“, oben steht mitscrollend „n ungespeicherte Änderungen“ mit
 „Vorschau und speichern“ und „Alle verwerfen“; jeder Tab trägt die Zahl seiner Entwürfe als
@@ -253,6 +253,12 @@ Badge. Eine Auswahl, die dem gespeicherten Stand entspricht, ist kein Entwurf.
   Ausgeschaltet steht „Aus: Das Netz gibt es nur per Kabel.“ Darunter „Per Kabel an“: die
   Dosen und Ports des Anwohners mit dem Netz, wie gespeichert und so benannt wie im Tab „Dosen
   und Geräte“; dann die „Geräte im Netz“.
+
+- **Änderungen** (`changes`): jede gespeicherte Änderung, die neueste zuerst, mit wann und
+  von wem, „n von m Geräten haben sie“ und pro Gerät ein Label („ausgerollt“, „wird
+  ausgerollt“, „wartet“, „wartet auf einen Admin“ mit dem Grund, „wartet, Gerät nicht
+  erreichbar“, „nicht ausgerollt“, „wird von einem Admin angewendet“), alle 15 s neu gelesen;
+  aus dem [Stand pro Änderung](auto-rollout.md#stand-pro-änderung).
 
 Die **Vorschau** („Das ändert sich“, `save_dialog`) plant alle Entwürfe zusammen (`changePlan`
 mit einer Liste). Sie sagt in Worten, was sich ändert, warnt vor Geräten, die bis zum

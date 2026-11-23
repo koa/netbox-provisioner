@@ -102,11 +102,8 @@ sicher, aber das ganze Netz kurz weg; wer das nicht will, nimmt dieses Gerät au
 
 ## Selbst angestossen und Stand pro Änderung
 
-- Pro Änderung: wer sie ausgelöst hat (im Changelog von NetBox steht immer der Dienst-Benutzer
-  des Provisioners; die Support-Ansicht will „koa (Admin) für Familie Meier“), welche Geräte sie
-  betrifft und deren Stand (ausstehend, ausgerollt, wartet, zurückgestellt, gescheitert). Das
-  Anwohner-UI (C21) zeigt diesen Stand pro Element. Heute kennt die Automatik nur Runden, keine
-  Änderungen.
+- Stand pro Änderung: umgesetzt ([Automatisches Rollout](../auto-rollout.md#stand-pro-änderung)).
+  Offen: das Label pro Element im Anwohner-UI (C21).
 - Ein Admin, der im Fehlerzustand aufhebt, sieht vorher die Vorschau aller gesammelten
   Änderungen (heute: „Abweichung von NetBox“ der Site von Hand).
 

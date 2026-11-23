@@ -129,13 +129,33 @@ Runde (Ergebnis, angewendete, zurückgestellte und anhaltende Geräte, die autom
 ihren Gründen) und die Geräte, an denen
 sie die Vorbedingung verletzt fand (`unmet`).
 
+## Stand pro Änderung
+
+Was der Provisioner selbst in NetBox schreibt (Speichern eines Anwohners, ein Helfer, ein
+Rückgängig), hält er als Änderung fest (`auto_rollout::changes`, die neuesten 200 in
+`State.changes`): wann, wer („Hans Meier for Familie Meier“), für welchen Anwohner und die
+RouterOS-Geräte, deren Konfiguration sie ändert (beim Anwohner die der Vorschau, beim Helfer
+die seiner Schritte; ein Rückgängig die der Änderung, die es zurücknimmt). Jede Runde notiert
+pro Gerät, wie sie es sah, zum Zeitpunkt ihres Starts (`State.devices`, `changes::observed`):
+im Stand von NetBox, angewendet, angehalten mit Gründen, wartend (die Runde hielt an oder
+setzte aus), zurückgestellt, gescheitert. Daraus ergibt sich der Stand einer Änderung pro Gerät
+(`changes::state_of`): **ausgerollt**, sobald eine Runde, die nach ihr begann, das Gerät im
+Stand von NetBox sah oder es anwendete; sonst sagt die neueste Runde nach ihr, warum nicht;
+vor ihr ist sie **ausstehend**. Ein manuelles Gerät bekommt sie von Hand (ausgerollt erst,
+wenn eine Runde es im Stand sieht). Eine Runde, die vor der Änderung begann, zählt nicht: Sie
+las die Geräte ohne sie.
+
+Die Anwohner sehen ihre Änderungen im Tab „Änderungen“ (`changes(resident:)`), die Karte der
+Site die Änderungen an ihren Geräten, die noch nicht überall sind (`SiteAutoRollout.changes`).
+
 ## Auf der Seite der Site
 
 Die Karte „Automatisches Rollout“ (`components::site::auto_rollout`, nur bei einer Site mit
 `auto_rollout`; `SiteAccess.autoRollout`) zeigt eine verletzte Vorbedingung mit dem, was bei
 welchem Gerät fehlt, ob die Site bereit ist oder im Fehler, die
 letzte Runde, die zurückgestellten Geräte und die anhaltenden manuellen, jedes mit „Freigeben
-und mit ausrollen“ und „Als Stand übernehmen“. Sie abonniert den Zustand: jede Änderung daran meldet
+und mit ausrollen“ und „Als Stand übernehmen“, und die Änderungen, die noch nicht überall
+sind, mit dem Stand pro Gerät. Sie abonniert den Zustand: jede Änderung daran meldet
 `facts::Change::AutoRollout`.
 
 ## Im Lab geprüft (2026-11-17)
@@ -159,3 +179,6 @@ nächste Runde weiter, ohne lab-np2 anzuwenden.
   anderen automatischen Geräte vorher und nachher angemeldet; ebenso zurück.
 - **Richtfunk:** Ein Label am Radio von lab-sxt-a hielt die Runde an („RadioLink“, auf der
   Karte mit „Freigeben“); nicht freigegeben, das Label entfernt, dann nichts zu tun.
+- **Stand pro Änderung:** Als Meier die SSID des Lab-WLANs geändert: lab-np2 (Controller,
+  manuell) „von Hand anwenden“, die Runde hielt an; lab-wap (CAP, ohne eigene Änderung)
+  „ausgerollt“. Ein Raum eines Geräts ohne RouterOS: „ändert nur NetBox“. Beides zurückgesetzt.

@@ -159,6 +159,8 @@ pub struct Log {
     /// the run of the apply script it wrote, as its marks on the device name it; in its journal
     /// entry, so a fallback seen fired later finds them (`journal::observe`)
     script_run: Arc<Mutex<Option<Box<str>>>>,
+    /// the job's id once registered; unset without a job
+    job: Arc<OnceLock<u32>>,
 }
 
 /// What the job keeps for going on after a restart ([`Log::keep`]), and whether its file is
@@ -196,7 +198,12 @@ impl Log {
             journal_entry: Default::default(),
             devices: Default::default(),
             script_run: Default::default(),
+            job: Default::default(),
         }
+    }
+    /// The id of the job it logs; `None` without one (tests).
+    pub fn job_id(&self) -> Option<u32> {
+        self.job.get().copied()
     }
     /// The job wrote the apply script of `run` onto the device.
     pub fn wrote_script(&self, run: &str) {
@@ -913,6 +920,7 @@ fn add(
         })
         .collect();
     let _ = job.log.devices.set(devices);
+    let _ = job.log.job.set(job.id);
     job.log.announce();
     jobs.jobs.push(job.clone());
     let finished = jobs

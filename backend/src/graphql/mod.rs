@@ -1,7 +1,7 @@
 //! Scope: The roots of the GraphQL schema: each query, mutation and subscription field with its
 //! guard; not the work behind a field (the module it calls).
 use crate::{
-    Error,
+    Error, auto_rollout,
     config::CONFIG,
     context::UserInfo,
     device::{
@@ -385,9 +385,17 @@ impl MutationAuthenticated {
                     &log,
                 )
                 .await;
+                if let (Ok(plan), Some(job)) = (&result, log.job_id()) {
+                    let devices = auto_rollout::configured(
+                        plan.touched_devices()
+                            .into_iter()
+                            .chain([plan.device().clone()]),
+                    );
+                    auto_rollout::note_change(job, &user, None, devices);
+                }
                 log.enter(NetboxState::Refetching);
                 refetch(&topology).await;
-                result
+                result.map(drop)
             },
         )?)
     }
@@ -416,6 +424,12 @@ impl MutationAuthenticated {
             Started::By(user_label(ctx)),
             |log| async move {
                 let result = helper::undo(job_id, &objects, &user, &log).await;
+                // a partial undo changed something too
+                if let (Some(undone), Some(job)) =
+                    (auto_rollout::change_of_job(job_id), log.job_id())
+                {
+                    auto_rollout::note_change(job, &user, undone.owner, undone.devices);
+                }
                 log.enter(NetboxState::Refetching);
                 refetch(&topology).await;
                 result

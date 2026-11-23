@@ -1,5 +1,5 @@
-//! Scope: A site's automatic rollout: its state, the last round, clearing an error and releasing
-//! a manual device; not the rounds (backend `auto_rollout`).
+//! Scope: A site's automatic rollout: its state, the last round, the changes not everywhere yet,
+//! clearing an error and releasing a device; not the rounds (backend `auto_rollout`).
 //!
 //! Shown for a site with the custom field `auto_rollout` only, subscribed: a round, a cleared
 //! error or a release shows at once. Clearing and releasing need `allowApply`, like applying.
@@ -8,9 +8,10 @@ use crate::{
     graphql::{
         authenticated::{
             auto_rollout::{
-                AcceptAutoRolloutDiff, ClearAutoRolloutError, HoldReason, Lack, LastRound,
-                ReleaseAutoRollout, ReleaseVariables, RoundDevice, RoundOutcome, SiteAutoRollout,
-                SiteAutoRolloutQuery, SiteError, SiteVariables,
+                AcceptAutoRolloutDiff, ChangeDevice, ChangeState, ClearAutoRolloutError,
+                HoldReason, Lack, LastRound, ReleaseAutoRollout, ReleaseVariables, RolloutState,
+                RoundDevice, RoundOutcome, SiteAutoRollout, SiteAutoRolloutQuery, SiteError,
+                SiteVariables,
             },
             device::AllowApply,
         },
@@ -176,6 +177,31 @@ impl Component for AutoRollout {
             .last_round
             .as_ref()
             .map(|last| self.last_round(ctx, last, state));
+        let open: Vec<&ChangeState> = state
+            .changes
+            .iter()
+            .filter(|change| {
+                change
+                    .devices
+                    .iter()
+                    .any(|device| device.state != RolloutState::RolledOut)
+            })
+            .collect();
+        let open = (!open.is_empty()).then(|| {
+            html! {
+                <>
+                    <p>{t::OPEN_CHANGES}</p>
+                    <dl class="neighbor-results">
+                        { for open.iter().map(|change| html! {
+                            <>
+                                <dt>{t::change_head(&t::ago(change.age.into()), &change.by)}</dt>
+                                <dd>{joined(&change.devices, change_device, "; ")}</dd>
+                            </>
+                        }) }
+                    </dl>
+                </>
+            }
+        });
         html! {
             <Card class="findings">
                 <CardHeader><CardTitle>{t::TITLE}</CardTitle></CardHeader>
@@ -186,6 +212,7 @@ impl Component for AutoRollout {
                     {ready}
                     {not_seen}
                     {last}
+                    {open}
                 </CardBody>
             </Card>
         }
@@ -300,6 +327,20 @@ impl AutoRollout {
             </>
         }
     }
+}
+
+/// A device of a change: its name and how far the change is there.
+fn change_device(device: &ChangeDevice) -> String {
+    let state = match &device.state {
+        RolloutState::Pending => t::RolloutState::Pending,
+        RolloutState::RolledOut => t::RolloutState::RolledOut,
+        RolloutState::Waiting if !device.reasons.is_empty() => t::RolloutState::WaitingForAdmin,
+        RolloutState::Waiting => t::RolloutState::Waiting,
+        RolloutState::Deferred => t::RolloutState::Deferred,
+        RolloutState::Failed => t::RolloutState::Failed,
+        RolloutState::Manual | RolloutState::Other(_) => t::RolloutState::Manual,
+    };
+    format!("{}: {}", device.device.name, t::rollout_state(state))
 }
 
 /// `items` worded by `word`, separated by `separator`.

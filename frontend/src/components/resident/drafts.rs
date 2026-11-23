@@ -104,6 +104,7 @@ impl Drafts {
         match view {
             View::Networks => self.wlans.len(),
             View::Ports => self.port_vlans.len() + self.links.len() + self.rooms.len(),
+            View::Changes => 0,
         }
     }
     /// The changes they are saved as, in an order in which each finds NetBox as it needs it:

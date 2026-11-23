@@ -6,7 +6,7 @@
 use super::{
     CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreateIpRange,
     CreatePrefix, CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
-    DeleteWirelessLink, Helper, PlanStep, SetPrimaryIp, Target, UpdateDeviceLocation,
+    DeleteWirelessLink, Helper, NetboxPlan, PlanStep, SetPrimaryIp, Target, UpdateDeviceLocation,
     UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLan, UpdateWirelessLink, flags,
 };
 use crate::{
@@ -62,14 +62,14 @@ pub struct NetboxUndone {
 
 /// Writes the plan of `parts` (`sequence::plan`), after computing it again from NetBox as it is
 /// now: it must still have `fingerprint`. Each step checks NetBox once more right before
-/// writing.
+/// writing. Gives the plan written.
 pub async fn write(
     parts: &[Helper],
     topology: &Arc<Topology>,
     fingerprint: &str,
     user: &str,
     log: &Log,
-) -> Result<(), Error> {
+) -> Result<NetboxPlan, Error> {
     log.enter(NetboxState::Planning);
     let plan = super::sequence::plan(parts, topology).await?;
     if plan.fingerprint_value() != fingerprint {
@@ -99,7 +99,7 @@ pub async fn write(
         let id = write_step(&rest, step, &created, on_new_device, log).await?;
         created.push(id);
     }
-    Ok(())
+    Ok(plan)
 }
 
 /// Writes one step of a plan, `created` the ids of the objects the steps before it created;
