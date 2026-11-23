@@ -75,7 +75,7 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   WLAN-Gruppen, Wireless Links, Config Contexts, Tenants, Circuit Terminations). NetBox
   schickt Webhooks aus seinem `rqworker`, der laufen muss. Ohne Webhook rollt die Automatik
   nur alle 30 min aus. Der Zustand der Automatik liegt in `state_dir/auto_rollout.json`.
-- **Zustand:** nur die weiterführbaren Aufträge in `state_dir` (Vorgabe `state` neben
+- **Zustand:** in `state_dir` nur die weiterführbaren Aufträge und der Zustand der Automatik (Vorgabe `state` neben
   `config.yaml`, mit Sperrdatei gegen eine zweite Instanz;
   [Jobs](jobs.md#weiterführen-nach-einem-neustart)). Alle anderen Jobs leben im Prozess.
 - **TLS:** nur rustls (Provider aws-lc-rs), kein OpenSSL mehr seit reqwest 0.13. Die

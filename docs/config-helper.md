@@ -29,7 +29,9 @@ Geräteseite.
 - **Nichts automatisch reparieren.** Der Befund schlägt Korrekturen vor, er führt keine aus.
   Jede Korrektur ist eine Helfer-Aktion mit Plan und Bestätigung, so wie der Provisioner auch
   auf Geräten nichts von selbst repariert.
-- **Keine MACs in NetBox.** Auch ein Import vom Gerät überträgt keine MAC-Adressen.
+- **Keine MACs von MikroTiks in NetBox.** Auch ein Import vom Gerät überträgt keine
+  MAC-Adressen. Nur das Gerät hinter einer statischen Lease (ohne RouterOS) trägt seine MAC,
+  als primäre (sonst `LeaseMacNotPrimary`).
 - **Board-Wissen bleibt in `hw_facts.rs`.** Welche Ports ein Board hat, wo PoE-out ist, welches
   Funkpaket es braucht: Der Helfer fragt `hw_facts.rs`, statt eine zweite Tabelle zu führen.
 

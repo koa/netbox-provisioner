@@ -839,9 +839,10 @@ A device that doesn't answer gets its initial setup over `/tool mac-telnet` from
 does (`device::bootstrap`, on the device page): `plans` lists the cabled ports with an IPv4 (on
 the port or its bridge) whose other end has a primary IP in NetBox, and `working_plan` takes the
 first whose neighbor logs in over the API (all tried at once): a primary IP is no proof, sat-switch's
-plan went over groove-38 behind it, not set up itself. MAC addresses are not kept in NetBox: the
+plan went over groove-38 behind it, not set up itself. A MikroTik's MAC is not kept in NetBox: the
 operator picks the physical device from what the neighbor's `/ip/neighbor` shows on that port
-(`BootstrapPlan.discovered`) or types its MAC; don't make anything depend on NetBox MACs.
+(`BootstrapPlan.discovered`) or types its MAC; don't identify a MikroTik by NetBox MACs. Only a
+static lease's client device (no RouterOS) carries its MAC in NetBox, as its primary one.
 `set_up` drives the neighbor's console over SSH
 (`device::terminal`, russh; login flags `+ct400w` so long echoes don't wrap) through the factory
 prompts (license, default-config notice, new password - each answered once, some versions print

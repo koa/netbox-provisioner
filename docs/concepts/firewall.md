@@ -28,13 +28,14 @@ Freigaben von router-faesigrund-keller (Webserver, IPsec) können jetzt aus NetB
 Verkehr in das Netz und aus ihm über dieses Interface, auch der Rückweg. Die Regeln brauchen
 deshalb nur dort zu stehen, und die übrigen Router bleiben ohne Connection Tracking.
 
-**Ausnahme: ein Netz auf mehreren Routern.** Ein über VXLAN getunneltes VLAN darf auf mehreren
-Geräten Adressen desselben Netzes haben (Gateway plus Switch, `MultipleNetworksOnVlan` erlaubt
-das). Hat ein zweiter Router dort eine Adresse und `ospf`, kündigt er das Netz ebenfalls an:
-Verkehr kommt dann über ihn herein, die Antworten gehen über das Gateway der Clients hinaus. Das
-ist asymmetrisch; Connection Tracking sieht auf jedem Router nur eine Richtung und verwirft sie
-als `invalid`, und die Regeln auf dem Gateway werden umgangen. Für `guest` und `protected` darf
-deshalb nur **ein** Router das Netz routen; mehr ist ein Befund.
+**Ein Gateway pro Netz.** Hätte ein zweiter Router im selben VLAN eine Adresse und `ospf`,
+kündigte er das Netz ebenfalls an: Verkehr käme über ihn herein, die Antworten gingen über das
+Gateway der Clients hinaus. Das ist asymmetrisch; Connection Tracking sähe auf jedem Router nur
+eine Richtung und verwürfe sie als `invalid`, und die Regeln auf dem Gateway würden umgangen.
+Das kommt nicht vor: Mehr als ein Gerät mit einer Adresse in einem VLAN, auch über VXLAN, ist
+der Fehler `VlanWithSeveralGateways` (`topology::vlan_domain`); ein Switch, der das VLAN nur auf
+L2 weitergibt, hat dort keine Adresse. `MultipleNetworksOnVlan` (Generator) lehnt zusätzlich
+mehrere verschiedene Netze in einem VLAN ab.
 
 **In NetBox:** ein Tag am Gateway-Interface, wie `dhcp` oder `ospf`. So gilt er für IPv4 und
 IPv6 des Netzes zusammen.
