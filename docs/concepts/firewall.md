@@ -37,12 +37,27 @@ der Fehler `VlanWithSeveralGateways` (`topology::vlan_domain`); ein Switch, der 
 L2 weitergibt, hat dort keine Adresse. `MultipleNetworksOnVlan` (Generator) lehnt zusätzlich
 mehrere verschiedene Netze in einem VLAN ab.
 
-**In NetBox:** ein Tag am Gateway-Interface, wie `dhcp` oder `ospf`. So gilt er für IPv4 und
-IPv6 des Netzes zusammen.
+**In NetBox:** ein Tag am Prefix des Netzes (2026-11-23). „Gäste-Netz“ und „geschützt“ sind
+Eigenschaften des Netzes, nicht des Ports: Das Interface ist nur der Ort, an dem der Router die
+Regeln umsetzt, und den findet der Generator selbst, als das Interface mit einer Adresse im
+Prefix (eindeutig, ein Gateway pro Netz). So folgt der Schutz dem Netz, wenn sein Gateway
+wandert (Umstecken, ein neuer Router, der [L2-Extender](l2-extender.md), der die L3-Funktionen
+auf den L3-Switch verschiebt); am Interface müsste jeder Helfer den Tag mitnehmen, und ein
+vergessener machte ein Gäste-Netz unbemerkt offen. Die Freigaben verweisen ebenfalls auf
+Prefixe, alles ist Netz zu Netz, und Anwohner legen im Self-Service Netze an, keine Interfaces.
+
+- **IPv4 und IPv6** sind zwei Prefixe. Ein Netz ist `guest` oder `protected`, sobald eines
+  seiner Prefixe den Tag trägt: die strengere Seite gewinnt, ein vergessener Tag öffnet nichts.
+  Verschiedene Tags an den Prefixen eines Netzes sind ein Befund.
+- **Nicht vererbt:** Der Tag gilt nur am Prefix, in dem die Adresse des Gateways liegt, nicht
+  für die Prefixe darunter. Vererben (etwa „alle Anwohner-Netze in einem Bereich“) lässt sich
+  später ergänzen, ist aber schwerer nachzuvollziehen.
+- **Prefix Pflicht:** Ein Netz mit internen Regeln braucht sein Prefix in NetBox (bisher nur für
+  DHCP); bei Kunden-Netzen ist es ohnehin da.
 
 - **`guest`: Gäste-Netz.** Darf ins Internet, an seinem Gateway nur DHCP, DNS und ICMP, und
   intern nur, was freigegeben ist:
-  - ganze Netzbereiche: ein Custom Field `guest_access` (Objekte → IP-Prefixe) am Interface;
+  - ganze Netzbereiche: ein Custom Field `guest_access` (Objekte → IP-Prefixe) am Prefix;
   - einzelne Dienste: Services mit Tag `guest` (z.B. der Drucker, ein Medienserver).
 
   Regeln am Gateway-Router:
@@ -52,7 +67,7 @@ IPv6 des Netzes zusammen.
     Management des Routers.
 - **`protected`: geschütztes Netz.** Von innen nach aussen frei, von anderen internen Netzen
   her gesperrt, ausser freigegeben:
-  - ein Custom Field `protected_access` (Objekte → IP-Prefixe): Netze, die herein dürfen
+  - ein Custom Field `protected_access` (Objekte → IP-Prefixe) am Prefix: Netze, die herein dürfen
     (z.B. das Admin-Netz);
   - Services mit Tag `protected` an Adressen im Netz: einzelne Dienste, die alle erreichen
     dürfen.
@@ -69,8 +84,9 @@ IPv6 des Netzes zusammen.
 - Die Ersteinrichtung und das Anwenden gehen über die Adresse am Kabel und die Loopback. Interne
   Regeln dürfen den Weg des Provisioners zu den Routern nicht sperren: die Loopbacks und
   Transfernetze sind nie Ziel einer internen Regel, nur Kunden-Netze.
-- Ein Gäste- oder geschütztes Netz an einem Port, über den ein Router erreicht wird, ist ein
-  Befund (`ospf` und `guest`/`protected` am selben Interface).
+- Befunde: ein `guest`- oder `protected`-Prefix, dessen Gateway-Interface `ospf` hat (über den
+  Port wird ein Router erreicht); eines ohne Gateway-Adresse; verschiedene Tags an den
+  Prefixen eines Netzes.
 - **DNS der Gäste:** Mit `dns_servers` im Config Context beantwortet der Router keine
   DNS-Anfragen (`allow-remote-requests=no`), die Clients fragen die Server von dort (z.B.
   Blocky im internen Netz). Diese Server gehören deshalb automatisch zu den Freigaben eines
@@ -92,4 +108,11 @@ IPv6 des Netzes zusammen.
 - Port-Forwarding setzt **keine Ports um**: aussen gilt derselbe Port wie innen, kein
   `public_port`.
 - Freigaben der internen Firewall als **Custom Fields am Interface** (`guest_access`,
-  `protected_access`), dazu Services mit Tag `guest`/`protected`.
+  `protected_access`), dazu Services mit Tag `guest`/`protected`. Überholt am 2026-11-23, siehe
+  unten.
+
+## Entschieden (2026-11-23)
+
+- `guest`/`protected` und die Custom Fields `guest_access`/`protected_access` hängen **am
+  Prefix**, nicht am Gateway-Interface; das Gateway findet der Generator. Ein Netz gilt als
+  `guest`/`protected`, sobald eines seiner Prefixe (IPv4, IPv6) den Tag trägt; nicht vererbt.

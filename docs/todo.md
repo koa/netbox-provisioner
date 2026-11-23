@@ -18,7 +18,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Frage | Entscheidung | betrifft |
 |---|---|---|---|
-| Z4 | Freigaben der internen Firewall: Custom Fields am Interface oder Prefix-Tags? | Custom Fields am Interface (2026-10-23) | C3 |
+| Z4 | Freigaben der internen Firewall: Custom Fields am Interface oder Prefix-Tags? | Custom Fields am Interface (2026-10-23); geändert (2026-11-23): Tags `guest`/`protected` und Custom Fields am Prefix, das Gateway findet der Generator, die strengere Seite von IPv4 und IPv6 gewinnt, nicht vererbt | C3 |
 | Z10 | Anwohner als Tenant oder Contact Group, und wo stehen seine Benutzer? | weder noch: ein NetBox-Owner mit seinen NetBox-Benutzern in `users` (Login über Pocket-ID), in der Pflicht-Owner-Group „Anwohner“; Mitglieder werden in NetBox gepflegt, damit dieselbe Zuordnung die Leserechte in NetBox steuert (in der Lab-NetBox geprüft, 2026-10-23) | C7 |
 | Z11 | Ports eines Anwohners an einem fremden Switch? | NetBox-Feld `owner` am Interface, kein Custom Field (2026-10-23) | C7 |
 | Z12 | Apply eines Anwohners sofort oder mit Admin-Freigabe? | sofort (2026-10-23); abgelöst durch Z46: der Anwohner schreibt nur NetBox, die Geräte erreicht es über das automatische Rollout | C7 |
@@ -65,7 +65,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
-| C3 | Interne Firewall: `guest` und `protected` am Gateway-Interface, Freigaben als Custom Fields (Z4), nur ein Router pro Netz | [Firewall](concepts/firewall.md#interne-firewall) | M | offen |
+| C3 | Interne Firewall: `guest` und `protected` am Prefix, Freigaben als Custom Fields am Prefix (Z4), Regeln am Gateway-Interface, das der Generator findet; nur ein Router pro Netz | [Firewall](concepts/firewall.md#interne-firewall) | M | offen |
 | C7 | Self-Service und Personas (gebaut: Besitz, Rollen, lesende Schnittstelle, WLAN: SSID, Passwort, ein/aus, Netz an Port und Dose, Leases und WLAN-Clients eines Netzes, eigene Geräte anschliessen und abhängen, ihr Anschluss (auch der erkannte) und Raum, mehrere Änderungen in einem Plan, auf die Geräte über das automatische Rollout (C20, Z46), [self-service.md](self-service.md)); offen: NetBox über Pocket-ID mit der Gruppe „Anwohner“ und den Claims geprüft (mit Keycloak geprüft, [login.md](login.md#netbox-über-oidc)), Leserechte in der produktiven NetBox nur auf eigene WLANs, das Band der WLAN-Clients (E28); Ersteinrichtung bleibt beim Admin (Z48); das UI in C21 | [Self-Service](concepts/self-service.md) | L | offen |
 | C8 | Überwachung: Collector, Prometheus-Metriken (Alarme dort, Z13), Ping zum Uplink-Gateway (Z14), Zustandsseite, Ansicht für Anwohner | [Überwachung](concepts/monitoring.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](network-update.md#tests) | L | Regel, Plan, Rollout und eingefärbte Knoten der Netz-Ansicht erledigt; offen: CHR-Test der Kette `entry -- a -- target` |
