@@ -477,6 +477,7 @@ pub fn finding_kind(kind: String) -> String {
         "PrimaryIpv4NotOnLoopback" => "Primary IPv4 nicht auf lo".into(),
         "AddressWithoutPrefix" => "Adresse ohne Prefix".into(),
         "DhcpPoolEmpty" => "DHCP ohne freie Adresse".into(),
+        "LeaseMacNotPrimary" => "MAC nicht primär".into(),
         "PortLikeName" => "Name wie ein Port".into(),
         "RadioWithoutRole" => "Funk ohne RF-Rolle".into(),
         "NatWithoutInternet" => "nat ohne internet".into(),

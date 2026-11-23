@@ -821,6 +821,7 @@ impl FindingKind {
             FindingKind::PrimaryIpv4NotOnLoopback(f) => f.interface.iter().map(|i| i.id).collect(),
             FindingKind::AddressWithoutPrefix(f) => vec![f.interface.id],
             FindingKind::DhcpPoolEmpty(f) => vec![f.interface.id],
+            FindingKind::LeaseMacNotPrimary(f) => vec![f.server.id, f.interface.id],
             FindingKind::PortLikeName(f) => vec![f.interface.id],
             FindingKind::RadioWithoutRole(f) => vec![f.interface.id],
             FindingKind::NatWithoutInternet(f) => vec![f.interface.id],

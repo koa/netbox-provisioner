@@ -926,3 +926,43 @@ fn every_finding_kind_has_a_short_name() {
         .collect::<Vec<_>>();
     assert!(untranslated.is_empty(), "no short name: {untranslated:?}");
 }
+
+/// A client in a DHCP server's network with a MAC assigned but none primary gets no static
+/// lease: an error at the router and the client. Made primary, or without any MAC (a fixed
+/// address set on the client itself), no finding.
+#[test]
+fn a_lease_client_without_a_primary_mac_is_an_error() {
+    fn findings(mac: Option<&str>, macs: &[&str]) -> Vec<Finding> {
+        let mut net = Net::new();
+        let r1 = net.r1;
+        let customer = port(&mut net.builder, r1, "ether2", "10.200.1.1/24");
+        net.interface(customer).enable_dhcp_server = true;
+        net.interface(customer).use_ospf = false;
+        let client = net.builder.devices.next_id();
+        net.builder.devices.insert(
+            client,
+            Device {
+                name: "pc".into(),
+                ..Device::default()
+            },
+        );
+        let eth0 = port(&mut net.builder, client, "eth0", "10.200.1.10/24");
+        let interface = net.interface(eth0);
+        interface.use_ospf = false;
+        interface.mac = mac.map(Into::into);
+        interface.macs = macs.iter().copied().map(Into::into).collect();
+        net.findings()
+    }
+    let found = findings(None, &["02:00:00:00:00:01"]);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].severity, Severity::Error);
+    assert_eq!(found[0].devices.len(), 2);
+    assert!(matches!(&found[0].kind, FindingKind::LeaseMacNotPrimary(f)
+        if &*f.address.address == "10.200.1.10/24"
+            && &*f.interface.name == "eth0"
+            && &*f.server.name == "ether2"
+            && f.macs.len() == 1));
+    let primary = findings(Some("02:00:00:00:00:01"), &["02:00:00:00:00:01"]);
+    assert_eq!(primary, vec![]);
+    assert_eq!(findings(None, &[]), vec![]);
+}

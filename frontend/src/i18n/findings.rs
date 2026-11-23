@@ -85,6 +85,19 @@ pub fn dhcp_pool_empty(interface: Html, address: Html, prefix: Option<Html>) -> 
         }
     }
 }
+pub fn lease_mac_not_primary(
+    interface: Html,
+    address: Html,
+    macs: &[String],
+    server: Html,
+) -> Html {
+    let macs = macs.join(", ");
+    html! {<>
+        {interface}{" hat "}{address}{" im Netz des DHCP-Servers an "}{server}{" und die MAC "}
+        {macs}{", aber keine als primäre MAC-Adresse: Der statische Lease entsteht nicht. "}
+        {"In NetBox am Interface die primäre MAC-Adresse setzen."}
+    </>}
+}
 /// the link text of a VLAN
 pub fn vlan_name(vid: i32, name: &str) -> String {
     format!("VLAN {vid} ({name})")

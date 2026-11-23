@@ -59,6 +59,9 @@ ist eine Prüfung:
   den Pool wie er (`dhcp_pool_v4`). Hat das Interface ein anderes Netz mit Pool, ist es kein
   Befund: Sein einer DHCP-Server bedient das, und das Netz ohne Platz braucht keine Clients (das
   /31 neben dem DHCP-Netz einer Funkbrücke ohne RouterOS).
+- Ein Client im Netz eines DHCP-Servers, dessen Interface MACs hat, aber keine primäre
+  (`LeaseMacNotPrimary`, Fehler am Router und am Client): Der statische Lease entsteht nicht
+  ([Statische DHCP-Leases](netbox-modeling.md)).
 - Kabel, dessen Enden nicht im selben Netz liegen (`NoCommonSubnet`), nur ein Ende `ospf` hat
   (`OspfOnOneEnd`) oder ungleiche MTU (`MtuMismatch`). Netz und `ospf` nur, wenn beide Enden (der
   Port oder seine Bridge) IPv4 haben: Ein Brückengerät ohne Adresse arbeitet nur auf L2, das OSPF

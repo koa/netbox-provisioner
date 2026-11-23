@@ -58,6 +58,7 @@ pub enum FindingKind {
     PrimaryIpv4NotOnLoopback(PrimaryIpv4NotOnLoopback),
     AddressWithoutPrefix(AddressWithoutPrefix),
     DhcpPoolEmpty(DhcpPoolEmpty),
+    LeaseMacNotPrimary(LeaseMacNotPrimary),
     PortLikeName(PortLikeName),
     VlanWithoutGroup(VlanWithoutGroup),
     MtuMismatch(MtuMismatch),
@@ -98,6 +99,7 @@ impl FindingKind {
             FindingKind::PrimaryIpv4NotOnLoopback(_) => "PrimaryIpv4NotOnLoopback",
             FindingKind::AddressWithoutPrefix(_) => "AddressWithoutPrefix",
             FindingKind::DhcpPoolEmpty(_) => "DhcpPoolEmpty",
+            FindingKind::LeaseMacNotPrimary(_) => "LeaseMacNotPrimary",
             FindingKind::PortLikeName(_) => "PortLikeName",
             FindingKind::VlanWithoutGroup(_) => "VlanWithoutGroup",
             FindingKind::MtuMismatch(_) => "MtuMismatch",
@@ -177,6 +179,15 @@ pub struct DhcpPoolEmpty {
     pub interface: InterfaceRef,
     pub address: AddressRef,
     pub prefix: Option<PrefixRef>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "authenticated")]
+pub struct LeaseMacNotPrimary {
+    pub interface: InterfaceRef,
+    pub address: AddressRef,
+    pub macs: Vec<String>,
+    pub server: InterfaceRef,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

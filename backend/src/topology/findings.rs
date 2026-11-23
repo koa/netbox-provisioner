@@ -22,7 +22,7 @@ use crate::{
 };
 use async_graphql::{Enum, SimpleObject, Union};
 use ipnet::IpNet;
-use std::sync::Arc;
+use std::{net::IpAddr, sync::Arc};
 
 /// How bad a finding is; ordered from the worst.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Enum)]
@@ -53,6 +53,7 @@ pub enum FindingKind {
     PrimaryIpv4NotOnLoopback(PrimaryIpv4NotOnLoopback),
     AddressWithoutPrefix(AddressWithoutPrefix),
     DhcpPoolEmpty(DhcpPoolEmpty),
+    LeaseMacNotPrimary(LeaseMacNotPrimary),
     PortLikeName(PortLikeName),
     VlanWithoutGroup(VlanWithoutGroup),
     MtuMismatch(MtuMismatch),
@@ -187,6 +188,17 @@ pub struct DhcpPoolEmpty {
     pub interface: InterfaceRef,
     pub address: AddressRef,
     pub prefix: Option<PrefixRef>,
+}
+/// `address` of a client (no RouterOS) on `interface` lies in the network of `server`, a DHCP
+/// server, and the interface has MACs (`macs`) but no primary one: no static lease there, as
+/// a lease takes the primary MAC only (`device::ros::dhcp::static_leases`). NetBox doesn't
+/// make an assigned MAC primary by itself.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct LeaseMacNotPrimary {
+    pub interface: InterfaceRef,
+    pub address: AddressRef,
+    pub macs: Box<[Box<str>]>,
+    pub server: InterfaceRef,
 }
 /// A NetBox prefix.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
@@ -879,6 +891,33 @@ fn device_findings(device: &DeviceAccess, findings: &mut Vec<Finding>) {
                             prefix,
                         }),
                     );
+                }
+            }
+            // a client the server should give a static lease, without the MAC it needs
+            if interface.is_enable_dhcp_server() && matches!(net, IpNet::V4(_)) {
+                for client in address.prefix().iter().flat_map(|prefix| prefix.ips()) {
+                    let Some(client_interface) = client.interface() else {
+                        continue;
+                    };
+                    let Some(client_device) = client_interface.device() else {
+                        continue;
+                    };
+                    if matches!(client.addr(), Some(IpAddr::V4(_)))
+                        && !client_device.has_routeros()
+                        && client_interface.mac().is_none()
+                        && !client_interface.macs().is_empty()
+                    {
+                        push(
+                            Severity::Error,
+                            &[device.id(), client_device.id()],
+                            FindingKind::LeaseMacNotPrimary(LeaseMacNotPrimary {
+                                interface: interface_ref(&client_interface),
+                                address: address_ref(&client),
+                                macs: client_interface.macs().into(),
+                                server: interface_ref(interface),
+                            }),
+                        );
+                    }
                 }
             }
         }

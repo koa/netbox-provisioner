@@ -100,6 +100,9 @@ pub struct Interface {
     pub poe_type: Option<String>,
     /// a lease client's (`device::ros::dhcp`); the MikroTiks' aren't kept in NetBox
     pub primary_mac_address: Option<MacAddress>,
+    /// all MACs assigned to it, the primary one among them: one assigned but not made
+    /// primary is a finding (`LeaseMacNotPrimary`)
+    pub mac_addresses: Vec<MacAddress>,
     pub rf_role: Option<String>,
     pub rf_channel_frequency: Option<Decimal>,
     pub rf_channel_width: Option<Decimal>,

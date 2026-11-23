@@ -194,6 +194,10 @@ impl InterfaceAccess {
     pub fn mac(&self) -> Option<&str> {
         self.data().and_then(|d| d.mac.as_deref())
     }
+    /// every MAC assigned to it in NetBox, the primary one among them
+    pub fn macs(&self) -> &[Box<str>] {
+        self.data().map(|d| &*d.macs).unwrap_or_default()
+    }
     pub fn mtu(&self) -> Option<u16> {
         self.data().and_then(|d| d.mtu)
     }

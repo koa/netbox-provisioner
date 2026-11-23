@@ -456,6 +456,10 @@ tragen.
   automatischen Pool. Der Provisioner verwaltet die statischen Leases ganz: einer, den NetBox
   nicht kennt, wird beim Anwenden entfernt; dynamische bleiben. Die Live-Prüfung der Interfaces
   zeigt solche vorher, mit „Lease übernehmen“ ([Config-Helper](config-helper.md#lease-übernehmen)).
+  Eine MAC, die dem Interface nur zugeordnet ist, genügt nicht: NetBox macht sie nicht von
+  selbst zur primären (am Interface „Primary MAC address“ wählen). Hat das Interface MACs, aber
+  keine primäre, ist das der Befund `LeaseMacNotPrimary` (Fehler, am Router und am Client); ein
+  Client ganz ohne MAC (die Adresse am Gerät selbst eingestellt) ist keiner.
   MikroTik-Geräte selbst werden nie über eine MAC in NetBox erkannt.
 
 ## Rezept: Router

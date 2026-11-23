@@ -200,6 +200,12 @@ impl Links<'_> {
                     self.link(&format!("ipam/prefixes/{}/", prefix.id), &prefix.prefix)
                 }),
             ),
+            Kind::LeaseMacNotPrimary(f) => t::lease_mac_not_primary(
+                self.interface(&f.interface),
+                self.address(&f.address),
+                &f.macs,
+                self.interface(&f.server),
+            ),
             Kind::PortLikeName(f) => t::port_like_name(self.interface(&f.interface)),
             Kind::RadioWithoutRole(f) => t::radio_without_role(self.interface(&f.interface)),
             Kind::NatWithoutInternet(f) => t::nat_without_internet(self.interface(&f.interface)),

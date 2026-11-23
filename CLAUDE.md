@@ -1110,8 +1110,12 @@ IPv4 are in the server's prefix, the device's name as comment, the rest at Route
 (`lease-time=0s`, `parent-queue=none`, the flags `no`). The provisioner owns the static
 leases: one NetBox doesn't know is removed, a dynamic one is left (`dynamic` is ro, so the
 model never reads it as an entry). The address is left out of the pool like any other NetBox
-address there. Only `primary_mac_address` is fetched: the stored export lacks
-`mac_addresses`. The site overview counts removed leases (`removes_leases`) like addresses.
+address there. The lease takes `primary_mac_address` only; `mac_addresses` (`Interface.macs`)
+serves the finding `LeaseMacNotPrimary` (error): a client in a DHCP server's network whose
+interface has MACs but no primary one, since NetBox doesn't make an assigned MAC primary by
+itself (a lease missing in production). A client without any MAC (an address set on it by
+hand) is none. The stored export lacks `mac_addresses`; `topology::test::example_response`
+fills in the primary one. The site overview counts removed leases (`removes_leases`) like addresses.
 An interface with `dhcp-client` and `nat` (the internet uplink) also gets an `/ipv6/dhcp-client`
 asking for a prefix (`enable_dhcp_v6_client`: `request=address,prefix`, pool `pd-<interface>`,
 no network takes from it yet, a default route as the IPv4 client); one per interface on

@@ -508,6 +508,11 @@ impl Builder {
         let mac = interface
             .primary_mac_address
             .map(|mac| mac.mac_address.to_ascii_uppercase().into_boxed_str());
+        let macs = interface
+            .mac_addresses
+            .into_iter()
+            .map(|mac| mac.mac_address.to_ascii_uppercase().into_boxed_str())
+            .collect();
         self.interfaces.insert(
             id,
             Interface {
@@ -543,6 +548,7 @@ impl Builder {
                 wireless_link,
                 sixty_ghz,
                 mac,
+                macs,
             },
         );
         if let Some(vlan_id) = vlan {

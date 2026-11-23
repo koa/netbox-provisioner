@@ -418,6 +418,7 @@ impl NetboxPlan {
                             "wireless_link": null,
                             "owner": null,
                             "primary_mac_address": create.mac.as_ref().map(|mac| json!({ "mac_address": mac })),
+                            "mac_addresses": create.mac.iter().map(|mac| json!({ "mac_address": mac })).collect::<Vec<_>>(),
                         }));
                     }
                 }

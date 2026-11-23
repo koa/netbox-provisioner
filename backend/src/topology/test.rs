@@ -252,6 +252,14 @@ pub(crate) fn example_response() -> serde_json::Value {
         for interface in device["interfaces"].as_array_mut().into_iter().flatten() {
             if let Some(interface) = interface.as_object_mut() {
                 interface.entry("owner").or_insert(serde_json::Value::Null);
+                // and from before the assigned MACs were: only the primary one
+                let primary = interface
+                    .get("primary_mac_address")
+                    .filter(|mac| mac.is_object())
+                    .cloned();
+                interface
+                    .entry("mac_addresses")
+                    .or_insert_with(|| serde_json::json!(primary.into_iter().collect::<Vec<_>>()));
             }
         }
         // and the front ports' labels

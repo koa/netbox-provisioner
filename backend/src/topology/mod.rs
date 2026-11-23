@@ -669,6 +669,8 @@ pub struct Interface {
     pub sixty_ghz: bool,
     /// its primary MAC address, in upper case: a lease client's (`device::ros::dhcp`)
     pub mac: Option<Box<str>>,
+    /// every MAC address assigned to it in NetBox, in upper case, the primary one among them
+    pub macs: Box<[Box<str>]>,
 }
 
 /// An interface's end of a NetBox wireless link.
