@@ -505,7 +505,7 @@ impl PortsTab<'_> {
                 Some(device) if self.stands_at(device, port) => self.device_card(device, room),
                 Some(device) => {
                     let path = t::location_path(self.device_room(device).path);
-                    let status = self.state.device(device, self.upstream(device)).map(
+                    let status = self.state.device(device, self.upstream(device), self.at(device.id)).map(
                         |status| html!(<div class="pf-v6-c-card__actions">{status.label()}</div>),
                     );
                     html! {
@@ -613,7 +613,9 @@ impl PortsTab<'_> {
         };
         let changed = draft.is_some() || self.drafts.rooms.contains_key(&id);
         let reset = self.edit.reform(move |_| PortEdit::ResetDevice(id));
-        let status = self.state.device(device, self.upstream(device));
+        let status = self
+            .state
+            .device(device, self.upstream(device), self.at(device.id));
         let text = status
             .as_ref()
             .filter(|_| !changed)

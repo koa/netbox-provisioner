@@ -89,18 +89,23 @@ Live-Zustand. Ein Text steht nur, wenn etwas nicht Ok ist.
   Gerät, ein Halt mit Grund), dann auf ein nicht erreichtes Gerät, sonst auf die nächste Runde.
 - **Live** (`liveState`, eine Lesung der LSDB wie die Netzkarte): ob die OSPF-Router die
   eigenen Geräte, den Switch jedes Ports (bei einer Dose den hinter ihrem Rear-Port) und die
-  Access Points jedes WLANs erreichen. Ein Port ist „gestört“, wenn sein Switch oder sein
-  eigenes Gerät nicht erreicht ist, „aus“ frei und ohne Netz, „Ok“ nur, wenn etwas dahinter
-  beurteilt ist; ein Switch ohne eigenes OSPF (lab-keller-switch) gibt kein Label. Ein Gerät
-  hinter einem nicht erreichten eigenen Gerät sagt das. Ein WLAN ist „Problem“ auf einem Teil
+  Access Points jedes WLANs erreichen; dazu an jedem Port, an dem NetBox ein Kabel hat (an einer
+  Dose: in ihrer Front steckt), ob der Switch-Port Link hat (`/interface` `running`, jeder
+  RouterOS-Switch einmal gelesen). Ein Port ist „gestört“, wenn sein Switch nicht erreicht ist,
+  sein Kabel keinen Link hat („Steckt das Kabel?“) oder sein eigenes Gerät nicht antwortet (mit
+  Link: „Das Kabel hat Link, aber …“), „aus“ frei und ohne Netz, „Ok“ nur, wenn etwas dahinter
+  beurteilt ist; ein Switch ohne eigenes OSPF (lab-keller-switch) gibt ohne Link kein Label. Ein
+  Gerät an einem Port ohne Link sagt „… hat keinen Link“, eines hinter einem nicht erreichten
+  eigenen Gerät sagt das. Ein WLAN ist „Problem“ auf einem Teil
   seiner Access Points, „gestört“ auf keinem, „aus“ ausgeschaltet.
 - **Oben** fasst eine Meldung zusammen: jede Änderung, die noch nicht durch ist, mit dem Text
-  ihres Elements, jedes nicht erreichte Gerät, jedes WLAN auf einem Teil seiner Access Points;
+  ihres Elements, jedes nicht erreichte Gerät, jeder Port ohne Link, an dem NetBox ein Kabel
+  hat, jedes WLAN auf einem Teil seiner Access Points;
   sonst „Alles ok“. Änderungen und Live-Zustand liest die Ansicht alle 15 s neu.
 
-Nicht gebaut: der Link eines Ports selbst (Kabel gezogen, `ethernet/monitor`), die Clients
-eines WLANs, die mit einem Access Point verschwinden, und ein falsch gestecktes Kabel als
-Meldung oben (der Anschluss zeigt es am Gerät, `seenUplinks`).
+Nicht gebaut: seit wann ein Link fehlt (der Entwurf sagt „seit 09:15“), die Clients eines
+WLANs, die mit einem Access Point verschwinden, und ein falsch gestecktes Kabel als Meldung oben
+(der Anschluss zeigt es am Gerät, `seenUplinks`).
 
 ## Leases
 

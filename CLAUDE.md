@@ -195,7 +195,9 @@ read per switch and router; shown in the ports tab next to a port without cable,
 touching it (`ChangeState.touched`, from its undo steps), else what is up (`liveState`: the
 LSDB as the network map reads it, `NetworkState::states`, for the own devices, each port's
 switch and each WLAN's access points; a device without OSPF of its own isn't judged and its
-port gets no „Ok“); the view reads changes and live state every 15 s and sums them up on top.
+port gets no „Ok“; and the link of each port NetBox has a cable at, `PortLive.link` from
+`AccessibleDevice::port_links`, `/interface` `running`, each RouterOS switch not missing read
+once); the view reads changes and live state every 15 s and sums them up on top.
 A change keeps its user alone (`Change.by`); `ChangeState.forResident` names the resident. A
 device
 is linked to the resident's port, socket or another own device's port by

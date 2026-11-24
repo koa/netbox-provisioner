@@ -310,7 +310,7 @@ impl Component for ResidentView {
             <div class="resident-view">
                 {bar}
                 {as_before}
-                <div class="resident-summary">{state.summary(&resident.networks)}</div>
+                <div class="resident-summary">{state.summary(&resident.networks, &resident.ports)}</div>
                 <Tabs<View> selected={self.view} {onselect}>
                     <Tab<View> index={View::Ports} title={self.tab_title(View::Ports)}>
                         {ports.view()}

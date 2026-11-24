@@ -1,8 +1,8 @@
 //! Scope: Tests of `device::metrics`'s parsing; nothing else.
 
 use super::{
-    Capsman, LegacyCapsman, WlanBand, WlanFrequency, WlanStandard, bits_per_second,
-    capsman_radio_rows, ethernet_counters, ethernet_link, interface_counters, learned,
+    Capsman, LegacyCapsman, PortLink, WlanBand, WlanFrequency, WlanStandard, bits_per_second,
+    capsman_radio_rows, ethernet_counters, ethernet_link, interface_counters, learned, links,
     standalone_client, wifi_band, wireless_radio,
 };
 use crate::device::{access::Row, answer::parsed as parse};
@@ -529,4 +529,59 @@ fn the_hosts_a_bridge_learned() {
     assert_eq!(&*hosts[0].port, "e03-lab-wap");
     assert_eq!(hosts[0].default_name.as_deref(), Some("ether3"));
     assert_eq!(hosts[0].mac_address.to_string(), "02:00:00:00:00:01");
+}
+
+/// An enabled Ethernet port has a link while it runs; a disabled one and a bridge aren't
+/// judged. The rows as lab-np2 (7.24.6) gives them, the disabled one added.
+#[test]
+fn an_ethernet_port_has_a_link_while_it_runs() {
+    let interfaces = [
+        parse(&[
+            (".id", "*1"),
+            ("name", "e03-lab-wap"),
+            ("default-name", "ether3"),
+            ("type", "ether"),
+            ("running", "true"),
+            ("disabled", "false"),
+        ]),
+        parse(&[
+            (".id", "*4"),
+            ("name", "e04"),
+            ("default-name", "ether4"),
+            ("type", "ether"),
+            ("running", "false"),
+            ("disabled", "false"),
+        ]),
+        parse(&[
+            (".id", "*5"),
+            ("name", "ether5"),
+            ("default-name", "ether5"),
+            ("type", "ether"),
+            ("running", "false"),
+            ("disabled", "true"),
+        ]),
+        parse(&[
+            (".id", "*6"),
+            ("name", "bridge"),
+            ("type", "bridge"),
+            ("running", "true"),
+            ("disabled", "false"),
+        ]),
+    ];
+    let links = links(&interfaces);
+    assert_eq!(
+        &*links,
+        [
+            PortLink {
+                name: "e03-lab-wap".into(),
+                default_name: Some("ether3".into()),
+                up: true,
+            },
+            PortLink {
+                name: "e04".into(),
+                default_name: Some("ether4".into()),
+                up: false,
+            },
+        ]
+    );
 }

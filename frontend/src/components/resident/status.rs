@@ -6,9 +6,10 @@
 //! also where it is one of the change's devices): „wird ausgerollt“ while a device is pending,
 //! else „nicht ausgerollt“ where one failed, else „wartet“; all rolled out, the live state
 //! decides. A text stands only where something isn't ok.
+use super::ports::{sub, title};
 use crate::graphql::resident::{
     changes::{ChangeDevice, ChangeState, HoldReason, RolloutState},
-    live::LiveState,
+    live::{LiveState, PortLive},
     residents::{PortKind, ResidentDevice, ResidentNetwork, ResidentPort},
 };
 use i18n::{
@@ -177,6 +178,15 @@ pub fn hold_reason(reason: &HoldReason) -> String {
     })
 }
 
+/// A port in a text: a socket by its name, another port by itself and its device („Port ether3
+/// an lab-np2“), as its label names the device at it.
+fn place(port: &ResidentPort) -> String {
+    match port.kind {
+        PortKind::Socket => title(port),
+        _ => sub(port),
+    }
+}
+
 fn same_kind(a: &PortKind, b: &PortKind) -> bool {
     matches!(
         (a, b),
@@ -206,20 +216,26 @@ impl State<'_> {
         if rollout.is_some() {
             return rollout;
         }
-        let live = self.live.filter(|live| live.known);
-        let switch = live.and_then(|live| {
-            live.ports
-                .iter()
-                .find(|at| at.id == port.id && same_kind(&at.kind, &port.kind))
-        });
-        if let Some(switch) = switch.filter(|switch| !switch.reached) {
+        let switch = self.port_live(port);
+        if let Some(switch) = switch.filter(|switch| switch.reached == Some(false)) {
             return Some(Status::new(
                 StatusLabel::Down,
                 t::switch_unreachable(&switch.switch.name),
             ));
         }
+        let link = switch.and_then(|switch| switch.link);
+        if link == Some(false) {
+            let socket = port.kind == PortKind::Socket;
+            return Some(Status::new(
+                StatusLabel::Down,
+                t::no_link(socket).to_string(),
+            ));
+        }
         if let Some(device) = occupant.filter(|device| self.reached(device.id) == Some(false)) {
-            return Some(Status::new(StatusLabel::Down, t::no_link(&device.name)));
+            return Some(Status::new(
+                StatusLabel::Down,
+                t::device_silent(&device.name, link == Some(true)),
+            ));
         }
         if port.far_ends.is_empty() && port.network.is_none() && !port.foreign_network {
             return Some(Status::new(StatusLabel::Off, None));
@@ -230,12 +246,23 @@ impl State<'_> {
         judged.then(|| Status::new(StatusLabel::Ok, None))
     }
 
+    /// What the live state says of `port`: its switch reached, its link.
+    fn port_live(&self, port: &ResidentPort) -> Option<&PortLive> {
+        self.live
+            .filter(|live| live.known)?
+            .ports
+            .iter()
+            .find(|at| at.id == port.id && same_kind(&at.kind, &port.kind))
+    }
+
     /// One of the resident's devices: its own rollout of the newest change it is in, else
-    /// whether it is up; `upstream` is the device its cable leads to.
+    /// whether it is up; `upstream` is the device its cable leads to, `at` the resident's port
+    /// it comes from.
     pub fn device(
         &self,
         device: &ResidentDevice,
         upstream: Option<&ResidentDevice>,
+        at: Option<&ResidentPort>,
     ) -> Option<Status> {
         let change = self.newest(|change| {
             change.devices.iter().any(|d| d.device.id == device.id)
@@ -280,9 +307,14 @@ impl State<'_> {
         match self.reached(device.id)? {
             true => Some(Status::new(StatusLabel::Ok, None)),
             false => {
-                let text = match upstream.filter(|up| self.reached(up.id) == Some(false)) {
-                    Some(up) => t::unreachable_behind(&up.name),
-                    None => t::UNREACHABLE.to_string(),
+                let no_link = at
+                    .filter(|port| self.port_live(port).and_then(|live| live.link) == Some(false));
+                let text = match (no_link, upstream) {
+                    (Some(port), _) => t::no_link_at(&place(port)),
+                    (None, Some(up)) if self.reached(up.id) == Some(false) => {
+                        t::unreachable_behind(&up.name)
+                    }
+                    _ => t::UNREACHABLE.to_string(),
                 };
                 Some(Status::new(StatusLabel::Down, text))
             }
@@ -340,9 +372,40 @@ impl State<'_> {
             .map(|device| device.reached)
     }
 
-    /// The summary on top: each change not through yet, each device not reached, each WLAN on
-    /// part of its access points; „Alles ok“ where nothing, once the live state is known.
-    pub fn summary(&self, networks: &[ResidentNetwork]) -> Html {
+    /// The summary on top: its issues, the worst first; „Alles ok“ where none, once the live
+    /// state is known.
+    pub fn summary(&self, networks: &[ResidentNetwork], ports: &[ResidentPort]) -> Html {
+        let mut issues = self.issues(networks, ports);
+        if issues.is_empty() {
+            return match self.live.filter(|live| live.known) {
+                Some(_) => html! {
+                    <Alert inline=true r#type={AlertType::Success} title={t::ALL_OK}>
+                        <p>{t::ALL_OK_HINT}</p>
+                    </Alert>
+                },
+                None => Html::default(),
+            };
+        }
+        // the worst first
+        let rank = |kind: &AlertType| match kind {
+            AlertType::Danger => 0,
+            AlertType::Warning => 1,
+            _ => 2,
+        };
+        issues.sort_by_key(|issue| rank(&issue.kind));
+        let kind = issues[0].kind;
+        html! {
+            <Alert inline=true r#type={kind} title={t::NOT_ALL_OK}>
+                <ul>
+                    { for issues.into_iter().map(|issue| html!(<li>{issue.text}</li>)) }
+                </ul>
+            </Alert>
+        }
+    }
+
+    /// The lines of the summary: each change not through yet, each device not reached, each
+    /// port without link where NetBox has a cable, each WLAN on part of its access points.
+    fn issues(&self, networks: &[ResidentNetwork], ports: &[ResidentPort]) -> Vec<Issue> {
         let mut issues = Vec::new();
         for change in self.changes {
             let Some(status) = change_rollout(change) else {
@@ -369,6 +432,15 @@ impl State<'_> {
                 text: t::summary_unreachable(&device.device.name),
             });
         }
+        for port in ports
+            .iter()
+            .filter(|port| self.port_live(port).and_then(|live| live.link) == Some(false))
+        {
+            issues.push(Issue {
+                kind: AlertType::Warning,
+                text: t::summary_no_link(&place(port)),
+            });
+        }
         for wlan in networks.iter().flat_map(|network| &network.wlans) {
             let Some(at) = live
                 .iter()
@@ -383,31 +455,7 @@ impl State<'_> {
                 text: t::summary_wlan(&wlan.ssid, of.saturating_sub(at.unreached.len()), of),
             });
         }
-        if issues.is_empty() {
-            return match live {
-                Some(_) => html! {
-                    <Alert inline=true r#type={AlertType::Success} title={t::ALL_OK}>
-                        <p>{t::ALL_OK_HINT}</p>
-                    </Alert>
-                },
-                None => Html::default(),
-            };
-        }
-        // the worst first
-        let rank = |kind: &AlertType| match kind {
-            AlertType::Danger => 0,
-            AlertType::Warning => 1,
-            _ => 2,
-        };
-        issues.sort_by_key(|issue| rank(&issue.kind));
-        let kind = issues[0].kind;
-        html! {
-            <Alert inline=true r#type={kind} title={t::NOT_ALL_OK}>
-                <ul>
-                    { for issues.into_iter().map(|issue| html!(<li>{issue.text}</li>)) }
-                </ul>
-            </Alert>
-        }
+        issues
     }
 }
 

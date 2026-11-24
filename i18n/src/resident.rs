@@ -447,9 +447,25 @@ pub fn switch_unreachable(switch: &str) -> String {
     format!("Nicht erreichbar: {switch} antwortet nicht.")
 }
 
-/// a port whose own device the routers don't reach
-pub fn no_link(device: &str) -> String {
-    format!("Kein Link: {device} antwortet nicht.")
+/// a port whose own device the routers don't reach; `link`: the switch port has one
+pub fn device_silent(device: &str, link: bool) -> String {
+    match link {
+        true => format!("Das Kabel hat Link, aber {device} antwortet nicht."),
+        false => format!("{device} antwortet nicht."),
+    }
+}
+
+/// a port with a cable in NetBox whose switch port has no link; `socket`: a socket's
+pub fn no_link(socket: bool) -> &'static str {
+    match socket {
+        true => "Kein Link. Steckt das Kabel an der Dose und am Gerät?",
+        false => "Kein Link. Steckt das Kabel an beiden Enden?",
+    }
+}
+
+/// a device whose port has no link
+pub fn no_link_at(port: &str) -> String {
+    format!("Nicht erreichbar: {port} hat keinen Link.")
 }
 
 /// a WLAN on some of its access points only
@@ -471,6 +487,10 @@ pub fn summary_change(head: &str, stands: &str) -> String {
 /// the summary on top: a device the routers don't reach
 pub fn summary_unreachable(device: &str) -> String {
     format!("{device} ist nicht erreichbar.")
+}
+/// the summary on top: a port with a cable in NetBox and no link
+pub fn summary_no_link(port: &str) -> String {
+    format!("{port} hat keinen Link: steckt das Kabel?")
 }
 /// the summary on top: a WLAN on some access points only
 pub fn summary_wlan(ssid: &str, on: usize, of: usize) -> String {

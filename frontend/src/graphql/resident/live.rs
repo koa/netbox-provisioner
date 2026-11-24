@@ -187,7 +187,8 @@ pub struct PortLive {
     pub kind: PortKind,
     pub id: i32,
     pub switch: Named,
-    pub reached: bool,
+    pub reached: Option<bool>,
+    pub link: Option<bool>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

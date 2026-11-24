@@ -17,7 +17,9 @@
 //! devices, the switches of its ports and sockets, the access points of its WLANs) the OSPF
 //! routers reach,
 //! from one router's LSDB as the network map reads it; a device without OSPF of its own isn't
-//! judged.
+//! judged. And where NetBox has a cable at one of its ports (a socket: plugged into its front),
+//! whether the switch port has a link (`/interface` `running`), each RouterOS switch the routers
+//! don't miss read once, all at once.
 //!
 //! The port a device's cable is in (its Anschluss), where it isn't the one of NetBox: the
 //! router at the other end of NetBox's cable sees the device's port by name in its neighbors
@@ -141,12 +143,34 @@ pub struct DeviceLive {
     reached: bool,
 }
 
+/// One of the resident's ports, by its switch (a socket's: the one its rear port leads to).
 #[derive(SimpleObject, Debug, Clone)]
 pub struct PortLive {
     kind: PortKind,
     id: u32,
     switch: Named,
-    reached: bool,
+    /// whether the routers reach the switch; none where it has no OSPF of its own
+    reached: Option<bool>,
+    /// where NetBox has a cable at it (a socket: plugged into its front), whether the switch
+    /// port has a link; none where its switch isn't read (no RouterOS, not reached, not
+    /// answering)
+    link: Option<bool>,
+}
+
+/// A port of the resident by its switch port, and whether NetBox has a cable at it.
+struct PortRow {
+    kind: PortKind,
+    id: u32,
+    switch_port: Option<InterfaceAccess>,
+    cabled: bool,
+}
+
+/// A port of the resident at a RouterOS switch with a cable in NetBox: its link tells whether
+/// the cable is plugged.
+struct Cabled {
+    kind: PortKind,
+    id: u32,
+    switch_port: InterfaceAccess,
 }
 
 #[derive(SimpleObject, Debug, Clone)]
@@ -432,23 +456,62 @@ impl QueryLive {
                 })
             })
             .collect();
-        let port = |kind: PortKind, id: u32, switch_port: Option<InterfaceAccess>| {
-            let switch = switch_port?.device()?;
-            Some(PortLive {
-                kind,
-                id,
-                reached: reached(&switch)?,
-                switch: named(&switch),
-            })
-        };
-        let ports = owned
+        // every port by its switch port, and whether NetBox has a cable at it
+        let interfaces = owned
             .ports
             .iter()
-            .filter_map(|id| port(PortKind::Interface, id.0, topology.get_interface_by_id(*id)))
-            .chain(owned.sockets.iter().filter_map(|id| {
-                let socket = FrontPortAccess::create(topology.clone(), *id);
-                port(PortKind::Socket, id.0, socket.interface_behind())
-            }))
+            .filter_map(|id| topology.get_interface_by_id(*id))
+            .map(|port| {
+                let cabled = port.cable().is_some();
+                PortRow {
+                    kind: PortKind::Interface,
+                    id: port.id().0,
+                    switch_port: Some(port),
+                    cabled,
+                }
+            });
+        let sockets = owned.sockets.iter().map(|id| {
+            let socket = FrontPortAccess::create(topology.clone(), *id);
+            PortRow {
+                kind: PortKind::Socket,
+                id: id.0,
+                switch_port: socket.interface_behind(),
+                cabled: !socket.plugged_in().is_empty(),
+            }
+        });
+        let rows = interfaces.chain(sockets).collect::<Vec<_>>();
+        // the cabled ones at switches that may answer, each switch read once, all at once
+        let cabled = rows
+            .iter()
+            .filter(|row| row.cabled)
+            .filter_map(|row| {
+                let switch_port = row.switch_port.clone()?;
+                let switch = switch_port.device()?;
+                (switch.has_routeros() && reached(&switch) != Some(false)).then_some(Cabled {
+                    kind: row.kind,
+                    id: row.id,
+                    switch_port,
+                })
+            })
+            .collect::<Vec<_>>();
+        let links = port_links(&cabled).await;
+        let ports = rows
+            .into_iter()
+            .filter_map(|row| {
+                let switch = row.switch_port?.device()?;
+                let link = links
+                    .iter()
+                    .find(|link| link.kind == row.kind && link.id == row.id)
+                    .and_then(|link| link.up);
+                let reached = reached(&switch);
+                (reached.is_some() || link.is_some()).then(|| PortLive {
+                    kind: row.kind,
+                    id: row.id,
+                    switch: named(&switch),
+                    reached,
+                    link,
+                })
+            })
             .collect();
         let wlans = owned
             .vlans
@@ -635,6 +698,60 @@ fn watched_ports(topology: &Arc<Topology>, owned: &Owned) -> Vec<Watched> {
         at(PortKind::Socket, id.0, socket.interface_behind()?)
     });
     interfaces.chain(sockets).collect()
+}
+
+/// The link of a cabled port; `up` none where its switch didn't answer.
+struct CabledLink {
+    kind: PortKind,
+    id: u32,
+    up: Option<bool>,
+}
+
+/// The links of `cabled`: each switch read once, all of them at once.
+async fn port_links(cabled: &[Cabled]) -> Vec<CabledLink> {
+    let mut switches = BTreeMap::<DeviceId, DeviceAccess>::new();
+    for port in cabled {
+        if let Some(switch) = port.switch_port.device() {
+            switches.entry(switch.id()).or_insert(switch);
+        }
+    }
+    let read = join_all(switches.values().map(|switch| async move {
+        let links = async {
+            switch
+                .connect(DeviceTarget::default())
+                .await?
+                .ok_or(Error::MissingCredentials)?
+                .port_links(Freshness::MaxAge(MAX_AGE))
+                .await
+        };
+        (switch.id(), links.await.ok())
+    }))
+    .await
+    .into_iter()
+    .collect::<BTreeMap<_, _>>();
+    cabled
+        .iter()
+        .map(|port| {
+            let name = port.switch_port.name();
+            let up = port
+                .switch_port
+                .device()
+                .and_then(|switch| read.get(&switch.id())?.as_ref())
+                .and_then(|links| {
+                    links
+                        .iter()
+                        .find(|link| {
+                            &*link.name == name || link.default_name.as_deref() == Some(name)
+                        })
+                        .map(|link| link.up)
+                });
+            CabledLink {
+                kind: port.kind,
+                id: port.id,
+                up,
+            }
+        })
+        .collect()
 }
 
 /// The devices learned at `port` (by its name or default name) among `hosts`, by their lease.

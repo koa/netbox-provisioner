@@ -101,7 +101,8 @@ fn a_socket_shows_its_rollout_then_its_live_state() {
             kind: PortKind::Socket,
             id: 2,
             switch: named(10, "lab-crs125"),
-            reached: true,
+            reached: Some(true),
+            link: None,
         }],
         Vec::new(),
     );
@@ -133,7 +134,7 @@ fn a_socket_shows_its_rollout_then_its_live_state() {
     assert_eq!(label(state.port(&port, None)), Some(StatusLabel::Ok));
 }
 
-/// A port whose own device the routers don't reach has no link; a free one without network
+/// A port whose own device the routers don't reach says so; a free one without network
 /// is off; one with a network has no label where nothing behind it is judged.
 #[test]
 fn a_port_is_down_with_its_device() {
@@ -161,10 +162,7 @@ fn a_port_is_down_with_its_device() {
     };
     let status = state.port(&port, Some(&wap)).expect("a label");
     assert_eq!(status.label, StatusLabel::Down);
-    assert_eq!(
-        status.text.as_deref(),
-        Some("Kein Link: lab-wap antwortet nicht.")
-    );
+    assert_eq!(status.text.as_deref(), Some("lab-wap antwortet nicht."));
     let free = socket(3, None, Vec::new());
     assert_eq!(label(state.port(&free, None)), Some(StatusLabel::Off));
     // its switch without OSPF of its own: not judged, no label
@@ -197,7 +195,7 @@ fn a_device_shows_its_own_rollout_and_what_it_hangs_at() {
         changes: &changes,
         live: None,
     };
-    let status = state.device(&wap, None).expect("a label");
+    let status = state.device(&wap, None, None).expect("a label");
     assert_eq!(status.label, StatusLabel::Waiting);
     assert_eq!(
         status.text.as_deref(),
@@ -222,12 +220,94 @@ fn a_device_shows_its_own_rollout_and_what_it_hangs_at() {
         changes: &[],
         live: Some(&down),
     };
-    let status = state.device(&wap, Some(&switch)).expect("a label");
+    let status = state.device(&wap, Some(&switch), None).expect("a label");
     assert_eq!(status.label, StatusLabel::Down);
     assert_eq!(
         status.text.as_deref(),
         Some("Nicht erreichbar, weil switch-flur nicht erreichbar ist.")
     );
+}
+
+/// A cabled port without link is down, and so says its device and the summary; with link
+/// and its device silent, the port says the cable is fine.
+#[test]
+fn a_cabled_port_without_link() {
+    let wap = device(7, "lab-wap");
+    let port = socket(
+        2,
+        None,
+        vec![FarEnd {
+            device: named(7, "lab-wap"),
+            port: "ether1".into(),
+            own_device: true,
+        }],
+    );
+    let state_of = |link| {
+        live(
+            vec![DeviceLive {
+                device: named(7, "lab-wap"),
+                reached: false,
+            }],
+            vec![PortLive {
+                kind: PortKind::Socket,
+                id: 2,
+                switch: named(10, "lab-crs125"),
+                reached: Some(true),
+                link: Some(link),
+            }],
+            Vec::new(),
+        )
+    };
+    let unplugged = state_of(false);
+    let state = State {
+        changes: &[],
+        live: Some(&unplugged),
+    };
+    let status = state.port(&port, Some(&wap)).expect("a label");
+    assert_eq!(status.label, StatusLabel::Down);
+    assert_eq!(
+        status.text.as_deref(),
+        Some("Kein Link. Steckt das Kabel an der Dose und am Gerät?")
+    );
+    let status = state.device(&wap, None, Some(&port)).expect("a label");
+    assert_eq!(
+        status.text.as_deref(),
+        Some("Nicht erreichbar: Wohnzimmer hat keinen Link.")
+    );
+    let issues = state
+        .issues(&[], std::slice::from_ref(&port))
+        .into_iter()
+        .map(|issue| issue.text)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        issues,
+        [
+            "lab-wap ist nicht erreichbar.",
+            "Wohnzimmer hat keinen Link: steckt das Kabel?"
+        ]
+    );
+    let plugged = state_of(true);
+    let state = State {
+        changes: &[],
+        live: Some(&plugged),
+    };
+    assert_eq!(
+        state.port(&port, Some(&wap)).and_then(|status| status.text),
+        Some("Das Kabel hat Link, aber lab-wap antwortet nicht.".to_string())
+    );
+}
+
+/// A port in a text is the socket by its name, another port by itself and its switch: its
+/// label names the device at it.
+#[test]
+fn a_port_in_a_text() {
+    let mut port = socket(13, None, Vec::new());
+    assert_eq!(super::place(&port), "Wohnzimmer");
+    port.kind = PortKind::Interface;
+    port.name = "ether3".into();
+    port.label = Some("lab-wap".into());
+    port.device = named(11, "lab-np2");
+    assert_eq!(super::place(&port), "Port ether3 an lab-np2");
 }
 
 /// A WLAN on part of its access points is a problem, on none down; switched off, off.

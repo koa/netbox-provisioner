@@ -254,6 +254,16 @@ pub struct BridgeHost {
     pub default_name: Option<Box<str>>,
 }
 
+/// An Ethernet port of the device, enabled, and whether it has a link (`running`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PortLink {
+    /// the port's name
+    pub name: Box<str>,
+    /// the port's default name, where it has one (`ether3`)
+    pub default_name: Option<Box<str>>,
+    pub up: bool,
+}
+
 impl AccessibleDevice {
     /// The device's [`DeviceMetrics`], as fresh as `freshness` asks (a scrape: begun since it).
     pub async fn metrics(&self, freshness: Freshness) -> Result<DeviceMetrics, Error> {
@@ -274,6 +284,11 @@ impl AccessibleDevice {
         let interfaces = collect_resource::<InterfaceState>(&client).await?;
         let hosts = collect_resource::<InterfaceBridgeHostState>(&client).await?;
         Ok(learned(&interfaces, hosts))
+    }
+    /// Whether its enabled Ethernet ports have a link.
+    pub async fn port_links(&self, freshness: Freshness) -> Result<Box<[PortLink]>, Error> {
+        let client = self.reader().at(freshness);
+        Ok(links(&collect_resource::<InterfaceState>(&client).await?))
     }
     /// The WLAN clients the device's CAPsMANs and its own radios have registered.
     pub async fn wlan_clients(&self, freshness: Freshness) -> Result<Box<[WlanClient]>, Error> {
@@ -731,6 +746,24 @@ fn learned(
                 default_name: default_names.get(&port).map(|name| name.as_str().into()),
                 port: port.into(),
             })
+        })
+        .collect()
+}
+
+/// The enabled Ethernet ports among `interfaces`, each with whether it is running: a disabled
+/// one has no link by choice, nothing to judge.
+fn links(interfaces: &[InterfaceState]) -> Box<[PortLink]> {
+    interfaces
+        .iter()
+        .filter(|interface| interface._type.0.as_ref() == b"ether")
+        .filter(|interface| interface.disabled != Some(true))
+        .map(|interface| PortLink {
+            name: interface.name.to_string().into(),
+            default_name: interface
+                .default_name
+                .as_ref()
+                .map(|name| name.to_string().into()),
+            up: interface.running,
         })
         .collect()
 }
