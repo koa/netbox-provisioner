@@ -26,7 +26,7 @@ pub struct Change {
     /// the `NetboxWrite` or `NetboxUndo` job that wrote it
     pub job: u32,
     pub at: SystemTime,
-    /// who wrote it, as the job names them („Hans Meier for Familie Meier“)
+    /// who wrote it (`user_label`, „Hans Meier“; the job adds whom for)
     pub by: Box<str>,
     /// the resident (NetBox owner) it was written for; `None` for an admin's helper
     pub owner: Option<u32>,

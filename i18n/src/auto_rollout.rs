@@ -200,6 +200,9 @@ pub fn rollout_state(state: RolloutState) -> &'static str {
 }
 
 /// A change and who saved it, for an admin.
-pub fn change_head(ago: &str, by: &str) -> String {
-    format!("{ago} von {by}")
+pub fn change_head(ago: &str, by: &str, for_resident: Option<&str>) -> String {
+    match for_resident {
+        Some(resident) => format!("{ago} von {by} für {resident}"),
+        None => format!("{ago} von {by}"),
+    }
 }

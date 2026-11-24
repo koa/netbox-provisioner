@@ -51,6 +51,7 @@ pub struct SiteAutoRollout {
 pub struct ChangeState {
     pub id: i32,
     pub by: String,
+    pub for_resident: Option<String>,
     pub age: i32,
     pub devices: Vec<ChangeDevice>,
 }

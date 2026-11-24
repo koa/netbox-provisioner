@@ -157,7 +157,8 @@ sie die Vorbedingung verletzt fand (`unmet`), und die Änderungen mit dem, was s
 
 Was der Provisioner selbst in NetBox schreibt (Speichern eines Anwohners, ein Helfer, ein
 Rückgängig), hält er als Änderung fest (`auto_rollout::changes`, die neuesten 200 in
-`State.changes`): wann, wer („Hans Meier for Familie Meier“), für welchen Anwohner und die
+`State.changes`): wann, wer („Hans Meier“; den Anwohner nennt die Seite der Site dazu, „für
+Familie Meier“), für welchen Anwohner und die
 RouterOS-Geräte, deren Konfiguration sie ändert (beim Anwohner die der Vorschau, beim Helfer
 die seiner Schritte; ein Rückgängig die der Änderung, die es zurücknimmt). Jede Runde notiert
 pro Gerät, wie sie es sah, zum Zeitpunkt ihres Starts (`State.devices`, `changes::observed`):

@@ -35,8 +35,10 @@ pub struct SiteAutoRollout {
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct ChangeState {
     pub id: u32,
-    /// who wrote it, as the job names them
+    /// who wrote it
     pub by: Box<str>,
+    /// the resident it was written for, by name; none for an admin's
+    pub for_resident: Option<Box<str>>,
     /// the job that wrote it
     pub job: u32,
     /// seconds since
@@ -92,6 +94,12 @@ pub fn changes(topology: &Arc<Topology>, wanted: impl Fn(&Change) -> bool) -> Bo
         .map(|change| ChangeState {
             id: change.id,
             by: change.by.clone(),
+            for_resident: change.owner.and_then(|owner| {
+                topology
+                    .owners()
+                    .find(|(id, _)| id.0 == owner)
+                    .map(|(_, data)| data.name.clone())
+            }),
             job: change.job,
             age: age(change.at),
             undoable: !change.undo.is_empty(),

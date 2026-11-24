@@ -752,6 +752,8 @@ impl MutationResident {
             .ok_or(Error::NothingToChange)?
             .device(&topology)?;
         let user = started_by(context, &topology, owner);
+        // the change keeps the user alone, its resident apart
+        let who = crate::graphql::user_label(context);
         let holder = self.topology.clone();
         let current: Arc<Topology> = topology.clone();
         let job = job::start(
@@ -762,7 +764,7 @@ impl MutationResident {
                 let result = helper::write(&helpers, &current, &fingerprint, &user, &log).await;
                 if let (Ok(plan), Some(job)) = (&result, log.job_id()) {
                     let devices = auto_rollout::configured(changed_devices(plan, &configured));
-                    auto_rollout::note_change(job, &user, Some(owner.0), devices, undo);
+                    auto_rollout::note_change(job, &who, Some(owner.0), devices, undo);
                 }
                 log.enter(crate::device_state::NetboxState::Refetching);
                 refetch(&holder).await;

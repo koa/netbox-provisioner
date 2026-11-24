@@ -209,7 +209,8 @@ impl Component for AutoRollout {
                     <dl class="neighbor-results">
                         { for open.iter().map(|change| html! {
                             <>
-                                <dt>{t::change_head(&t::ago(change.age.into()), &change.by)}</dt>
+                                <dt>{t::change_head(&t::ago(change.age.into()), &change.by,
+                                    change.for_resident.as_deref())}</dt>
                                 <dd>{joined(&change.devices, change_device, "; ")}</dd>
                             </>
                         }) }
