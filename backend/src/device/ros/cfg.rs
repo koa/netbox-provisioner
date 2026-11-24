@@ -1010,26 +1010,31 @@ pub(super) fn following_renames(
     current
 }
 
-/// The radios CAPsMAN has bound, by default name: dynamic ones, and bound ones running with
-/// the controller's values, which report its SSID (hAP ax², 7.23.8, router-stall-burri:
-/// RouterOS takes a change then but doesn't use it). A radio flagged bound without SSID
-/// (lab-wap, wAP ac with `wifi-qcom-ac` freshly installed, 7.24.6: „SSID not set“, its
-/// configuration one that doesn't exist) offers itself to no controller, which then sees no
-/// radio of the CAP: it gets NetBox's configuration like any other.
+/// The radios CAPsMAN has bound, by default name: dynamic ones, and bound ones (hAP ax², 7.23.8,
+/// router-stall-burri: RouterOS takes a change then but doesn't use it). A bound one doesn't
+/// report the controller's SSID (lab-wap, 7.24.6: only in its comment), but its configuration
+/// by name (`capsman`, also where no such entry is). One flagged bound whose configuration is
+/// an id without entry (lab-wap, wAP ac with `wifi-qcom-ac` freshly installed: `*2`, inactive,
+/// „SSID not set“) offers itself to no controller, which then sees no radio of the CAP: it
+/// gets NetBox's configuration like any other.
 pub(super) fn bound(
     radios: &[InterfaceWifiState],
     current: &WifiDeviceDataCurrent,
 ) -> Box<[AsciiString]> {
+    // a reference RouterOS can't resolve shows as the entry's id
+    let dangling = |radio: &InterfaceWifiState| {
+        current.wifi.iter().any(|port| {
+            port.default_name == radio.default_name
+                && port
+                    .data
+                    .configuration
+                    .as_ref()
+                    .is_some_and(|configuration| configuration.0.starts_with(b"*"))
+        })
+    };
     radios
         .iter()
-        .filter(|radio| {
-            radio.dynamic == Some(true)
-                || radio.bound
-                    && current.wifi.iter().any(|port| {
-                        port.default_name == radio.default_name
-                            && port.data.configuration_ssid.is_some()
-                    })
-        })
+        .filter(|radio| radio.dynamic == Some(true) || radio.bound && !dangling(radio))
         .filter_map(|radio| radio.default_name.clone())
         .collect()
 }

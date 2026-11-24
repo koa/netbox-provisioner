@@ -771,12 +771,14 @@ async fn controller_without_radios_leaves_the_bridge_to_the_caps() {
     assert_eq!(configuration.datapath_bridge, None);
 }
 
-/// A radio CAPsMAN bound reports the controller's SSID; one only flagged bound, without SSID
-/// (lab-wap, 7.24.6), isn't bound: it gets NetBox's configuration. A dynamic one is always.
+/// A radio CAPsMAN bound names its configuration (lab-wap, 7.24.6: `capsman`, no SSID
+/// reported); one flagged bound whose configuration is an id without entry (lab-wap before,
+/// `*2`) isn't bound: it gets NetBox's configuration. A dynamic one is always.
 #[test]
-fn a_radio_flagged_bound_without_ssid_is_not_bound() {
+fn a_radio_flagged_bound_with_a_dangling_configuration_is_not_bound() {
     let mut wifi = build_wifi_ports(b"C52iG-5HaxD2HaxD").into_vec();
-    wifi[0].data.configuration_ssid = Some("lab-wlan".into());
+    wifi[0].data.configuration = Some("capsman".into());
+    wifi[1].data.configuration = Some("*2".into());
     let current = WifiDeviceDataCurrent {
         provisioning: Box::new([]),
         datapath: Box::new([]),
@@ -792,9 +794,9 @@ fn a_radio_flagged_bound_without_ssid_is_not_bound() {
             ("default-name", name),
             ("dynamic", if dynamic { "true" } else { "false" }),
             ("bound", if bound { "true" } else { "false" }),
-            ("inactive", "true"),
+            ("inactive", "false"),
             ("master", "true"),
-            ("running", "false"),
+            ("running", "true"),
         ])
     };
     let bound = crate::device::ros::cfg::bound(

@@ -1304,18 +1304,19 @@ bound radio is flagged dynamic and RouterOS refuses any change to it, also with 
 (hAP ax², 7.23.8: `can not change dynamic interface`), or only bound (B): RouterOS takes a
 change but reports and uses the controller's values (router-stall-burri, also a hAP ax² on 7.23.8:
 `!datapath.vlan-id` stayed open with the controller's `.vlan-id=1`). So it stays as read
-(`bound_radios`, from `InterfaceWifiState::dynamic`, or `bound` with an SSID reported, `cfg::bound`),
+(`bound_radios`, from `InterfaceWifiState::dynamic`, or `bound` with a configuration by name, `cfg::bound`),
 the configuration and datapath it uses stay, and a
 different configuration than NetBox's is no warning: bound, it runs with the controller's values. What changes is the
 configuration it uses (`datapath=`), a plain entry. A bound radio reports
 `configuration=capsman` also where no such entry is (cAP ax, 7.23.7). It needs no seed in the
 sort (`provided_by_routeros`): a kept reference isn't a dependency (`written_references`), and
 the target adds the entry. As a seed it let unbound radios get `configuration=capsman` before
-the add, which RouterOS refused (router-stall-burri). Flagged bound without an SSID is no
-binding (lab-wap, wAP ac with `wifi-qcom-ac` freshly installed, 7.24.6: „SSID not set“,
-inactive, `configuration=*2` that doesn't exist): such a radio offers itself to no controller,
-whose `/interface/wifi/radio` stays empty though the CAP is `Ok`; it gets NetBox's
-configuration like any other (E34).
+the add, which RouterOS refused (router-stall-burri). A bound radio doesn't report the
+controller's SSID (lab-wap, 7.24.6: only in its comment), so that is no sign. Flagged bound
+with a configuration that is an id without entry is no binding (lab-wap, wAP ac with
+`wifi-qcom-ac` freshly installed: `configuration=*2`, inactive, „SSID not set“): such a
+radio offers itself to no controller, whose `/interface/wifi/radio` stays empty though the
+CAP is `Ok`; it gets NetBox's configuration like any other (E34).
 A legacy radio (`wireless`) CAPsMAN manages refuses any change too (ap-klr-solar, 7.23.7:
 `interface managed by CAPsMAN`), and the API has no flag for it: one the enabled CAP lists
 (`WirelessDeviceDataCurrent::managed_radios`) keeps its name, which L2 uses for it
