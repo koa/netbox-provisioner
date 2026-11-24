@@ -94,7 +94,12 @@ pub(crate) fn build_topology_from(
         builder.add_ip_address(ip_address);
     }
     let services = forwards(data.service_list);
-    builder.build(fetch_time, source, services, management_proxy)
+    let aggregates = data
+        .aggregate_list
+        .iter()
+        .filter_map(|aggregate| aggregate.prefix.parse::<IpNet>().ok())
+        .collect();
+    builder.build(fetch_time, source, services, aggregates, management_proxy)
 }
 
 /// NetBox's locations by id, for a device's path of them.
@@ -801,6 +806,7 @@ impl Builder {
         fetch_time: Instant,
         source: super::Source,
         services: HashMap<ServiceId, ForwardData>,
+        aggregates: Box<[IpNet]>,
         management_proxy: Option<Box<str>>,
     ) -> Topology {
         let mut children_prefix = HashMap::<_, Vec<_>>::new();
@@ -871,6 +877,7 @@ impl Builder {
                 .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
                 .collect(),
             services,
+            aggregates,
             owners: self
                 .owners
                 .into_iter()

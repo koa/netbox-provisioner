@@ -38,6 +38,8 @@ pub struct TopologyBuilder {
     pub owners: MapBuilder<OwnerId, OwnerData>,
     /// the management proxy's device (`Topology::management_proxy`)
     pub management_proxy: Option<Box<str>>,
+    /// `Topology::aggregates`
+    pub aggregates: Box<[ipnet::IpNet]>,
 }
 
 #[derive(Clone)]
@@ -273,6 +275,7 @@ impl TopologyBuilder {
                 .map(|(id, ranges)| (id, ranges.into_boxed_slice()))
                 .collect(),
             services: self.forwards.into(),
+            aggregates: self.aggregates,
             owners: self.owners.into(),
             locations: Default::default(),
             findings: Box::default(),

@@ -34,6 +34,14 @@ pub struct FetchTopology {
     pub ip_range_list: Vec<IpRange>,
     /// the ones with tag `forward` open their ports from the internet (`docs/firewall.md`)
     pub service_list: Vec<Service>,
+    /// the own address space: what OSPF may announce outward (`auto_rollout::hold`)
+    pub aggregate_list: Vec<Aggregate>,
+}
+
+#[derive(cynic::QueryFragment, Serialize, Debug, Clone)]
+#[cynic(graphql_type = "AggregateType", rename_all = "None")]
+pub struct Aggregate {
+    pub prefix: String,
 }
 
 #[derive(cynic::QueryFragment, Serialize, Debug, Clone)]

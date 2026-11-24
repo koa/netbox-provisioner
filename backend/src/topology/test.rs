@@ -36,6 +36,11 @@ pub(crate) fn example_response() -> serde_json::Value {
     ))
     .expect("example response");
     let mut raw: serde_json::Value = serde_json::from_str(&raw).expect("example response json");
+    // Exports from before the aggregates were queried lack them: no own address space.
+    if let Some(data) = raw["data"].as_object_mut() {
+        data.entry("aggregate_list")
+            .or_insert_with(|| serde_json::json!([]));
+    }
     // Exports from before VLAN groups were queried with their custom fields lack
     // the field; treat those groups as having none (no VNI, nothing tunneled).
     for group in raw["data"]["vlan_group_list"]

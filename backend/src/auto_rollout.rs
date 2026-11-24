@@ -783,6 +783,7 @@ async fn diff_of(device: DeviceAccess, started: Instant) -> Result<Read, Error> 
             &device,
             generated.apply_warnings(),
             generated.changes_radio(),
+            generated.announces_outward(),
             neighbors.as_deref(),
         ),
     })

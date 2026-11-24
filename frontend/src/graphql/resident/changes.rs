@@ -64,6 +64,7 @@ pub enum HoldReason {
     ApiClientsOutside,
     RadioLink,
     Rewire,
+    Outward,
     #[cynic(fallback)]
     Other(String),
 }

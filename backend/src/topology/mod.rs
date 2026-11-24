@@ -145,6 +145,8 @@ pub struct Topology {
     ip_range_idx: HashMap<IpNet, Box<[IpRangeId]>>,
     /// the NetBox services with tag `forward` (`forwards`)
     services: HashMap<ServiceId, ForwardData>,
+    /// NetBox's aggregates: the own address space
+    aggregates: Box<[IpNet]>,
     /// the NetBox owners of devices, ports and VLANs, the residents (`ownership`)
     owners: HashMap<OwnerId, OwnerData>,
     /// NetBox's locations (rooms, flats, floors) by id
@@ -167,6 +169,10 @@ pub(crate) struct PrefixRef {
 }
 
 impl Topology {
+    /// NetBox's aggregates: the own address space, what OSPF may announce outward.
+    pub fn aggregates(&self) -> &[IpNet] {
+        &self.aggregates
+    }
     /// What it holds differently from `other`, read at another time (or from another
     /// response): none if the same.
     fn changed_parts(&self, other: &Topology) -> Vec<&'static str> {
@@ -190,6 +196,7 @@ impl Topology {
             ip_ranges,
             ip_range_idx,
             services,
+            aggregates,
             owners,
             locations,
             findings,
@@ -221,6 +228,7 @@ impl Topology {
             ("ip_ranges", *ip_ranges == other.ip_ranges),
             ("ip_range_idx", *ip_range_idx == other.ip_range_idx),
             ("services", *services == other.services),
+            ("aggregates", *aggregates == other.aggregates),
             ("owners", *owners == other.owners),
             ("locations", *locations == other.locations),
             ("findings", *findings == other.findings),

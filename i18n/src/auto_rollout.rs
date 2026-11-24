@@ -137,6 +137,7 @@ pub enum HoldReason<'a> {
     ApiClientsOutside,
     RadioLink,
     Rewire,
+    Outward,
     Other(&'a str),
 }
 
@@ -155,6 +156,11 @@ pub fn hold_reason(reason: HoldReason) -> String {
         HoldReason::Rewire => {
             "ein Kabel ist in NetBox an einem anderen Port, als das Gerät es sieht: geht von \
              selbst, sobald es umgesteckt ist"
+                .into()
+        }
+        HoldReason::Outward => {
+            "ändert, was OSPF nach aussen ankündigt (an einem Uplink, die Default-Route oder \
+             eine Adresse ausserhalb der Aggregates von NetBox)"
                 .into()
         }
         HoldReason::Other(other) => other.into(),

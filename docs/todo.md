@@ -47,7 +47,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z55 | Was, wenn ein automatisches Gerät vor dem Rollout nicht erreichbar ist? | es wird übergangen und bekommt die Änderung nachgeholt, ebenso das andere Ende seiner Funkstrecken; nur ein Fehler während der Transaktion nimmt alles zurück (2026-11-17) | C20 |
 | Z56 | Was von Hand auf ein automatisches Gerät kommt und NetBox widerspricht? | geht spätestens nach 30 min zurück (Abweichung mindestens so oft gelesen), der Journal-Eintrag nennt die Änderungen pro Tabelle; Drift wird nicht erkannt (2026-11-17) | C20 |
 | Z57 | Internet vor und nach einem automatischen Rollout? | von jedem Gerät geprüft, IPv4 und IPv6 gleich wichtig; erreicht ein erreichbares Gerät nicht beides, geschieht nichts automatisch; fehlt eines danach, geht alles zurück und der Bereich in den Fehlerzustand (2026-11-17) | C20 |
-| Z58 | Wann rollt die Automatik aus, wann hält sie an? Der Weg des Provisioners lässt sich aus Diff und Topologie nur ungenau vorhersagen | nicht vorhersagen, sondern nach dem Skript prüfen; anhalten beim Umstecken, bei Ankündigungen nach aussen, bei Warnungen des Anwendens und bei Richtfunk; statt einer Mengenbremse eine Vorbedingung (Loopback IPv4 und IPv6, IP-Verbindung zu allen automatischen Geräten, Funkbrücken ohne RouterOS wie Kabel; auf dem Gerät ein Device-Mode mit `scheduler`, ohne den der Fallback fehlt), verletzt setzt die Automatik aus, bis sie wieder erfüllt ist; nach dem Skript antwortet jedes Gerät der automatischen Sites (2026-11-23); offen: freigegebene Bereiche, Wartungsfenster für Richtfunk, was der Anwohner sieht | C20 |
+| Z58 | Wann rollt die Automatik aus, wann hält sie an? Der Weg des Provisioners lässt sich aus Diff und Topologie nur ungenau vorhersagen | nicht vorhersagen, sondern nach dem Skript prüfen; anhalten beim Umstecken, bei Ankündigungen nach aussen, bei Warnungen des Anwendens und bei Richtfunk; statt einer Mengenbremse eine Vorbedingung (Loopback IPv4 und IPv6, IP-Verbindung zu allen automatischen Geräten, Funkbrücken ohne RouterOS wie Kabel; auf dem Gerät ein Device-Mode mit `scheduler`, ohne den der Fallback fehlt), verletzt setzt die Automatik aus, bis sie wieder erfüllt ist; nach dem Skript antwortet jedes Gerät der automatischen Sites (2026-11-23); freigegebene Bereiche sind die Aggregates von NetBox (2026-11-24); offen: Wartungsfenster für Richtfunk, was der Anwohner sieht | C20 |
 
 ## A. Sicherheit
 
@@ -77,7 +77,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Konzept | Aufwand | Status |
 |---|---|---|---|---|
-| C20 | Automatisches Rollout, Rest: der Journal-Eintrag nennt die Änderungen pro Tabelle (Z56); anhalten mit Grund (`HoldReason`), Rest: bei Ankündigungen nach aussen (Z58); Vorschau beim Aufheben des Fehlers | [Automatisches Rollout](concepts/auto-rollout.md) | M–L | Bereich, Runden, Transaktion, Fehlerzustand, Karte, Vorbedingung, Prüfung nach dem Skript, Anhalten bei Warnungen, Richtfunk und Umstecken, selbst anstossen, Stand pro Änderung erledigt |
+| C20 | Automatisches Rollout, Rest: der Journal-Eintrag nennt die Änderungen pro Tabelle (Z56); Vorschau beim Aufheben des Fehlers | [Automatisches Rollout](concepts/auto-rollout.md) | M–L | Bereich, Runden, Transaktion, Fehlerzustand, Karte, Vorbedingung, Prüfung nach dem Skript, Anhalten bei Warnungen, Richtfunk, Umstecken und nach aussen, selbst anstossen, Stand pro Änderung erledigt |
 
 ## E. Erweiterungen umgesetzter Teile
 

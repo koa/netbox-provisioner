@@ -355,6 +355,7 @@ fn hold_reason(reason: &HoldReason) -> String {
         HoldReason::ApiClientsOutside => t::HoldReason::ApiClientsOutside,
         HoldReason::RadioLink => t::HoldReason::RadioLink,
         HoldReason::Rewire => t::HoldReason::Rewire,
+        HoldReason::Outward => t::HoldReason::Outward,
         HoldReason::Other(other) => t::HoldReason::Other(other),
     })
 }

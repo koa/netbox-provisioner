@@ -840,7 +840,11 @@ changed holds all back until released or its diff accepted as baseline
 (`accept`, from `State.holding`), a site seen automatic first with diffs goes into
 `NotInLine`; an automatic device with a `HoldReason`, `auto_rollout::hold`: `PoeCut`,
 `CapOffOutsideWlanGroup`, `ApiClientsOutside` warnings, a radio change on a device with a radio
-link or a cable NetBox has elsewhere than the device sees it, `hold::rewired`, holds all back too until its diff is released, releases being per fingerprint,
+link, a cable NetBox has elsewhere than the device sees it, `hold::rewired`, or a change of
+what OSPF announces outward (`Outward`, `device::ros::outward`: addresses or OSPF settings of a
+port with `internet`/`nat` or an OSPF port whose network no other NetBox RouterOS device has,
+`originate-default`/`redistribute`, or a new address outside NetBox's aggregates,
+`Topology::aggregates`) holds all back too until its diff is released, releases being per fingerprint,
 `State.released_diffs`) and starts one `batch::apply` with `needs_internet` (`Started::Automatic`). Before
 reading, it checks the precondition in NetBox (`auto_rollout::precondition`: both loopbacks on
 `lo` and an OSPF path, `ManagementTree::reached`, to the biggest group of the automatic devices);

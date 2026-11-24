@@ -71,10 +71,12 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   demselben Secret (NetBox signiert mit HMAC-SHA512 im Header `X-Hook-Signature`), und eine
   Event Rule, die ihn bei Erstellen, Ändern und Löschen der Objekte auslöst, die der
   Provisioner liest (Sites, Geräte, Interfaces, Kabel, Front- und Rear-Ports,
-  MAC-Adressen, IP-Adressen, Prefixe, IP-Ranges, VLANs, VLAN-Gruppen, Services, WLANs,
+  MAC-Adressen, IP-Adressen, Prefixe, Aggregates, IP-Ranges, VLANs, VLAN-Gruppen, Services, WLANs,
   WLAN-Gruppen, Wireless Links, Config Contexts, Tenants, Circuit Terminations). NetBox
   schickt Webhooks aus seinem `rqworker`, der laufen muss. Ohne Webhook rollt die Automatik
   nur alle 30 min aus. Der Zustand der Automatik liegt in `state_dir/auto_rollout.json`.
+  Die **Aggregates** in NetBox sind der eigene Adressraum: Eine neue Adresse ausserhalb hält die
+  Automatik an (`Outward`); ohne Aggregates hält jede neue Adresse an.
 - **Zustand:** in `state_dir` nur die weiterführbaren Aufträge und der Zustand der Automatik (Vorgabe `state` neben
   `config.yaml`, mit Sperrdatei gegen eine zweite Instanz;
   [Jobs](jobs.md#weiterführen-nach-einem-neustart)). Alle anderen Jobs leben im Prozess.

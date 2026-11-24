@@ -220,6 +220,7 @@ fn hold_reason(reason: &HoldReason) -> String {
         HoldReason::ApiClientsOutside => rollout::HoldReason::ApiClientsOutside,
         HoldReason::RadioLink => rollout::HoldReason::RadioLink,
         HoldReason::Rewire => rollout::HoldReason::Rewire,
+        HoldReason::Outward => rollout::HoldReason::Outward,
         HoldReason::Other(other) => rollout::HoldReason::Other(other),
     })
 }

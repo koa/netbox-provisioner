@@ -6,7 +6,7 @@ dem Internet vorher und nachher, Zurückstellen nicht erreichbarer Geräte samt 
 Funkpartnern, Anhalten durch manuelle Geräte mit Freigabe, Fehlerzustand pro Site, Zustand in
 `state_dir`, Karte auf der Seite der Site, Metriken, die Vorbedingung (Loopbacks, OSPF-Verbindung,
 Device-Mode mit `scheduler`), die Prüfung der Geräte ausserhalb nach dem Skript, Anhalten mit
-Grund bei Warnungen des Anwendens, Richtfunk und Umstecken. Aufgabe C20 in [todo.md](../todo.md).
+Grund bei Warnungen des Anwendens, Richtfunk, Umstecken und Ankündigungen nach aussen. Aufgabe C20 in [todo.md](../todo.md).
 Voraussetzung für den [Self-Service](self-service.md).
 
 Was noch fehlt:
@@ -67,10 +67,8 @@ erreichbar, und es lässt sich in NetBox wiederherstellen.
 **Anhalten:**
 
 1. **Umstecken:** umgesetzt ([Automatisches Rollout](../auto-rollout.md#runden)).
-2. **Nach aussen:** Der Diff ändert OSPF oder Adressen an einem Interface, dessen Gegenstelle
-   kein RouterOS-Gerät in NetBox ist (Uplink, `internet`, `nat`), `propagate_default_route`,
-   oder kündigt ein Netz ausserhalb der freigegebenen Bereiche an. Das Lab hat einmal eine
-   Default-Route in die Produktion exportiert.
+2. **Nach aussen:** umgesetzt, die freigegebenen Bereiche sind die Aggregates von NetBox
+   ([Automatisches Rollout](../auto-rollout.md#runden)).
 3. **Warnungen des Anwendens:** umgesetzt ([Automatisches Rollout](../auto-rollout.md#runden)).
 4. **Richtfunk:** umgesetzt, vorerst immer (ohne Wartungsfenster).
 

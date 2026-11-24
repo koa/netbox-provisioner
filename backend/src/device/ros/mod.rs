@@ -41,6 +41,7 @@ pub mod l2;
 mod maintenance;
 mod mtu;
 pub mod ospf;
+mod outward;
 mod poe;
 pub mod progress;
 pub(crate) mod radio;

@@ -92,6 +92,8 @@ pub struct DeviceCfg {
     ospf_switch: OspfSwitch,
     /// the segment of each OSPF port, from `generate_from`
     ospf_segments: BTreeMap<AsciiString, Ipv4Net>,
+    /// the ports facing outward (`outward`), from `generate_from`
+    pub(super) outward_ports: BTreeSet<AsciiString>,
     /// the segments whose credentials stay though they aren't the provisioner's, and why
     /// (`OspfAuthKept`, from the decision)
     ospf_warnings: Box<[ApplyWarning]>,
@@ -230,6 +232,7 @@ impl DeviceCfg {
             following_renames(&self.base_target, &self.base_current, &self.radio_renames());
         self.base_target.keep_dhcp_v6_clients(&renamed);
         self.ospf_segments = ospf_segments(&l2);
+        self.outward_ports = super::outward::outward_ports(device, &l2);
         let ospf_now =
             ospf_ports_renamed(&self.base_target, &self.base_current, &self.radio_renames());
         self.base_target
@@ -318,7 +321,7 @@ impl DeviceCfg {
         Ok(mutations.into())
     }
     /// The radios the plan renames (`following_renames`).
-    fn radio_renames(&self) -> Vec<Rename> {
+    pub(super) fn radio_renames(&self) -> Vec<Rename> {
         let wifi = self
             .wifi_target
             .as_ref()
@@ -585,6 +588,9 @@ pub struct GeneratedCfg {
     pub(super) previous_password: bool,
     /// WebFig over HTTPS: `NEEDED` is installed by an apply, also where the script is empty
     pub(super) www_certificate: WwwCertificate,
+    /// it changes what the device announces outward (`outward`)
+    #[graphql(skip)]
+    pub(super) announces_outward: bool,
     /// when the device was read for it
     #[graphql(skip)]
     pub(super) as_of: tokio::time::Instant,
@@ -608,6 +614,9 @@ impl GeneratedCfg {
     }
     /// Whether the script changes a radio (`/interface/wireless…`, `/interface/wifi…`,
     /// `/interface/w60g…`), which may stay off a while after (`apply::RADIO_RESTART`).
+    pub fn announces_outward(&self) -> bool {
+        self.announces_outward
+    }
     pub fn changes_radio(&self) -> bool {
         self.diff.tables.iter().any(|table| {
             ["interface/wireless", "interface/wifi", "interface/w60g"]
@@ -817,6 +826,7 @@ impl DeviceCfg {
             live_warnings: Vec::new(),
             ospf_switch: OspfSwitch::new(),
             ospf_segments: BTreeMap::new(),
+            outward_ports: BTreeSet::new(),
             ospf_warnings: Box::default(),
             www_certificate: WwwCertificate::Off,
         })

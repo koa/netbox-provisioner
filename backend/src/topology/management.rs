@@ -184,7 +184,7 @@ pub fn shared_interfaces(device: &DeviceAccess, other: &DeviceAccess) -> Vec<Int
 }
 
 /// The IPv4 networks of the device's `ospf` interfaces (a `/32` on `lo` is no network).
-fn ospf_networks(device: &DeviceAccess) -> BTreeSet<IpNet> {
+pub(crate) fn ospf_networks(device: &DeviceAccess) -> BTreeSet<IpNet> {
     device
         .interfaces()
         .iter()

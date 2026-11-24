@@ -32,14 +32,19 @@ pub enum HoldReason {
     /// a cable in NetBox goes elsewhere than the device sees it: the apply would build the
     /// link where nothing is plugged in yet; it goes once the device sees it there
     Rewire,
+    /// it changes what OSPF announces to a router outside NetBox, a port facing outward, or
+    /// adds an address outside NetBox's aggregates (`device::ros::outward`)
+    Outward,
 }
 
-/// The reasons to hold `device` back, whose planned apply has `warnings` and changes a radio
-/// (`changes_radio`), and whose neighbor check has `neighbors` (`None`: not read).
+/// The reasons to hold `device` back, whose planned apply has `warnings`, changes a radio
+/// (`changes_radio`) or what it announces outward (`outward`), and whose neighbor check has
+/// `neighbors` (`None`: not read).
 pub fn reasons(
     device: &DeviceAccess,
     warnings: &[ApplyWarning],
     changes_radio: bool,
+    outward: bool,
     neighbors: Option<&[NeighborFinding]>,
 ) -> Box<[HoldReason]> {
     let mut reasons = warnings
@@ -55,6 +60,9 @@ pub fn reasons(
         .collect::<Vec<_>>();
     if changes_radio && !batch::wireless_partners(device).is_empty() {
         reasons.push(HoldReason::RadioLink);
+    }
+    if outward {
+        reasons.push(HoldReason::Outward);
     }
     if neighbors.is_some_and(rewired) {
         reasons.push(HoldReason::Rewire);

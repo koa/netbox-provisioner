@@ -101,6 +101,17 @@ Entschieden wird ohne Gerät (`auto_rollout::decide`, getestet in `decide/test.r
     Fallback nähme es zurück. Sieht das Gerät den Nachbarn am neuen Port, fällt der Grund weg,
     und die nächste Runde rollt aus. Ein Nachbar an einem Port, wo NetBox gar kein Kabel hat,
     hält nichts an (ein Link, der in NetBox fehlt).
+  - **Nach aussen** (`Outward`, `device::ros::outward`): OSPF trägt jede Adresse der Area
+    (über `redistribute` auch die verbundenen) zu jedem Router, auch zu einem ausserhalb von
+    NetBox. Nach aussen zeigt ein Port mit `internet` oder `nat` und ein OSPF-Port, dessen
+    IPv4-Netze kein anderes RouterOS-Gerät von NetBox an einem OSPF-Port hat (sein Nachbar ist
+    ausserhalb, wie `ether15` von lab-np2 zu srv-router-berg); ein Port ohne IPv4-Netz zählt
+    nicht. Es hält an, wenn das Skript an einem solchen Port eine Adresse oder die
+    OSPF-Einstellungen ändert (sein Template ohne die Liste der Ports), wenn sich
+    `originate-default` oder `redistribute` einer OSPF-Instanz ändert oder eine Instanz kommt
+    oder geht, oder wenn eine Adresse dazukommt, die in keinem Aggregate von NetBox liegt (dem
+    eigenen Adressraum; ohne Aggregates jede). Verglichen wird das typisierte Soll mit dem
+    Gerät, mit den Namen, die das Soll den Ports gibt.
 
   Die Karte zeigt jedes mit seinen Gründen und „Freigeben und mit ausrollen“ (kein „Als Stand
   übernehmen“: ein automatisches Gerät soll wie in NetBox sein).
@@ -201,3 +212,11 @@ nächste Runde weiter, ohne lab-np2 anzuwenden.
 - **Umstecken:** Das Kabel von lab-crs125 zu lab-np2 in NetBox von `ether1` auf `ether2`
   gelegt (dazu ein Label an `ether3` für einen Diff): Die Runde hielt mit „Rewire“ an. Kabel
   zurück, Label weg: nichts zu tun.
+
+## Im Lab geprüft (2026-11-24)
+
+- **Nach aussen:** Im Lab-NetBox die freigegebenen Bereiche als Aggregates (RIR „Lab“,
+  `192.168.0.0/16`, `2a02:16a:fe00:8000::/50`). Ein neues `ether4` mit Label an lab-hex ging
+  automatisch hinaus. Mit dem Aggregate vorübergehend auf `192.168.0.0/17` hielt
+  `192.168.200.1/24` an diesem Port die Runde an („Outward“); mit `/16` zurück ging dieselbe
+  Adresse automatisch hinaus. Adresse und Port entfernt, ebenfalls automatisch.

@@ -425,6 +425,7 @@ pub(crate) async fn generate(
         crate::device::site_diff::add_change(&mut tables, "certificate");
     }
     let warnings = device_cfg.warnings(reader).await;
+    let announces_outward = device_cfg.announces_outward(device.topology().aggregates());
     Ok(GeneratedCfg {
         diff: super::diff_view::CfgDiff {
             tables: tables.into(),
@@ -435,6 +436,7 @@ pub(crate) async fn generate(
         previous_password,
         www_certificate,
         warnings,
+        announces_outward,
         as_of: reader.as_of(),
     })
 }
