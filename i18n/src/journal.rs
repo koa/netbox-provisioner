@@ -64,6 +64,11 @@ pub fn together(devices: &[String]) -> String {
     format!("Gemeinsam angewendet mit {}", crate::common::list(devices))
 }
 
+/// what the apply changed, a table each (`/ip/address +1 ~2`)
+pub fn tables(tables: &[String]) -> String {
+    format!("Geändert: {}", tables.join(", "))
+}
+
 pub fn update(from: &str, to: &str) -> String {
     format!("RouterOS {from} → {to}")
 }

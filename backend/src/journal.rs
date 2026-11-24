@@ -489,6 +489,26 @@ impl Entry {
         use i18n::journal as t;
         let mut results = Vec::new();
         let mut written = 0;
+        // planned again (`hold_watchdog`): the last plan is what ran
+        let tables = self.events.iter().rev().find_map(|event| match event {
+            Event::ApplyPlanned(planned) if !planned.tables.is_empty() => Some(&planned.tables),
+            _ => None,
+        });
+        if let Some(tables) = tables {
+            results.push(t::tables(
+                &tables
+                    .iter()
+                    .map(|table| {
+                        i18n::diff_view::table(
+                            &table.table,
+                            table.added.into(),
+                            table.changed.into(),
+                            table.removed.into(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            ));
+        }
         for event in &self.events {
             match event {
                 Event::BatchApply(batch) => {
@@ -498,7 +518,10 @@ impl Entry {
                         .filter(|device| **device != self.device)
                         .map(|device| device.to_string())
                         .collect();
-                    results.push(t::together(&others));
+                    // a batch of the device alone (an automatic round with one device)
+                    if !others.is_empty() {
+                        results.push(t::together(&others));
+                    }
                 }
                 Event::ApplyPlanned(planned) if planned.script.trim().is_empty() => {
                     results.push(i18n::job::NOTHING_TO_APPLY.into())

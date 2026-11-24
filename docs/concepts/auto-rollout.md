@@ -6,19 +6,12 @@ dem Internet vorher und nachher, Zurückstellen nicht erreichbarer Geräte samt 
 Funkpartnern, Anhalten durch manuelle Geräte mit Freigabe, Fehlerzustand pro Site, Zustand in
 `state_dir`, Karte auf der Seite der Site, Metriken, die Vorbedingung (Loopbacks, OSPF-Verbindung,
 Device-Mode mit `scheduler`), die Prüfung der Geräte ausserhalb nach dem Skript, Anhalten mit
-Grund bei Warnungen des Anwendens, Richtfunk, Umstecken und Ankündigungen nach aussen. Aufgabe C20 in [todo.md](../todo.md).
+Grund bei Warnungen des Anwendens, Richtfunk, Umstecken und Ankündigungen nach aussen, der
+Journal-Eintrag mit den Änderungen pro Tabelle (was von Hand kam, geht mit der nächsten Runde
+zurück, spätestens nach 30 min; welcher Teil von Hand kam, wird nicht erkannt). Aufgabe C20 in [todo.md](../todo.md).
 Voraussetzung für den [Self-Service](self-service.md).
 
 Was noch fehlt:
-
-## Journal nennt die Änderungen
-
-Was von Hand auf ein automatisches Gerät kam, geht mit der nächsten Runde zurück, spätestens
-nach 30 min. Damit nachzulesen ist, was überschrieben wurde, nennt der
-[Journal-Eintrag](../protocol.md) eines automatischen Anwendens die Änderungen pro Tabelle
-(heute nennt er nur, ob angewendet wurde). Welcher Teil von Hand kam, lässt sich nicht
-verlässlich erkennen (ein früher gescheitertes Anwenden sieht gleich aus), darum wird es nicht
-versucht.
 
 ## Wann automatisch, wann nicht
 

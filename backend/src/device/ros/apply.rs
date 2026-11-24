@@ -58,6 +58,8 @@ use std::{
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
 pub struct ApplyPlanned {
     pub script: Box<str>,
+    /// what it changes, by table (for the journal entry)
+    pub tables: Box<[crate::device::site_diff::TableChanges]>,
 }
 
 /// The device saved a backup it loads after `delay`, unless the provisioner reaches it again
@@ -506,10 +508,12 @@ impl PlannedApply {
     pub(crate) fn hold_watchdog(&mut self, log: &Log) -> Result<(), Error> {
         self.cfg.base_target.watchdog.watch_address =
             self.cfg.base_current.watchdog.watch_address.clone();
-        let script = render_script(&self.cfg.sorted_mutations()?)?;
+        let mutations = self.cfg.sorted_mutations()?;
+        let script = render_script(&mutations)?;
         if script != self.script {
             log.emit(ApplyPlanned {
                 script: script.clone(),
+                tables: crate::device::site_diff::table_changes(&mutations).into(),
             });
             self.script = script;
         }
@@ -932,9 +936,11 @@ impl AccessibleDevice {
         let mutations = cfg.sorted_mutations()?;
         let script = render_script(&mutations)?;
         let restarts_radio = restarts_radio(&mutations);
+        let tables = crate::device::site_diff::table_changes(&mutations).into();
         drop(mutations);
         log.emit(ApplyPlanned {
             script: script.clone(),
+            tables,
         });
         Ok(PlannedApply {
             cfg,

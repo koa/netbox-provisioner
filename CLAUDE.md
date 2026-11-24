@@ -1099,7 +1099,8 @@ helpers'): created at the start (`job::write_journal`, a task per job on the job
 written again at each `Log::enter` and at the end (a `watch` tick, so only the newest state goes
 out when NetBox is slow), tag `netbox-provisioner`, what the provisioner reads back in the custom
 field `provisioner_job` (JSON), the text in German from `i18n::journal`. Who started it comes
-with the start (`journal::Started`: the login's name, or `Resumed`). A failed write never stops
+with the start (`journal::Started`: the login's name, `Resumed` or `Automatic`). An apply's
+entry names its changes per table from the last `ApplyPlanned.tables`. A failed write never stops
 the job (`JournalNotWritten`, once per run of failures); after the end only the newest 20 of the
 provisioner's entries on the device stay. A site's job (`SiteDiff`) writes none. A resumed job writes on in its entry (`SavedJob::journal_entry`), every other entry still running is set to interrupted at the start (`journal::close_interrupted`). The device page's „Verlauf“ (`components::device::history`) reads them back from `provisioner_job` (`DeviceAccess.journal`, typed: `JournalOutcome`, `JournalLeft`) and words them like the journal. Reading `AccessibleDevice.leftovers` compares what is on the device with what the entries say lies there (`journal::observe`, Z31: each job entry's `left` and `touched`, the kinds it armed or cleared): a leftover no entry names, a fallback gone after a reboot (fired) or without one (removed) is an observation entry, itself a snapshot, so the next read writes none. A fired apply fallback brings the marks of its script: each entry names the run of the script its job wrote (`run`, `Log::wrote_script`), and the read passes the progress file along (`progress::contents`) while no apply fallback lies there.
 

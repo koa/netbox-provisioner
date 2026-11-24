@@ -124,6 +124,47 @@ fn a_finished_entry_has_its_results() {
     );
 }
 
+/// An automatic apply names what it changed, by table, as last planned.
+#[test]
+fn an_entry_names_the_changes_by_table() {
+    use crate::device::site_diff::TableChanges;
+    let planned = |tables: Vec<TableChanges>| {
+        Event::ApplyPlanned(apply::ApplyPlanned {
+            script: "/ip address\nadd address=192.168.1.1/24 interface=e02\n".into(),
+            tables: tables.into(),
+        })
+    };
+    let table = |table: &str, added, changed, removed| TableChanges {
+        table: table.into(),
+        added,
+        changed,
+        removed,
+    };
+    let mut done = entry(
+        JobKind::Apply,
+        Outcome::Done,
+        vec![
+            Event::BatchApply(BatchApply {
+                devices: vec!["lab-core".into()].into(),
+            }),
+            planned(vec![table("ip/address", 1, 0, 0)]),
+            planned(vec![
+                table("interface/ethernet", 0, 2, 0),
+                table("ip/address", 1, 0, 1),
+            ]),
+            checked(""),
+        ],
+    );
+    done.started = Started::Automatic;
+    assert_eq!(
+        done.comments(),
+        "**Anwenden** abgeschlossen\n\n\
+         Vom automatischen Rollout gestartet\n\n\
+         Geändert: /interface/ethernet ~2, /ip/address +1 −1\n\n\
+         Angewendet, das Gerät entspricht jetzt NetBox"
+    );
+}
+
 #[test]
 fn a_failed_entry_words_its_error() {
     let mut failed = entry(

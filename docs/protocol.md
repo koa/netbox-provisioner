@@ -17,8 +17,9 @@ einen Eintrag ins Journal des Geräts in NetBox (`extras/journal-entries`, Z29).
 - **Text** (Markdown, ein Absatz pro Zeile): Art und Ausgang („**Anwenden** abgeschlossen“), wer
   den Job gestartet hat (Name oder E-Mail der Anmeldung, „nach einem Neustart weitergeführt“ bei
   einem weitergeführten), der Zustand, in dem er ist oder endete (nicht bei fertig), der Fehler,
-  die wichtigen Ergebnisse (mit welchen Geräten gemeinsam angewendet, nichts anzuwenden,
-  angewendet oder nicht alles, Fallback ausgelöst, RouterOS von → nach, Strom aus und ein, Anzahl
+  die wichtigen Ergebnisse (mit welchen Geräten gemeinsam angewendet, was das Anwenden pro
+  Tabelle ändert („Geändert: /ip/address +1 −1“, aus dem zuletzt geplanten Skript,
+  `ApplyPlanned.tables`), nichts anzuwenden, angewendet oder nicht alles, Fallback ausgelöst, RouterOS von → nach, Strom aus und ein, Anzahl
   geschriebener NetBox-Objekte), was auf dem Gerät bleibt (Fallback des Anwendens oder des Updates,
   Sicherheitsnetz der Watchdogs) und die Dauer. Nicht jedes Event: die Einzelheiten zeigt die
   Job-Ansicht, solange der Provisioner den Job kennt.
