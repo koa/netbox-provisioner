@@ -2,8 +2,8 @@
 
 use super::{
     Capsman, LegacyCapsman, WlanBand, WlanFrequency, WlanStandard, bits_per_second,
-    capsman_radio_rows, ethernet_counters, ethernet_link, interface_counters, standalone_client,
-    wifi_band, wireless_radio,
+    capsman_radio_rows, ethernet_counters, ethernet_link, interface_counters, learned,
+    standalone_client, wifi_band, wireless_radio,
 };
 use crate::device::{access::Row, answer::parsed as parse};
 use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetState};
@@ -480,4 +480,53 @@ fn ethernet_counters_of_each_board() {
     assert_eq!(counters.rx_fcs_errors, None);
     // a port `/interface` doesn't list
     assert!(ethernet_counters(&ethernet_port("ether9", &[]), &interfaces).is_none());
+}
+
+/// A host is at the port the bridge learned it on, with the port's default name; the bridge's
+/// own MAC is no host. The rows as lab-np2 (7.24.6) gives them, a learned one added.
+#[test]
+fn the_hosts_a_bridge_learned() {
+    let interfaces = [
+        parse(&[
+            (".id", "*3"),
+            ("name", "e03-lab-wap"),
+            ("default-name", "ether3"),
+            ("type", "ether"),
+            ("running", "true"),
+        ]),
+        parse(&[
+            (".id", "*10"),
+            ("name", "bridge"),
+            ("type", "bridge"),
+            ("running", "true"),
+        ]),
+    ];
+    let hosts = learned(
+        &interfaces,
+        Box::new([
+            parse(&[
+                (".id", "*2"),
+                ("mac-address", "6A:5B:E3:7D:34:23"),
+                ("vid", "104"),
+                ("interface", "bridge"),
+                ("bridge", "bridge"),
+                ("on-interface", "bridge"),
+                ("dynamic", "true"),
+                ("local", "true"),
+            ]),
+            parse(&[
+                (".id", "*5"),
+                ("mac-address", "02:00:00:00:00:01"),
+                ("vid", "104"),
+                ("interface", "bridge"),
+                ("bridge", "bridge"),
+                ("on-interface", "e03-lab-wap"),
+                ("dynamic", "true"),
+            ]),
+        ]),
+    );
+    assert_eq!(hosts.len(), 1);
+    assert_eq!(&*hosts[0].port, "e03-lab-wap");
+    assert_eq!(hosts[0].default_name.as_deref(), Some("ether3"));
+    assert_eq!(hosts[0].mac_address.to_string(), "02:00:00:00:00:01");
 }

@@ -185,7 +185,19 @@ cable; the plan's devices are the RouterOS ones whose config changes, VXLAN peer
 (`vtep_peers`; an approximation, E33). What hangs in a
 network is read live (`graphql::resident::live`, `networkDevices`: leases of the VLAN's DHCP
 routers, WLAN clients at the group's controller, `AccessibleDevice::leases`/`wlan_clients` of
-`device::metrics`, the devices not answering named), shown by `network_devices`. A device
+`device::metrics`, the devices not answering named), shown by `network_devices`. What is
+behind a port (`portDevices`): the leases of the port's own network whose MAC the switch's
+bridge learned at the switch port (`/interface/bridge/host`, `AccessibleDevice::bridge_hosts`,
+matched by the port's name or default name; a socket by the port its rear port leads to), one
+read per switch and router; shown in the ports tab next to a port without cable, with the MAC
+(„zufällige Adresse“ where locally administered) as tooltip. Each card has one label
+(`components::resident::status`): unsaved, else the rollout of the newest saved change
+touching it (`ChangeState.touched`, from its undo steps), else what is up (`liveState`: the
+LSDB as the network map reads it, `NetworkState::states`, for the own devices, each port's
+switch and each WLAN's access points; a device without OSPF of its own isn't judged and its
+port gets no „Ok“); the view reads changes and live state every 15 s and sums them up on top.
+A change keeps its user alone (`Change.by`); `ChangeState.forResident` names the resident. A
+device
 is linked to the resident's port, socket or another own device's port by
 `ResidentChange.connectDevice` (`helper::connect_device`: what is in the way cleared, the port's
 VLAN off, the socket's cable, then „Verbindung“ and „Loopback“; its Anschluss is

@@ -46,6 +46,20 @@ pub const READ_AGAIN: &str = "Erneut lesen";
 pub const NO_DEVICES: &str = "Keine Geräte gefunden";
 pub const NO_HOSTNAME: &str = "Ohne Namen";
 
+/// the table of the devices behind a port, for screen readers
+pub fn devices_at(port: &str) -> String {
+    format!("Geräte an {port}")
+}
+
+/// the tooltip on a device's address: its MAC, and whether the device made it up (a phone's
+/// private address, changing per network)
+pub fn mac_title(mac: &str, random: bool) -> String {
+    match random {
+        true => format!("MAC {mac} (zufällige Adresse)"),
+        false => format!("MAC {mac}"),
+    }
+}
+
 /// devices in a network: routers or controllers that didn't answer, so their devices are missing
 pub fn devices_unreachable(devices: &[&str]) -> String {
     format!(
@@ -357,3 +371,112 @@ pub fn rollout_state(state: crate::auto_rollout::RolloutState) -> &'static str {
         RolloutState::Manual => "wird von einem Admin angewendet",
     }
 }
+
+/// The one label of an element (port, device, network): unsaved, its rollout, else what is up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusLabel {
+    Ok,
+    Off,
+    Rolling,
+    Waiting,
+    Failed,
+    Down,
+    Limited,
+}
+
+pub fn status_label(label: StatusLabel) -> &'static str {
+    match label {
+        StatusLabel::Ok => "Ok",
+        StatusLabel::Off => "aus",
+        StatusLabel::Rolling => "wird ausgerollt",
+        StatusLabel::Waiting => "wartet",
+        StatusLabel::Failed => "nicht ausgerollt",
+        StatusLabel::Down => "gestört",
+        StatusLabel::Limited => "Problem",
+    }
+}
+
+/// an element whose change some of its devices have
+pub fn rolling_out(done: usize, of: usize) -> String {
+    format!("Wird ausgerollt: {done} von {of} Geräten.")
+}
+
+/// an element whose change failed on `devices`
+pub fn not_rolled_out(devices: &str) -> String {
+    format!(
+        "Auf {devices} nicht ausgerollt; dort gilt noch das Alte. Bleibt als Abweichung, bis es \
+         klappt."
+    )
+}
+
+/// an element whose change waits for `devices`, not reached
+pub fn waiting_for(devices: &str) -> String {
+    format!("Wartet auf {devices} (nicht erreichbar); wird nachgeholt, sobald es wieder da ist.")
+}
+
+/// an element whose change waits for an admin, at `devices`, with why
+pub fn waiting_for_admin(devices: &str, reasons: &str) -> String {
+    match reasons.is_empty() {
+        true => format!("Wartet bei {devices} auf einen Admin."),
+        false => format!("Wartet bei {devices} auf einen Admin: {reasons}."),
+    }
+}
+
+/// an element whose change waits for the rollout's next round (another device holds it back,
+/// or the rollout pauses)
+pub const WAITING_FOR_ROUND: &str = "Wartet auf die nächste Runde des Ausrollens.";
+
+/// a device getting a change now
+pub const DEVICE_ROLLING: &str = "Bekommt gerade eine gespeicherte Änderung.";
+/// a device on which a change failed
+pub const DEVICE_FAILED: &str = "Hat noch den alten Stand; ein Admin schaut es an.";
+/// a device not reached (or its radio partner not), its change waiting
+pub const DEVICE_WAITING: &str = "Nicht erreicht; bekommt die Änderung danach.";
+
+/// a device the routers don't reach
+pub const UNREACHABLE: &str = "Nicht erreichbar. Abgeschaltet, ohne Strom oder Kabel gezogen?";
+
+/// a device the routers don't reach behind another one they don't reach either
+pub fn unreachable_behind(other: &str) -> String {
+    format!("Nicht erreichbar, weil {other} nicht erreichbar ist.")
+}
+
+/// a port whose switch the routers don't reach
+pub fn switch_unreachable(switch: &str) -> String {
+    format!("Nicht erreichbar: {switch} antwortet nicht.")
+}
+
+/// a port whose own device the routers don't reach
+pub fn no_link(device: &str) -> String {
+    format!("Kein Link: {device} antwortet nicht.")
+}
+
+/// a WLAN on some of its access points only
+pub fn wlan_limited(on: usize, of: usize, unreached: &str) -> String {
+    format!("WLAN nur auf {on} von {of} Access Points; {unreached} nicht erreichbar.")
+}
+
+/// a WLAN none of whose access points is reached
+pub const WLAN_DOWN: &str = "Kein Access Point des WLANs ist erreichbar.";
+
+/// the summary on top: nothing wrong
+pub const ALL_OK: &str = "Alles ok";
+/// the summary on top: the state is read again every 15 s
+pub const ALL_OK_HINT: &str = "Wird alle 15 Sekunden neu geprüft.";
+/// the summary on top: a change not through yet, and how it stands
+pub fn summary_change(head: &str, stands: &str) -> String {
+    format!("{head}: {stands}")
+}
+/// the summary on top: a device the routers don't reach
+pub fn summary_unreachable(device: &str) -> String {
+    format!("{device} ist nicht erreichbar.")
+}
+/// the summary on top: a WLAN on some access points only
+pub fn summary_wlan(ssid: &str, on: usize, of: usize) -> String {
+    match on {
+        0 => format!("WLAN „{ssid}“ auf keinem Access Point."),
+        _ => format!("WLAN „{ssid}“ nur auf {on} von {of} Access Points."),
+    }
+}
+/// the summary on top: its title where something isn't ok
+pub const NOT_ALL_OK: &str = "Nicht alles ok";

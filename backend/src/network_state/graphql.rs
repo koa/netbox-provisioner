@@ -50,6 +50,19 @@ pub struct NetworkState {
     rollout: Box<[RolloutNode]>,
 }
 
+impl NetworkState {
+    /// Each device's state on the map, by id; none where no router answered.
+    pub fn states(&self) -> Option<BTreeMap<u32, NodeState>> {
+        self.read_from.as_ref()?;
+        Some(
+            self.nodes
+                .iter()
+                .map(|node| (node.device.id, node.state))
+                .collect(),
+        )
+    }
+}
+
 /// `Query.topology.networkStateDetails`: health, resources and PoE edges of `network_state`'s
 /// devices with OSPF of their own, read from each device directly (not the LSDB) and so slower;
 /// asked separately so `networkState` doesn't wait on it.

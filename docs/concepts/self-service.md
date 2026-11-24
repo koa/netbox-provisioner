@@ -70,33 +70,48 @@ der Design-Canvas (`support.js`), die nicht im Repository liegt. Die Tweaks `rol
 und `rolloutFails` spielen Admin, Störungen und ein gescheitertes Ausrollen durch.
 
 Gebaut sind die Tabs „Dosen und Geräte“ und „Netze“ mit Entwürfen (Badges mit ihrer Zahl an
-den Tabs), Vorschau, Anschluss und Raum.
-Offen nach dem Prototyp:
+den Tabs), Vorschau, Anschluss und Raum, und rechts neben einem Port ohne Kabel das Netz mit
+den Geräten, die dahinter eine Adresse bezogen haben (Name aus dem Lease, leer ohne; MAC als
+Tooltip auf der IP, siehe [Leases](#leases)). Gebaut ist auch der Tab „Änderungen“: jede
+gespeicherte Änderung mit Fortschritt und dem Stand pro Gerät (aus dem automatischen Rollout,
+C20), und **Zurücknehmen** einer Änderung, das aus dem Stand davor neue Entwürfe macht (auch
+SSID und Passwort), die wie jede Änderung über die Vorschau gespeichert werden. Ein
+gescheitertes Ausrollen wird nicht zurückgenommen: Es bleibt als Abweichung sichtbar, bis das
+Gerät die Konfiguration hat.
+**Zustand, wahrheitsgemäss** (gebaut, `components::resident::status`): Jedes Element (Port,
+Gerät, Netz) hat genau ein Label: „ungespeichert“, sonst der Stand des Ausrollens, sonst der
+Live-Zustand. Ein Text steht nur, wenn etwas nicht Ok ist.
 
-- **Dosen und Geräte:** rechts neben einem Port das Netz mit den Geräten, die dahinter eine
-  Adresse bezogen haben (Name aus dem Lease, leer ohne; MAC als Tooltip auf der IP), siehe
-  [Leases](#leases).
-- **Änderungen:** ein dritter Tab, jede gespeicherte Änderung mit Fortschritt und dem Stand pro
-  Gerät (aus dem automatischen Rollout, C20).
-- **Zurücknehmen** einer ausgerollten Änderung macht aus dem Stand davor neue Entwürfe (auch
-  SSID und Passwort), die wie jede Änderung über die Vorschau gespeichert werden. Ein
-  gescheitertes Ausrollen wird nicht zurückgenommen: Es bleibt als Abweichung sichtbar, bis das
-  Gerät die Konfiguration hat.
-- **Zustand, wahrheitsgemäss:** Jedes Element (Port, Gerät, Netz) hat genau ein Label:
-  „ungespeichert“ (gebaut), sonst der Stand des Ausrollens („wird ausgerollt“, „wartet“ bei
-  einem nicht erreichbaren Gerät, „nicht ausgerollt“), sonst der Live-Zustand („Ok“, „aus“,
-  „gestört“, „Problem“, etwa ein WLAN nur auf 4 von 5 APs). Ein Text steht nur, wenn etwas nicht
-  Ok ist. Ein Gerät zeigt seinen eigenen Stand auch, wenn die Änderung ein Netz betraf. Oben
-  fasst eine Meldung zusammen („Alles ok“ oder was nicht stimmt). Live-Zustände kommen aus den
-  Live-Reads des Provisioners und pflanzen sich fort (Gerät aus → sein Anschluss gestört, die
-  Geräte dahinter nicht erreichbar, das WLAN „Problem“, seine Clients weg).
+- **Ausrollen:** aus der neuesten gespeicherten Änderung, die das Element betraf (`touched` der
+  Änderung, aus dem, was sie zurücknimmt; ein Gerät auch, wenn es eines ihrer Geräte ist, dann
+  mit seinem eigenen Stand). „wird ausgerollt“, solange ein Gerät aussteht, sonst „nicht
+  ausgerollt“, wo eines scheiterte, sonst „wartet“: zuerst auf einen Admin (ein manuelles
+  Gerät, ein Halt mit Grund), dann auf ein nicht erreichtes Gerät, sonst auf die nächste Runde.
+- **Live** (`liveState`, eine Lesung der LSDB wie die Netzkarte): ob die OSPF-Router die
+  eigenen Geräte, den Switch jedes Ports (bei einer Dose den hinter ihrem Rear-Port) und die
+  Access Points jedes WLANs erreichen. Ein Port ist „gestört“, wenn sein Switch oder sein
+  eigenes Gerät nicht erreicht ist, „aus“ frei und ohne Netz, „Ok“ nur, wenn etwas dahinter
+  beurteilt ist; ein Switch ohne eigenes OSPF (lab-keller-switch) gibt kein Label. Ein Gerät
+  hinter einem nicht erreichten eigenen Gerät sagt das. Ein WLAN ist „Problem“ auf einem Teil
+  seiner Access Points, „gestört“ auf keinem, „aus“ ausgeschaltet.
+- **Oben** fasst eine Meldung zusammen: jede Änderung, die noch nicht durch ist, mit dem Text
+  ihres Elements, jedes nicht erreichte Gerät, jedes WLAN auf einem Teil seiner Access Points;
+  sonst „Alles ok“. Änderungen und Live-Zustand liest die Ansicht alle 15 s neu.
+
+Nicht gebaut: der Link eines Ports selbst (Kabel gezogen, `ethernet/monitor`), die Clients
+eines WLANs, die mit einem Access Point verschwinden, und ein falsch gestecktes Kabel als
+Meldung oben (der Anschluss zeigt es am Gerät, `seenUplinks`).
 
 ## Leases
 
-Gebaut ist das Lesen der Leases eines Netzes (`networkDevices`). Offen: hinter welchem Port ein
-Lease steckt (Geräte pro Dose im UI). Das sagt die Host-Tabelle der Bridge
-(`/interface/bridge/host`) des Switches oder Geräts: welche MAC an welchem Port gelernt wurde
-(E29). IPv6 hat keine Leases (SLAAC); dafür ginge `/ipv6/neighbor`, als Ergänzung.
+Gebaut ist das Lesen der Leases eines Netzes (`networkDevices`) und, hinter welchem Port ein
+Lease steckt (`portDevices`, E29): Die Host-Tabelle der Bridge (`/interface/bridge/host`) des
+Switches sagt, welche MAC an welchem Port gelernt wurde; eine Dose zählt mit dem Switch-Port,
+zu dem ihr Rear-Port führt. Nur Leases aus dem eigenen Netz des Ports erscheinen, so sieht
+niemand fremde Geräte. Ein Gerät mit fester Adresse (ohne Lease) erscheint nicht. Ein Switch,
+dessen Chip die MACs lernt, ohne dass die Bridge sie zeigt (CRS1xx/2xx ohne Hardware-Offload),
+ist nicht geprüft: lab-crs125 hatte nur sich selbst in der Tabelle, aber auch nichts
+angeschlossen. IPv6 hat keine Leases (SLAAC); dafür ginge `/ipv6/neighbor`, als Ergänzung.
 
 ## Clients
 

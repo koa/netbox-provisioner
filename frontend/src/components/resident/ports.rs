@@ -10,11 +10,12 @@
 use super::{
     card_header,
     drafts::{Drafts, LinkDraft, PortKey, current_link, uplink_id},
+    status::State,
 };
 use crate::{
     components::widgets::popup::Select,
     graphql::resident::{
-        live::SeenUplink,
+        live::{NetworkDevice, PortHosts, SeenUplink},
         residents::{
             FarEnd, Named, PortKind, Resident, ResidentDevice, ResidentLocation, ResidentPort,
         },
@@ -55,6 +56,10 @@ pub struct PortsTab<'a> {
     pub drafts: &'a Drafts,
     /// where the routers see the resident's devices plugged in, where it isn't their Anschluss
     pub seen: &'a [SeenUplink],
+    /// the devices behind its ports, as the switches see them
+    pub behind: &'a [PortHosts],
+    /// its saved changes and what is up, for the labels
+    pub state: State<'a>,
     pub edit: &'a Callback<PortEdit>,
 }
 
@@ -275,6 +280,15 @@ impl PortsTab<'_> {
             .find(|port| port.on_own_device && port.device.id == device.id && &port.name == uplink)
     }
 
+    /// The resident's device whose port the cable of `device` comes from.
+    fn upstream(&self, device: &ResidentDevice) -> Option<&ResidentDevice> {
+        let port = self.at(device.id).filter(|port| port.on_own_device)?;
+        self.resident
+            .devices
+            .iter()
+            .find(|own| own.id == port.device.id)
+    }
+
     /// The resident's device at the far end `end`.
     fn own(&self, end: &FarEnd) -> Option<&ResidentDevice> {
         let own = end.own_device.then_some(&self.resident.devices)?;
@@ -360,9 +374,15 @@ impl PortsTab<'_> {
         let changed = self.drafts.port_vlans.contains_key(&key);
         let reset = self.edit.reform(move |_| PortEdit::ResetPort(key));
         let heading = html!(<h4 class="pf-v6-c-card__title-text">{title(port)}</h4>);
+        let occupant = port.far_ends.iter().find_map(|end| self.own(end));
+        let status = self.state.port(port, occupant);
+        let text = status
+            .as_ref()
+            .filter(|_| !changed)
+            .and_then(|status| status.text());
         html! {
             <div class="pf-v6-c-card pf-m-compact">
-                {card_header(heading, changed, reset)}
+                {card_header(heading, changed, reset, status.as_ref())}
                 <div class="pf-v6-c-card__body resident-edit">
                     <p><small>{sub}</small></p>
                     {network}
@@ -370,6 +390,7 @@ impl PortsTab<'_> {
                         <Form>{vlan}{connect}</Form>
                     }
                     { for remove }
+                    {text}
                 </div>
             </div>
         }
@@ -462,7 +483,12 @@ impl PortsTab<'_> {
                 Vlan::None => "sock-net sock-none",
                 Vlan::Some(_) | Vlan::Foreign => "sock-net",
             };
-            return html!(<div class={class}>{self.network_name(port)}</div>);
+            return html! {
+                <div class={class}>
+                    {self.network_name(port)}
+                    {self.devices_behind(port)}
+                </div>
+            };
         }
         port.far_ends
             .iter()
@@ -470,10 +496,18 @@ impl PortsTab<'_> {
                 Some(device) if self.stands_at(device, port) => self.device_card(device, room),
                 Some(device) => {
                     let path = t::location_path(self.device_room(device).path);
+                    let status = self.state.device(device, self.upstream(device)).map(
+                        |status| html!(<div class="pf-v6-c-card__actions">{status.label()}</div>),
+                    );
                     html! {
                         <div class="pf-v6-c-card pf-m-compact">
-                            <div class="pf-v6-c-card__title">
-                                <h4 class="pf-v6-c-card__title-text">{&device.name}</h4>
+                            <div class="pf-v6-c-card__header">
+                                {status}
+                                <div class="pf-v6-c-card__header-main">
+                                    <div class="pf-v6-c-card__title">
+                                        <h4 class="pf-v6-c-card__title-text">{&device.name}</h4>
+                                    </div>
+                                </div>
                             </div>
                             <div class="pf-v6-c-card__body">{t::see_room(&path)}</div>
                         </div>
@@ -482,6 +516,30 @@ impl PortsTab<'_> {
                 None => far_card(end),
             })
             .collect()
+    }
+
+    /// The devices behind a port without cable in NetBox, in its network as saved; none while
+    /// a draft changes its network.
+    fn devices_behind(&self, port: &ResidentPort) -> Option<Html> {
+        let saved = port.network.as_ref().map(|network| network.id)?;
+        if self.vlan_of(port) != Vlan::Some(saved) {
+            return None;
+        }
+        let devices = &self
+            .behind
+            .iter()
+            .find(|behind| behind.kind == port.kind && behind.port == port.id)?
+            .devices;
+        (!devices.is_empty()).then(|| {
+            html! {
+                <table class="pf-v6-c-table pf-m-compact pf-m-no-border-rows sock-devices"
+                    aria-label={t::devices_at(&title(port))}>
+                    <tbody class="pf-v6-c-table__tbody">
+                        { for devices.iter().map(device_row) }
+                    </tbody>
+                </table>
+            }
+        })
     }
 
     /// The port's network with its draft.
@@ -546,11 +604,17 @@ impl PortsTab<'_> {
         };
         let changed = draft.is_some() || self.drafts.rooms.contains_key(&id);
         let reset = self.edit.reform(move |_| PortEdit::ResetDevice(id));
+        let status = self.state.device(device, self.upstream(device));
+        let text = status
+            .as_ref()
+            .filter(|_| !changed)
+            .and_then(|status| status.text());
         html! {
             <div class="pf-v6-c-card pf-m-compact">
-                {card_header(title, changed, reset)}
+                {card_header(title, changed, reset, status.as_ref())}
                 <div class="pf-v6-c-card__body resident-edit">
                     {self.link_fields(device, draft, current)}
+                    {text}
                 </div>
             </div>
         }
@@ -741,6 +805,7 @@ impl PortsTab<'_> {
 }
 
 /// A port row's network with its draft.
+#[derive(PartialEq)]
 enum Vlan {
     Some(i32),
     /// the operator's
@@ -813,6 +878,23 @@ fn cable_card(cable: &Cable) -> Html {
 }
 
 /// A device at the cable the provisioner doesn't link: another's, or one without RouterOS.
+/// A device behind a port: the name its DHCP client sent (none without), its address with the
+/// MAC as tooltip.
+fn device_row(device: &NetworkDevice) -> Html {
+    let random = u8::from_str_radix(device.mac_address.get(..2).unwrap_or_default(), 16)
+        .is_ok_and(|first| first & 2 != 0);
+    html! {
+        <tr class="pf-v6-c-table__tr" key={device.mac_address.clone()}>
+            <td class="pf-v6-c-table__td">{device.hostname.clone().unwrap_or_default()}</td>
+            <td class="pf-v6-c-table__td">
+                <code title={t::mac_title(&device.mac_address, random)} class="sock-address">
+                    {device.address.clone().unwrap_or_default()}
+                </code>
+            </td>
+        </tr>
+    }
+}
+
 fn far_card(end: &FarEnd) -> Html {
     let own = end
         .own_device

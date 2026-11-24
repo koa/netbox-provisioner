@@ -867,6 +867,12 @@ dl.site-diff > dd > .pf-v6-c-button {
 .sock-none {
     border-style: dashed;
 }
+.sock-devices {
+    margin-top: var(--pf-t--global--spacer--sm);
+}
+.sock-address {
+    cursor: help;
+}
 .resident-networks {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -919,4 +925,11 @@ dl.site-diff > dd > .pf-v6-c-button {
     .sock-text {
         padding: 0;
     }
+}
+.resident-summary:not(:empty) {
+    margin-bottom: var(--pf-t--global--spacer--md);
+}
+.resident-summary ul {
+    margin: 0;
+    padding-left: var(--pf-t--global--spacer--lg);
 }

@@ -1,16 +1,24 @@
 //! Scope: What a resident sees of its network, in tabs: its sockets and devices, its networks;
 //! its drafts, collected over both tabs until they are previewed and saved together. Not
 //! loading it (`pages::residents`, `app`), nor the admins' choice of a resident.
-use crate::graphql::{
-    request_resident,
-    resident::{
-        changes::UndoStep,
-        live::{SeenUplink, SeenUplinksQuery, SeenUplinksVariables},
-        residents::Resident,
+use crate::{
+    error::FrontendError,
+    graphql::{
+        request_resident,
+        resident::{
+            changes::{ChangeState, ChangesQuery, ChangesVariables, UndoStep},
+            live::{
+                LiveState, LiveStateQuery, LiveStateVariables, PortDevicesQuery,
+                PortDevicesVariables, PortHosts, SeenUplink, SeenUplinksQuery,
+                SeenUplinksVariables,
+            },
+            residents::Resident,
+        },
     },
 };
 use cynic::QueryBuilder;
 use drafts::{Drafts, LinkDraft, PortKey, current_link};
+use gloo::timers::callback::Interval;
 use i18n::resident as t;
 use networks::WlanEdit;
 use patternfly_yew::prelude::{
@@ -31,6 +39,7 @@ mod ports;
 mod qr_dialog;
 mod room_dialog;
 mod save_dialog;
+mod status;
 
 #[derive(Debug, Clone, PartialEq, Properties)]
 pub struct ResidentViewProps {
@@ -46,13 +55,20 @@ pub enum View {
     Changes,
 }
 
+/// How often the view reads the saved changes and what is up again, in ms.
+const EVERY: u32 = 15_000;
+
 /// A resident's sockets and devices, and its networks, with its drafts; where the routers see
-/// its devices plugged in, read once the view is shown and again with each loaded resident.
+/// its devices plugged in and the devices behind its ports, read once the view is shown and
+/// again with each loaded resident; its saved changes and what is up, for the labels, read
+/// again every 15 s.
 pub struct ResidentView {
     view: View,
     /// the devices whose cable is in another port than their Anschluss; empty while read or
     /// where the routers didn't answer (the view offers nothing then)
     seen: Vec<SeenUplink>,
+    /// the devices behind its ports; empty while read or where nothing answered
+    behind: Vec<PortHosts>,
     drafts: Drafts,
     /// the device whose room is being chosen
     room_of: Option<i32>,
@@ -60,11 +76,23 @@ pub struct ResidentView {
     previewing: bool,
     /// a change taken back found everything as before it already
     as_before: bool,
+    /// the saved changes, the newest first; none while read
+    changes: Option<Vec<ChangeState>>,
+    /// reading them failed the last time: why
+    changes_failed: Option<Html>,
+    /// what is up; none while read or where it couldn't be
+    live: Option<LiveState>,
+    _every: Interval,
 }
 
 pub enum ResidentViewMsg {
     Show(View),
     Seen(Vec<SeenUplink>),
+    Behind(Vec<PortHosts>),
+    /// read the changes and what is up again
+    ReadState,
+    Changes(Result<Vec<ChangeState>, FrontendError>),
+    Live(Option<LiveState>),
     Port(PortEdit),
     Wlan(WlanEdit),
     Room(i32),
@@ -82,9 +110,16 @@ impl Component for ResidentView {
 
     fn create(ctx: &Context<Self>) -> Self {
         read_seen(ctx);
+        read_state(ctx);
+        let link = ctx.link().clone();
         ResidentView {
+            _every: Interval::new(EVERY, move || link.send_message(ResidentViewMsg::ReadState)),
+            changes: None,
+            changes_failed: None,
+            live: None,
             view: View::Ports,
             seen: Vec::new(),
+            behind: Vec::new(),
             drafts: Drafts::default(),
             room_of: None,
             previewing: false,
@@ -99,6 +134,17 @@ impl Component for ResidentView {
         match msg {
             ResidentViewMsg::Show(view) => self.view = view,
             ResidentViewMsg::Seen(seen) => self.seen = seen,
+            ResidentViewMsg::Behind(behind) => self.behind = behind,
+            ResidentViewMsg::ReadState => {
+                read_state(ctx);
+                return false;
+            }
+            ResidentViewMsg::Changes(Ok(changes)) => {
+                self.changes = Some(changes);
+                self.changes_failed = None;
+            }
+            ResidentViewMsg::Changes(Err(error)) => self.changes_failed = Some(error.to_html()),
+            ResidentViewMsg::Live(live) => self.live = live,
             ResidentViewMsg::Port(PortEdit::Vlan { port, vlan }) => {
                 let now = resident
                     .ports
@@ -163,6 +209,7 @@ impl Component for ResidentView {
             ResidentViewMsg::Saved => {
                 *drafts = Drafts::default();
                 ctx.props().on_saved.emit(());
+                read_state(ctx);
             }
             ResidentViewMsg::Undo(steps) => {
                 let before = self.drafts.clone();
@@ -180,6 +227,7 @@ impl Component for ResidentView {
         // a new callback each time the page renders is no reason to ask the routers
         if old.resident != ctx.props().resident {
             read_seen(ctx);
+            read_state(ctx);
         }
         true
     }
@@ -189,15 +237,22 @@ impl Component for ResidentView {
         let props = ctx.props();
         let resident = &props.resident;
         let onselect = link.callback(ResidentViewMsg::Show);
+        let state = status::State {
+            changes: self.changes.as_deref().unwrap_or_default(),
+            live: self.live.as_ref(),
+        };
         let ports = PortsTab {
             resident,
             drafts: &self.drafts,
             seen: &self.seen,
+            behind: &self.behind,
+            state,
             edit: &link.callback(ResidentViewMsg::Port),
         };
         let networks = networks::networks(
             resident,
             &self.drafts,
+            state,
             &link.callback(ResidentViewMsg::Wlan),
         );
         let bar = (!self.drafts.is_empty()).then(|| {
@@ -264,6 +319,7 @@ impl Component for ResidentView {
             <div class="resident-view">
                 {bar}
                 {as_before}
+                <div class="resident-summary">{state.summary(&resident.networks)}</div>
                 <Tabs<View> selected={self.view} {onselect}>
                     <Tab<View> index={View::Ports} title={self.tab_title(View::Ports)}>
                         {ports.view()}
@@ -273,6 +329,9 @@ impl Component for ResidentView {
                     </Tab<View>>
                     <Tab<View> index={View::Changes} title={self.tab_title(View::Changes)}>
                         <changes::ChangesTab resident={resident.id}
+                            changes={self.changes.clone()}
+                            failed={self.changes_failed.clone()}
+                            on_read_again={link.callback(|()| ResidentViewMsg::ReadState)}
                             on_undo={link.callback(ResidentViewMsg::Undo)}/>
                     </Tab<View>>
                 </Tabs<View>>
@@ -369,31 +428,71 @@ impl ResidentView {
     }
 }
 
-/// Asks where the routers see the resident's devices plugged in.
+/// Asks where the routers see the resident's devices plugged in, and which devices are behind
+/// its ports.
 fn read_seen(ctx: &Context<ResidentView>) {
+    let resident = ctx.props().resident.id;
     let scope = ctx.link().clone();
-    let variables = SeenUplinksVariables {
-        resident: ctx.props().resident.id,
-    };
     spawn_local(async move {
+        let variables = SeenUplinksVariables { resident };
         let seen = request_resident(scope.clone(), SeenUplinksQuery::build(variables))
             .await
             .map(|data| data.seen_uplinks.devices)
             .unwrap_or_default();
         scope.send_message(ResidentViewMsg::Seen(seen));
     });
+    let scope = ctx.link().clone();
+    spawn_local(async move {
+        let variables = PortDevicesVariables { resident };
+        let behind = request_resident(scope.clone(), PortDevicesQuery::build(variables))
+            .await
+            .map(|data| data.port_devices.ports)
+            .unwrap_or_default();
+        scope.send_message(ResidentViewMsg::Behind(behind));
+    });
 }
 
-/// A card's header: its title, and where it has a draft the label saying so and resetting it.
-fn card_header(title: Html, changed: bool, reset: Callback<MouseEvent>) -> Html {
-    let actions = changed.then(|| {
-        html! {
+/// Reads the saved changes and what is up.
+fn read_state(ctx: &Context<ResidentView>) {
+    let resident = ctx.props().resident.id;
+    let scope = ctx.link().clone();
+    spawn_local(async move {
+        let variables = ChangesVariables { resident };
+        let changes = request_resident(scope.clone(), ChangesQuery::build(variables))
+            .await
+            .map(|data| data.changes);
+        scope.send_message(ResidentViewMsg::Changes(changes));
+    });
+    let scope = ctx.link().clone();
+    spawn_local(async move {
+        let variables = LiveStateVariables { resident };
+        let live = request_resident(scope.clone(), LiveStateQuery::build(variables))
+            .await
+            .map(|data| data.live_state)
+            .ok();
+        scope.send_message(ResidentViewMsg::Live(live));
+    });
+}
+
+/// A card's header: its title, and its one label: where it has a draft the one saying so and
+/// resetting it, else its `status`.
+fn card_header(
+    title: Html,
+    changed: bool,
+    reset: Callback<MouseEvent>,
+    status: Option<&status::Status>,
+) -> Html {
+    let actions = match changed {
+        true => Some(html! {
             <div class="pf-v6-c-card__actions">
                 <Button variant={ButtonVariant::InlineLink} label={t::RESET} onclick={reset}/>
                 <Label label={t::UNSAVED} color={Color::Orange} compact=true/>
             </div>
+        }),
+        false => {
+            status.map(|status| html!(<div class="pf-v6-c-card__actions">{status.label()}</div>))
         }
-    });
+    };
     html! {
         <div class="pf-v6-c-card__header">
             {actions}

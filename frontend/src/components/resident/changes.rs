@@ -1,42 +1,39 @@
-//! Scope: The tab of a resident's saved changes: each with how far it has reached its devices,
-//! read again every 15 s while shown, and taking one back (its parts go to the view as
+//! Scope: The tab of a resident's saved changes: each with how far it has reached its devices
+//! (the view reads them every 15 s), and taking one back (its parts go to the view as
 //! drafts); not saving them (`save_dialog`).
 use crate::{
     error::FrontendError,
     graphql::{
         request_resident,
         resident::changes::{
-            ChangeDevice, ChangeState, ChangesQuery, ChangesVariables, HoldReason, RolloutState,
-            UndoChangeQuery, UndoChangeVariables, UndoStep,
+            ChangeDevice, ChangeState, RolloutState, UndoChangeQuery, UndoChangeVariables, UndoStep,
         },
     },
 };
 use cynic::QueryBuilder;
-use gloo::timers::callback::Interval;
 use i18n::{auto_rollout as rollout, resident as t};
 use patternfly_yew::prelude::{Button, ButtonVariant, Color, Label};
 use yew::{Callback, Component, Context, Html, Properties, html, platform::spawn_local};
 
-/// How often the tab reads the changes again, in ms.
-const EVERY: u32 = 15_000;
-
 #[derive(Debug, Clone, PartialEq, Properties)]
 pub struct ChangesProps {
     pub resident: i32,
+    /// the saved changes, the newest first; none while read
+    pub changes: Option<Vec<ChangeState>>,
+    /// reading them failed the last time: why
+    pub failed: Option<Html>,
+    /// read them again, after a failure
+    pub on_read_again: Callback<()>,
     /// what takes a change back: the view makes drafts of it and opens the preview
     pub on_undo: Callback<Vec<UndoStep>>,
 }
 
 pub struct ChangesTab {
-    changes: Option<Result<Vec<ChangeState>, FrontendError>>,
     /// taking a change back failed, or it can't be anymore (none of it left)
     undo_failed: Option<Option<FrontendError>>,
-    _every: Interval,
 }
 
 pub enum ChangesMsg {
-    Read,
-    Answer(Result<Vec<ChangeState>, FrontendError>),
     /// take the change with this id back
     Undo(i32),
     UndoAnswer(Result<Vec<UndoStep>, FrontendError>),
@@ -46,35 +43,12 @@ impl Component for ChangesTab {
     type Message = ChangesMsg;
     type Properties = ChangesProps;
 
-    fn create(ctx: &Context<Self>) -> Self {
-        ctx.link().send_message(ChangesMsg::Read);
-        let link = ctx.link().clone();
-        ChangesTab {
-            changes: None,
-            undo_failed: None,
-            _every: Interval::new(EVERY, move || link.send_message(ChangesMsg::Read)),
-        }
+    fn create(_ctx: &Context<Self>) -> Self {
+        ChangesTab { undo_failed: None }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            ChangesMsg::Read => {
-                let scope = ctx.link().clone();
-                let variables = ChangesVariables {
-                    resident: ctx.props().resident,
-                };
-                spawn_local(async move {
-                    let answer = request_resident(scope.clone(), ChangesQuery::build(variables))
-                        .await
-                        .map(|data| data.changes);
-                    scope.send_message(ChangesMsg::Answer(answer));
-                });
-                false
-            }
-            ChangesMsg::Answer(answer) => {
-                self.changes = Some(answer);
-                true
-            }
             ChangesMsg::Undo(change) => {
                 let scope = ctx.link().clone();
                 let variables = UndoChangeVariables {
@@ -105,25 +79,21 @@ impl Component for ChangesTab {
         }
     }
 
-    fn changed(&mut self, ctx: &Context<Self>, _old: &Self::Properties) -> bool {
-        ctx.link().send_message(ChangesMsg::Read);
-        false
-    }
-
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let changes = match &self.changes {
-            None => return html!(<p>{t::READING_CHANGES}</p>),
-            Some(Err(error)) => {
-                let again = ctx.link().callback(|_| ChangesMsg::Read);
-                return html! {
-                    <>
-                        {error.to_html()}
-                        <Button variant={ButtonVariant::Link} label={t::READ_AGAIN}
-                            onclick={again}/>
-                    </>
-                };
+        let props = ctx.props();
+        let failed = props.failed.clone().map(|error| {
+            let again = props.on_read_again.reform(|_| ());
+            html! {
+                <>
+                    {error}
+                    <Button variant={ButtonVariant::Link} label={t::READ_AGAIN} onclick={again}/>
+                </>
             }
-            Some(Ok(changes)) => changes,
+        });
+        let changes = match (&props.changes, failed) {
+            (_, Some(failed)) => return failed,
+            (None, None) => return html!(<p>{t::READING_CHANGES}</p>),
+            (Some(changes), None) => changes,
         };
         if changes.is_empty() {
             return html!(<p>{t::NO_CHANGES}</p>);
@@ -199,7 +169,7 @@ fn device(device: &ChangeDevice) -> Html {
     let reasons = device
         .reasons
         .iter()
-        .map(hold_reason)
+        .map(super::status::hold_reason)
         .collect::<Vec<_>>()
         .join("; ");
     html! {
@@ -211,16 +181,4 @@ fn device(device: &ChangeDevice) -> Html {
             </dd>
         </>
     }
-}
-
-fn hold_reason(reason: &HoldReason) -> String {
-    rollout::hold_reason(match reason {
-        HoldReason::PoeCut => rollout::HoldReason::PoeCut,
-        HoldReason::CapOff => rollout::HoldReason::CapOff,
-        HoldReason::ApiClientsOutside => rollout::HoldReason::ApiClientsOutside,
-        HoldReason::RadioLink => rollout::HoldReason::RadioLink,
-        HoldReason::Rewire => rollout::HoldReason::Rewire,
-        HoldReason::Outward => rollout::HoldReason::Outward,
-        HoldReason::Other(other) => rollout::HoldReason::Other(other),
-    })
 }

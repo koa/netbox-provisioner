@@ -1,6 +1,6 @@
 //! Scope: Tests of `graphql::resident::live`; nothing else.
-use super::{joined, plugged_in};
-use crate::device::metrics::{Capsman, Lease, WlanClient};
+use super::{behind, joined, plugged_in};
+use crate::device::metrics::{BridgeHost, Capsman, Lease, WlanClient};
 use crate::{
     device::neighbors::SeenNeighbor,
     topology::findings::{DeviceRef, InterfaceRef},
@@ -97,4 +97,33 @@ fn the_port_the_router_sees_the_device_at() {
     assert_eq!(plugged_in(6, 61, &[seen(6, Some(61))]), None);
     assert_eq!(plugged_in(6, 61, &[seen(6, None)]), None);
     assert_eq!(plugged_in(6, 61, &[other]), None);
+}
+
+fn host(mac_text: &str, port: &str, default_name: Option<&str>) -> BridgeHost {
+    BridgeHost {
+        mac_address: mac(mac_text),
+        port: port.into(),
+        default_name: default_name.map(Box::from),
+    }
+}
+
+/// Behind a port are the leases whose MAC the bridge learned there, by the port's own or its
+/// default name (NetBox's); a MAC learned elsewhere or without lease isn't.
+#[test]
+fn the_leases_behind_a_port() {
+    let hosts = [
+        host("02:00:00:00:00:01", "e03-wohnung", Some("ether3")),
+        host("02:00:00:00:00:02", "e04-buero", Some("ether4")),
+        host("02:00:00:00:00:03", "e03-wohnung", Some("ether3")),
+    ];
+    let leases = [
+        lease("192.168.104.20", "02:00:00:00:00:01", Some("laptop")),
+        lease("192.168.104.21", "02:00:00:00:00:02", None),
+    ];
+    let devices = behind("ether3", &hosts, &leases);
+    assert_eq!(devices.len(), 1);
+    assert_eq!(devices[0].address.as_deref(), Some("192.168.104.20"));
+    assert_eq!(devices[0].hostname.as_deref(), Some("laptop"));
+    assert_eq!(behind("e04-buero", &hosts, &leases).len(), 1);
+    assert!(behind("ether5", &hosts, &leases).is_empty());
 }

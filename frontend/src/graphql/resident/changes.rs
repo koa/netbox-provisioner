@@ -1,6 +1,6 @@
 //! Scope: The query of a resident's saved changes and how far each has reached its devices;
 //! not saving them (`change`).
-use super::{change::PortKindInput, schema::schema};
+use super::{change::PortKindInput, residents::PortKind, schema::schema};
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct ChangesVariables {
@@ -27,6 +27,23 @@ pub struct ChangeState {
     pub age: i32,
     pub devices: Vec<ChangeDevice>,
     pub undoable: bool,
+    pub touched: Touched,
+}
+
+/// The elements a change touched: ports, WLANs, devices linked elsewhere or moved.
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct Touched {
+    pub ports: Vec<TouchedPort>,
+    pub wlans: Vec<i32>,
+    pub devices: Vec<i32>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct TouchedPort {
+    pub kind: PortKind,
+    pub id: i32,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -40,6 +57,7 @@ pub struct ChangeDevice {
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 #[cynic(schema = "resident")]
 pub struct RoundDevice {
+    pub id: i32,
     pub name: String,
 }
 

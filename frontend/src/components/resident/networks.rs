@@ -6,6 +6,7 @@ use super::{
     network_devices::NetworkDevicesView,
     ports,
     qr_dialog::QrDialog,
+    status::State,
 };
 use crate::graphql::resident::residents::{PortKind, Resident, ResidentNetwork, ResidentWlan};
 use i18n::resident as t;
@@ -23,7 +24,12 @@ pub struct WlanEdit {
 }
 
 /// The networks, each with its WLAN and devices.
-pub fn networks(resident: &Resident, drafts: &Drafts, edit: &Callback<WlanEdit>) -> Html {
+pub fn networks(
+    resident: &Resident,
+    drafts: &Drafts,
+    state: State,
+    edit: &Callback<WlanEdit>,
+) -> Html {
     if resident.networks.is_empty() {
         return html!(<Content><p>{t::NO_NETWORKS}</p></Content>);
     }
@@ -65,11 +71,17 @@ pub fn networks(resident: &Resident, drafts: &Drafts, edit: &Callback<WlanEdit>)
                 .collect()
         };
         let heading = html!(<h2 class="pf-v6-c-card__title-text">{title}</h2>);
+        let status = state.network(network);
+        let text = status
+            .as_ref()
+            .filter(|_| !changed)
+            .and_then(|status| status.text());
         html_nested! {
             <div class="pf-v6-c-card" key={network.id}>
-                {super::card_header(heading, changed, reset)}
+                {super::card_header(heading, changed, reset, status.as_ref())}
                 <div class="pf-v6-c-card__body resident-network">
                     <div class="resident-wlan">
+                        {text}
                         {wlans}
                         {cabled(resident, network)}
                     </div>

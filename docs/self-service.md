@@ -278,8 +278,8 @@ es wie jede Änderung und lässt sich selbst wieder zurücknehmen. Ist schon all
 sagt das UI das. Auch eine nicht ausgerollte Änderung lässt sich zurücknehmen: Sie steht in
 NetBox, bis jemand sie ändert.
 
-Noch nicht gebaut sind Geräte pro Port aus den Leases und Status-Labels (C21). Status-Labels kommen erst mit einer verlässlichen Quelle: Ein Label, das
-„ausgerollt“ behauptet, ohne es zu wissen, wäre falsch.
+Geräte pro Port aus den Leases und die Status-Labels (C21) beschreibt das
+[Konzept](concepts/self-service.md#anwohner-ui).
 
 Die folgenden Lab-Tests bis 2026-11-20 liefen noch mit dem UI davor (ein Dialog pro
 Änderung, „WLAN ändern“, „Netz ändern“) und mit einer Änderung pro Speichern.

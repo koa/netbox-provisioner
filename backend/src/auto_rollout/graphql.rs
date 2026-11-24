@@ -6,7 +6,10 @@ use super::{
     precondition::Unmet,
     state,
 };
-use crate::topology::{DeviceId, SiteId, Topology, access::AccessTopology};
+use crate::{
+    graphql::resident::{PortKind, undo::UndoStep},
+    topology::{DeviceId, SiteId, Topology, access::AccessTopology},
+};
 use async_graphql::SimpleObject;
 use std::{sync::Arc, time::SystemTime};
 
@@ -47,6 +50,55 @@ pub struct ChangeState {
     pub devices: Box<[ChangeDevice]>,
     /// it can be taken back (`undoChange`, a resident's change)
     pub undoable: bool,
+    /// what it changed, from what takes it back (none for an admin's): its ports, WLANs and
+    /// the devices it linked elsewhere or moved
+    pub touched: Touched,
+}
+
+/// The elements a resident's change touched.
+#[derive(Debug, Clone, Default, PartialEq, SimpleObject)]
+pub struct Touched {
+    /// ports whose network changed or that a device left
+    pub ports: Box<[TouchedPort]>,
+    pub wlans: Box<[u32]>,
+    pub devices: Box<[u32]>,
+}
+
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct TouchedPort {
+    pub kind: PortKind,
+    pub id: u32,
+}
+
+impl Touched {
+    fn of(undo: &[UndoStep]) -> Touched {
+        let mut ports = Vec::new();
+        let mut wlans = Vec::new();
+        let mut devices = Vec::new();
+        for step in undo {
+            match step {
+                UndoStep::Wlan(wlan) => wlans.push(wlan.wlan),
+                UndoStep::PortVlan(port) => ports.push(TouchedPort {
+                    kind: port.kind,
+                    id: port.port,
+                }),
+                UndoStep::ConnectDevice(link) => {
+                    ports.push(TouchedPort {
+                        kind: link.kind,
+                        id: link.port,
+                    });
+                    devices.push(link.device);
+                }
+                UndoStep::DisconnectDevice(link) => devices.push(link.device),
+                UndoStep::DeviceRoom(room) => devices.push(room.device),
+            }
+        }
+        Touched {
+            ports: ports.into(),
+            wlans: wlans.into(),
+            devices: devices.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -103,6 +155,7 @@ pub fn changes(topology: &Arc<Topology>, wanted: impl Fn(&Change) -> bool) -> Bo
             job: change.job,
             age: age(change.at),
             undoable: !change.undo.is_empty(),
+            touched: Touched::of(&change.undo),
             devices: change
                 .devices
                 .iter()

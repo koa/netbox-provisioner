@@ -1,6 +1,10 @@
 //! Scope: The queries of what a resident's view reads from the devices: the devices in a
-//! network, the ports the devices are plugged in; nothing else.
-use super::{residents::Named, schema::schema};
+//! network, the devices behind its ports, the ports the devices are plugged in, which devices
+//! behind its elements are up; nothing else.
+use super::{
+    residents::{Named, PortKind},
+    schema::schema,
+};
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct NetworkDevicesVariables {
@@ -110,4 +114,86 @@ pub struct SeenUplinks {
 pub struct SeenUplink {
     pub device: i32,
     pub port: Named,
+}
+
+#[derive(cynic::QueryVariables, Debug)]
+pub struct PortDevicesVariables {
+    pub resident: i32,
+}
+
+/// The devices behind the resident's ports in one of its networks.
+#[derive(cynic::QueryFragment, Debug)]
+#[cynic(
+    schema = "resident",
+    graphql_type = "QueryResident",
+    variables = "PortDevicesVariables"
+)]
+pub struct PortDevicesQuery {
+    #[arguments(resident: $resident)]
+    pub port_devices: PortDevices,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct PortDevices {
+    pub ports: Vec<PortHosts>,
+    pub unreachable: Vec<Named>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct PortHosts {
+    pub kind: PortKind,
+    pub port: i32,
+    pub devices: Vec<NetworkDevice>,
+}
+
+#[derive(cynic::QueryVariables, Debug)]
+pub struct LiveStateVariables {
+    pub resident: i32,
+}
+
+/// Which devices behind the resident's elements are up, as the OSPF routers see them.
+#[derive(cynic::QueryFragment, Debug)]
+#[cynic(
+    schema = "resident",
+    graphql_type = "QueryResident",
+    variables = "LiveStateVariables"
+)]
+pub struct LiveStateQuery {
+    #[arguments(resident: $resident)]
+    pub live_state: LiveState,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct LiveState {
+    pub known: bool,
+    pub devices: Vec<DeviceLive>,
+    pub ports: Vec<PortLive>,
+    pub wlans: Vec<WlanLive>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct DeviceLive {
+    pub device: Named,
+    pub reached: bool,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct PortLive {
+    pub kind: PortKind,
+    pub id: i32,
+    pub switch: Named,
+    pub reached: bool,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(schema = "resident")]
+pub struct WlanLive {
+    pub wlan: i32,
+    pub access_points: i32,
+    pub unreached: Vec<Named>,
 }

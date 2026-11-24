@@ -25,6 +25,9 @@
 //! catalog.
 //! - **Leases:** the bound ones of `/ip/dhcp-server/lease`, to name a WLAN client by its DHCP
 //!   hostname wherever its lease is (on the router, not the AP).
+//! - **Bridge hosts:** the MACs `/interface/bridge/host` learned at a port (not the bridge's
+//!   own), with the port's default name from `/interface`: which device is behind a resident's
+//!   port.
 //!
 //! A table the device doesn't have (no `wifi` package, no legacy CAPsMAN) has no rows
 //! (`access::collect_if_present`).
@@ -42,8 +45,9 @@ use mikrotik_model::{
     ascii::AsciiString,
     model::{
         CapsManActualInterfaceConfiguration, CapsManInterface, CapsManRadioState,
-        CapsManRegistrationTableState, InterfaceEthernetState, InterfaceState, InterfaceWifi,
-        InterfaceWifiRadioState, InterfaceWifiRegistrationTableState, InterfaceWireless,
+        CapsManRegistrationTableState, InterfaceBridgeHostState, InterfaceEthernetState,
+        InterfaceState, InterfaceWifi, InterfaceWifiRadioState,
+        InterfaceWifiRegistrationTableState, InterfaceWireless,
         InterfaceWirelessRegistrationTableState, IpDhcpServerLease,
     },
     resource::collect_resource,
@@ -240,6 +244,16 @@ pub struct Lease {
     pub hostname: Option<Box<str>>,
 }
 
+/// A MAC the device's bridges learned at one of its ports.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BridgeHost {
+    pub mac_address: MacAddress,
+    /// the port's name
+    pub port: Box<str>,
+    /// the port's default name, where it has one (`ether3`)
+    pub default_name: Option<Box<str>>,
+}
+
 impl AccessibleDevice {
     /// The device's [`DeviceMetrics`], as fresh as `freshness` asks (a scrape: begun since it).
     pub async fn metrics(&self, freshness: Freshness) -> Result<DeviceMetrics, Error> {
@@ -253,6 +267,13 @@ impl AccessibleDevice {
             .into_iter()
             .filter_map(bound_lease)
             .collect())
+    }
+    /// The MACs the device's bridges learned at its ports, without the bridges' own.
+    pub async fn bridge_hosts(&self, freshness: Freshness) -> Result<Box<[BridgeHost]>, Error> {
+        let client = self.reader().at(freshness);
+        let interfaces = collect_resource::<InterfaceState>(&client).await?;
+        let hosts = collect_resource::<InterfaceBridgeHostState>(&client).await?;
+        Ok(learned(&interfaces, hosts))
     }
     /// The WLAN clients the device's CAPsMANs and its own radios have registered.
     pub async fn wlan_clients(&self, freshness: Freshness) -> Result<Box<[WlanClient]>, Error> {
@@ -685,6 +706,35 @@ pub(crate) fn ethernet_counters(
 }
 
 /// The lease while it is bound to a client: its address and MAC as the client has them.
+/// The `hosts` learned at a port, with the port's default name from `interfaces`.
+fn learned(
+    interfaces: &[InterfaceState],
+    hosts: Box<[InterfaceBridgeHostState]>,
+) -> Box<[BridgeHost]> {
+    let default_names = interfaces
+        .iter()
+        .filter_map(|interface| {
+            Some((
+                interface.name.to_string(),
+                interface.default_name.as_ref()?.to_string(),
+            ))
+        })
+        .collect::<HashMap<_, _>>();
+    hosts
+        .into_vec()
+        .into_iter()
+        .filter(|host| host.local != Some(true))
+        .filter_map(|host| {
+            let port = host.on_interface.or(host.interface)?.to_string();
+            Some(BridgeHost {
+                mac_address: host.mac_address,
+                default_name: default_names.get(&port).map(|name| name.as_str().into()),
+                port: port.into(),
+            })
+        })
+        .collect()
+}
+
 fn bound_lease(lease: IpDhcpServerLease) -> Option<Lease> {
     let status = lease.status;
     if status.status.as_ref().map(|s| s.0.as_ref()) != Some(b"bound".as_slice()) {
