@@ -272,15 +272,21 @@ Ausrollen weg sind, nennt die Geräte mit neuer Konfiguration und sagt, was Ger�
 merken. „Speichern“ schreibt alles in einem Job, wartet darauf und sagt dann „In NetBox
 gespeichert“, ohne zu behaupten, dass es schon ausgerollt ist. Das UI schickt die Entwürfe in
 der Reihenfolge, in der jede Änderung NetBox so vorfindet, wie sie es braucht
-(`Drafts::changes`): erst Geräte abhängen (das macht ihre Ports frei), dann Netze von Ports,
-Geräte anschliessen, Räume, WLANs. Ein Gerät, das an einen Port kommt, nimmt dessen Netz weg;
-ein Netz-Entwurf dort entfällt, und die Wahl des Netzes fehlt, solange es kommt.
+(`Drafts::changes`): erst Geräte abhängen und anschliessen (beides macht die Ports frei, die
+sie verlassen), dann Netze von Ports, Räume, WLANs. Ein Gerät, das an einen Port kommt, nimmt
+dessen Netz weg; ein Netz-Entwurf dort entfällt, und die Wahl des Netzes fehlt, solange es
+kommt. Ein Port nimmt nur ein Gerät: ist eines unterwegs dorthin, bietet er kein weiteres an
+(„doch nicht“ nimmt es weg), und ein Entwurf eines zweiten dorthin ersetzt den ersten.
 
 Der Tab „Änderungen“ zeigt jede gespeicherte Änderung mit dem Stand pro Gerät
 ([Stand pro Änderung](auto-rollout.md#stand-pro-änderung)). „Zurücknehmen“ an einer Änderung
 holt deren Stand davor (`undoChange`) und macht daraus Entwürfe, wie sie eine Bearbeitung von
 Hand machte (ein Teil, der schon so ist, entfällt), und öffnet die Vorschau; gespeichert wird
-es wie jede Änderung und lässt sich selbst wieder zurücknehmen. Ist schon alles wie davor,
+es wie jede Änderung und lässt sich selbst wieder zurücknehmen. Ein zurückgenommener
+Anschluss gibt dem Port auch sein Netz von davor zurück (der Anschluss hat es weggenommen, auch
+aus einer Bridge); nicht das des Betreibers, und nicht wo davor ein eigenes Gerät hing (das
+kommt mit seinem Anschluss zurück). In die Bridge kommt der Port nicht zurück: das Netz liegt
+als VLAN am Port an. Ist schon alles wie davor,
 sagt das UI das. Auch eine nicht ausgerollte Änderung lässt sich zurücknehmen: Sie steht in
 NetBox, bis jemand sie ändert.
 

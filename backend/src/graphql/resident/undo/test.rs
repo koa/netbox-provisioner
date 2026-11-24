@@ -55,8 +55,8 @@ fn device(id: u32, uplink: Option<&str>, location: Option<u32>) -> ResidentDevic
 }
 
 /// Meier: WLAN 7 („Meier“, key, on) on VLAN 5; socket 20 with VLAN 5 and device 3 at its
-/// ether2, socket 21 with the operator's network, socket 22 with none; device 4 linked
-/// nowhere, device 6 at the operator's router.
+/// ether2, socket 21 with the operator's network, socket 22 with none, socket 23 with VLAN 5
+/// and nothing at it; device 4 linked nowhere, device 6 at the operator's router.
 fn before() -> Resident {
     Resident {
         id: 1,
@@ -65,6 +65,7 @@ fn before() -> Resident {
             port(20, Some(5), false, Some(3)),
             port(21, None, true, None),
             port(22, None, false, None),
+            port(23, Some(5), false, None),
         ]),
         networks: Box::new([ResidentNetwork {
             id: 5,
@@ -188,6 +189,39 @@ fn a_device_goes_back_to_its_link() {
             UndoStep::DisconnectDevice(DisconnectDeviceUndo { device: 4 }),
         ]
     );
+}
+
+/// A device linked to a port with a network gives the port its network back (the link took
+/// it off); not the operator's, and not where one of the resident's devices was linked.
+#[test]
+fn a_linked_port_gets_its_network_back() {
+    let connect = |port| {
+        ResidentChange::ConnectDevice(ConnectDeviceChange {
+            device: 4,
+            port,
+            kind: PortKind::Socket,
+            device_port: None,
+        })
+    };
+    let away = UndoStep::DisconnectDevice(DisconnectDeviceUndo { device: 4 });
+    assert_eq!(
+        &*undo_of(&before(), &[connect(23)]),
+        [
+            away.clone(),
+            UndoStep::PortVlan(PortVlanUndo {
+                port: 23,
+                kind: PortKind::Socket,
+                vlan: Some(5),
+            }),
+        ]
+    );
+    for port in [20, 21, 22] {
+        assert_eq!(
+            &*undo_of(&before(), &[connect(port)]),
+            std::slice::from_ref(&away),
+            "{port}"
+        );
+    }
 }
 
 /// A device goes back to its room; one without a room has no undo.

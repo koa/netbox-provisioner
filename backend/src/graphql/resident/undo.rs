@@ -5,7 +5,10 @@
 //! Taking back makes drafts of these, which the resident previews and saves like any change.
 //! A part without a „before“ the resident may set (a port with the operator's network, a
 //! device at the operator's port) has none.
-use super::{PortKind, Resident, change::ResidentChange};
+use super::{
+    PortKind, Resident,
+    change::{ConnectDeviceChange, ResidentChange},
+};
 use async_graphql::{SimpleObject, Union};
 use serde::{Deserialize, Serialize};
 
@@ -106,7 +109,10 @@ pub fn undo_of(before: &Resident, changes: &[ResidentChange]) -> Box<[UndoStep]>
                     vlan: port.network.as_ref().map(|network| network.id),
                 }));
             }
-            ResidentChange::ConnectDevice(input) => steps.extend(link_of(before, input.device)),
+            ResidentChange::ConnectDevice(input) => {
+                steps.extend(link_of(before, input.device));
+                steps.extend(network_of(before, input));
+            }
             ResidentChange::DisconnectDevice(device) => steps.extend(link_of(before, *device)),
             ResidentChange::DeviceRoom(input) => {
                 let location = before
@@ -124,6 +130,30 @@ pub fn undo_of(before: &Resident, changes: &[ResidentChange]) -> Box<[UndoStep]>
         }
     }
     steps.into()
+}
+
+/// The network the port of `link` had in `before`, which the link took off (out of its bridge
+/// too): none where it had none, the operator's, or one of the resident's devices (that one
+/// goes back with its link, a link has no network).
+fn network_of(before: &Resident, link: &ConnectDeviceChange) -> Option<UndoStep> {
+    let port = before
+        .ports
+        .iter()
+        .find(|port| port.id == link.port && port.kind == link.kind)
+        .filter(|port| !port.foreign_network)?;
+    let linked = port.far_ends.iter().any(|end| {
+        end.own_device
+            && before
+                .devices
+                .iter()
+                .any(|device| device.id == end.device.id && device.routeros)
+    });
+    let network = port.network.as_ref().filter(|_| !linked)?;
+    Some(UndoStep::PortVlan(PortVlanUndo {
+        port: port.id,
+        kind: port.kind,
+        vlan: Some(network.id),
+    }))
 }
 
 /// How `device` was linked in `before`: at the port row its cable came from, with its

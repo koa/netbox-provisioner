@@ -132,8 +132,8 @@ impl Drafts {
         self.links.retain(|_, link| !link.connects(port));
     }
     /// The changes they are saved as, in an order in which each finds NetBox as it needs it:
-    /// devices off their link first (that frees their ports), then the networks of ports, the
-    /// devices linked, rooms and WLANs.
+    /// devices off their link first and the devices linked (both free the ports they leave,
+    /// a link clears its own port's network), then the networks of ports, rooms and WLANs.
     pub fn changes(&self) -> Vec<ResidentChange> {
         let disconnects = self
             .links
@@ -173,8 +173,8 @@ impl Drafts {
             })
         });
         disconnects
-            .chain(port_vlans)
             .chain(connects)
+            .chain(port_vlans)
             .chain(rooms)
             .chain(wlans)
             .collect()
@@ -221,7 +221,8 @@ mod test {
         }
     }
 
-    /// A device taken off a socket frees it before the socket gets a network or another device.
+    /// A device taken off or moved frees its socket before the socket gets a network: links
+    /// first, then networks (a taken back link gives its old port the network back).
     #[test]
     fn devices_leave_before_ports_change() {
         let mut drafts = Drafts::default();
@@ -247,7 +248,7 @@ mod test {
                 ResidentChange::Wlan(_) => "wlan",
             })
             .collect::<Vec<_>>();
-        assert_eq!(kinds, ["disconnect", "port", "connect", "room"]);
+        assert_eq!(kinds, ["disconnect", "connect", "port", "room"]);
         assert_eq!(drafts.len(), 4);
         assert_eq!(drafts.len_in(View::Ports), 4);
         assert_eq!(drafts.len_in(View::Networks), 0);
