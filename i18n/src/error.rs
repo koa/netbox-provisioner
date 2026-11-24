@@ -386,6 +386,9 @@ pub fn server(problem: &impl Problem) -> String {
             "Dort hängt {}, das nicht dir gehört; das ändert ein Admin",
             p("device")
         ),
+        "TWO_DEVICES_AT_PORT" => {
+            "Zwei Geräte sollen an denselben Port: es passt nur ein Kabel hinein".to_string()
+        }
         "FOREIGN_DEVICE_BEHIND" => format!(
             "An diesem Gerät hängt {}, das nicht dir gehört: es wäre danach weg",
             p("device")

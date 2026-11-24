@@ -364,6 +364,9 @@ pub enum Error {
     /// a device not the resident's at the port or socket of its change (`device`)
     #[error("{0} of another is at the port")]
     ForeignDeviceAtPort(Box<str>),
+    /// a resident's changes link two of its devices to one port or socket (`port`, its row id)
+    #[error("two devices linked to port {0}")]
+    TwoDevicesAtPort(u32),
     /// a device not the resident's at another port of the device it takes off its link, fed
     /// by it or reached through it (`device`)
     #[error("{0} of another hangs at the device")]

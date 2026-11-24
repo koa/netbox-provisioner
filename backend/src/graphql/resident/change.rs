@@ -219,6 +219,20 @@ async fn checked_plan(
     owner: OwnerId,
     changes: Vec<ResidentChange>,
 ) -> Result<Checked, Error> {
+    // one cable per port: a second device there would take the first one's place unseen
+    let connects = changes.iter().filter_map(|change| match change {
+        ResidentChange::ConnectDevice(change) => Some(change),
+        _ => None,
+    });
+    for (n, change) in connects.clone().enumerate() {
+        if connects.clone().take(n).any(|before| {
+            before.kind == change.kind
+                && before.port == change.port
+                && before.device != change.device
+        }) {
+            return Err(Error::TwoDevicesAtPort(change.port));
+        }
+    }
     // a device taken off its link goes, and its own behind it: nothing else of the resident's
     let disconnected = changes
         .iter()

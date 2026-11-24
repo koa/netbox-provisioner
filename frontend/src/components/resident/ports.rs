@@ -32,16 +32,11 @@ use yew::{Callback, Html, html};
 #[derive(Debug, Clone, PartialEq)]
 pub enum PortEdit {
     /// the network of a port row
-    Vlan {
-        port: PortKey,
-        vlan: Option<i32>,
-    },
+    Vlan { port: PortKey, vlan: Option<i32> },
+    /// the port row as saved: its network, and no device coming to it
     ResetPort(PortKey),
     /// where a device is linked
-    Link {
-        device: i32,
-        link: LinkDraft,
-    },
+    Link { device: i32, link: LinkDraft },
     /// a device's link as saved
     ResetLink(i32),
     /// a device's link and room as saved
@@ -371,7 +366,7 @@ impl PortsTab<'_> {
                 </div>
             }
         });
-        let changed = self.drafts.port_vlans.contains_key(&key);
+        let changed = coming || self.drafts.port_vlans.contains_key(&key);
         let reset = self.edit.reform(move |_| PortEdit::ResetPort(key));
         let heading = html!(<h4 class="pf-v6-c-card__title-text">{title(port)}</h4>);
         let occupant = port.far_ends.iter().find_map(|end| self.own(end));
@@ -434,10 +429,10 @@ impl PortsTab<'_> {
     fn connect_choice(&self, port: &ResidentPort) -> Html {
         let key = PortKey::of(port);
         let here = |device: &ResidentDevice| {
-            matches!(
-                self.drafts.links.get(&device.id),
-                Some(LinkDraft::Connect { port, .. }) if *port == key
-            )
+            self.drafts
+                .links
+                .get(&device.id)
+                .is_some_and(|link| link.connects(key))
         };
         let devices = self
             .resident
@@ -453,9 +448,23 @@ impl PortsTab<'_> {
                 name: device.name.clone(),
             })
             .collect::<Vec<_>>();
+        // one cable per port: a device coming here leaves no other to choose
         let coming = devices
             .filter(|device| here(device))
-            .map(|device| html!(<p><small>{t::comes_here(&device.name)}</small></p>));
+            .map(|device| {
+                let id = device.id;
+                html! {
+                    <p>
+                        <small>{t::comes_here(&device.name)}</small>{" "}
+                        <Button
+                            variant={ButtonVariant::InlineLink}
+                            label={t::NOT_HERE}
+                            onclick={self.edit.reform(move |_| PortEdit::ResetLink(id))}
+                        />
+                    </p>
+                }
+            })
+            .collect::<Vec<_>>();
         let onselect = self.edit.reform(move |choice: Choice| PortEdit::Link {
             device: choice.id.unwrap_or_default(),
             link: LinkDraft::Connect {
@@ -466,7 +475,7 @@ impl PortsTab<'_> {
         });
         html! {
             <>
-                if !entries.is_empty() {
+                if coming.is_empty() && !entries.is_empty() {
                     <FormGroup label={t::OR_CONNECT_DEVICE}>
                         <Select<Choice> placeholder={t::CHOOSE_DEVICE} {entries} {onselect}/>
                     </FormGroup>
@@ -673,6 +682,15 @@ impl PortsTab<'_> {
             .filter(|port| !(port.on_own_device && port.device.id == id))
             .filter(|port| {
                 port.far_ends.is_empty() || port.far_ends.iter().any(|end| end.device.id == id)
+            })
+            // one cable per port: none another device comes to by a draft
+            .filter(|port| {
+                let key = PortKey::of(port);
+                !self
+                    .drafts
+                    .links
+                    .iter()
+                    .any(|(other, link)| *other != id && link.connects(key))
             })
             .map(|port| Place::Port {
                 port: PortKey::of(port),

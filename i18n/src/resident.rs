@@ -245,6 +245,7 @@ pub const CHOOSE_DEVICE: &str = "Gerät wählen";
 pub fn comes_here(device: &str) -> String {
     format!("{device} kommt hierher")
 }
+pub const NOT_HERE: &str = "doch nicht";
 pub const REMOVE_DEVICE: &str = "Gerät entfernen";
 pub const NOT_CONNECTED: &str = "Nicht angeschlossen";
 pub const NOT_CONNECTED_HINT: &str = "Wähle rechts beim Gerät, wo du es anschliesst.";

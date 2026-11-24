@@ -157,23 +157,14 @@ impl Component for ResidentView {
                     false => drafts.port_vlans.insert(port, vlan),
                 };
             }
-            ResidentViewMsg::Port(PortEdit::ResetPort(port)) => {
-                drafts.port_vlans.remove(&port);
-            }
+            ResidentViewMsg::Port(PortEdit::ResetPort(port)) => drafts.reset_port(port),
             ResidentViewMsg::Port(PortEdit::Link { device, link }) => {
                 let now = resident
                     .devices
                     .iter()
                     .find(|own| own.id == device)
                     .and_then(|own| current_link(resident, own));
-                match now.is_some_and(|now| link.is(&now)) {
-                    true => drafts.links.remove(&device),
-                    false => drafts.links.insert(device, link),
-                };
-                // a device linked to a port takes its network off: its draft would be undone
-                if let LinkDraft::Connect { port, .. } = link {
-                    drafts.port_vlans.remove(&port);
-                }
+                drafts.link(device, link, now);
             }
             ResidentViewMsg::Port(PortEdit::ResetLink(device)) => {
                 drafts.links.remove(&device);

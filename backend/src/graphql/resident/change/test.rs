@@ -417,3 +417,25 @@ fn only_devices_behind_a_disconnected_one_may_go() {
     assert!(!behind(&tree, parent, &set(&[device])));
     assert!(!behind(&tree, device, &set(&[])));
 }
+
+/// One cable per port: two of the resident's devices linked to one port in one save are
+/// refused, before anything else is looked at.
+#[tokio::test]
+async fn two_devices_at_one_port_are_refused() {
+    let OwnedExample { device, port, .. } = owned_example();
+    let meier = Role::Resident {
+        owners: Box::new([MEIER]),
+    };
+    let query = format!(
+        r#"{{ changePlan(resident: {}, changes: [
+            {{ connectDevice: {{ device: {device}, port: {port}, kind: INTERFACE }} }},
+            {{ connectDevice: {{ device: {}, port: {port}, kind: INTERFACE }} }}
+        ]) {{ fingerprint }} }}"#,
+        MEIER.0,
+        device + 1
+    );
+    assert_eq!(
+        ask(meier, &query).await,
+        Err("\"TWO_DEVICES_AT_PORT\"".to_string())
+    );
+}

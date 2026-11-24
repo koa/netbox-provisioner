@@ -347,6 +347,9 @@ impl From<&Error> for ErrorInfo {
                 "FOREIGN_DEVICE_AT_PORT",
                 vec![("device", device.to_string())],
             ),
+            Error::TwoDevicesAtPort(port) => {
+                ("TWO_DEVICES_AT_PORT", vec![("port", port.to_string())])
+            }
             Error::ForeignDeviceBehind(device) => (
                 "FOREIGN_DEVICE_BEHIND",
                 vec![("device", device.to_string())],

@@ -45,6 +45,11 @@ pub enum LinkDraft {
 }
 
 impl LinkDraft {
+    /// Whether the draft links its device to `port`.
+    pub fn connects(&self, port: PortKey) -> bool {
+        matches!(self, LinkDraft::Connect { port: at, .. } if *at == port)
+    }
+
     /// Whether it is how the device is linked now (`current`): the same port row, and its
     /// Anschluss where it names one.
     pub fn is(&self, current: &LinkDraft) -> bool {
@@ -106,6 +111,25 @@ impl Drafts {
             View::Ports => self.port_vlans.len() + self.links.len() + self.rooms.len(),
             View::Changes => 0,
         }
+    }
+    /// The device `device` linked as `link`, none where that's how it is linked `now`. A link to
+    /// a port takes the port's network off (its draft would be undone), and its place: one
+    /// cable per port, another device drafted there stays where it is.
+    pub fn link(&mut self, device: i32, link: LinkDraft, now: Option<LinkDraft>) {
+        match now.is_some_and(|now| link.is(&now)) {
+            true => self.links.remove(&device),
+            false => self.links.insert(device, link),
+        };
+        if let LinkDraft::Connect { port, .. } = link {
+            self.port_vlans.remove(&port);
+            self.links
+                .retain(|other, draft| *other == device || !draft.connects(port));
+        }
+    }
+    /// The port row as saved: its network, and no device coming to it.
+    pub fn reset_port(&mut self, port: PortKey) {
+        self.port_vlans.remove(&port);
+        self.links.retain(|_, link| !link.connects(port));
     }
     /// The changes they are saved as, in an order in which each finds NetBox as it needs it:
     /// devices off their link first (that frees their ports), then the networks of ports, the
@@ -227,6 +251,31 @@ mod test {
         assert_eq!(drafts.len(), 4);
         assert_eq!(drafts.len_in(View::Ports), 4);
         assert_eq!(drafts.len_in(View::Networks), 0);
+    }
+
+    /// One cable per port: a second device linked to a port takes the first one's draft off,
+    /// and the port reset takes both its network and the device coming there off.
+    #[test]
+    fn a_port_takes_one_device() {
+        let connect = |port| LinkDraft::Connect {
+            port,
+            device_port: None,
+            seen: false,
+        };
+        let mut drafts = Drafts::default();
+        drafts.port_vlans.insert(socket(1), Some(104));
+        drafts.link(7, connect(socket(1)), None);
+        drafts.link(9, connect(socket(2)), None);
+        assert!(drafts.port_vlans.is_empty());
+        drafts.link(8, connect(socket(1)), Some(LinkDraft::Disconnect));
+        assert_eq!(
+            drafts.links,
+            BTreeMap::from([(8, connect(socket(1))), (9, connect(socket(2)))])
+        );
+        drafts.port_vlans.insert(socket(2), None);
+        drafts.reset_port(socket(1));
+        drafts.reset_port(socket(2));
+        assert!(drafts.is_empty());
     }
 
     /// A link to the port row a device is at already is no draft, unless it names another

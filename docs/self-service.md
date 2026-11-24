@@ -147,7 +147,11 @@ Gerät anschliessen (`helper::connect_device`, nur für Anwohner):
   und das VLAN des Ports (eine Verbindung hat Adressen, kein VLAN);
 - dann „Verbindung“ (Kabel, `/31` des Transfer-Pools, `ospf`, MTU, Labels) und, wo es fehlt,
   „Loopback“; die Schritte jedes Teils hinter die davor geschoben (`PlanStep::shift`);
-- ein Gerät ohne Port für den Anschluss ist `NO_UPLINK_PORT`.
+- ein Gerät ohne Port für den Anschluss ist `NO_UPLINK_PORT`;
+- zwei Geräte an denselben Port in einem Speichern sind `TWO_DEVICES_AT_PORT` (ein Kabel pro
+  Port; sonst nähme das zweite dem ersten unbemerkt den Platz). Die Oberfläche lässt das gar
+  nicht erst zu: ein Port, zu dem ein Entwurf ein Gerät bringt, bietet kein weiteres an, und ein
+  Entwurf eines zweiten Geräts dorthin nimmt den des ersten weg.
 
 Gerät abhängen ist „Verbindung abräumen“ an seinem Anschluss, geschrieben vom Router am anderen
 Ende. Abgelehnt wird es, solange an einem anderen Port des Geräts ein fremdes Gerät hängt (es
