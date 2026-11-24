@@ -717,16 +717,13 @@ impl DeviceCfg {
             || device.wlan_controller_of().is_some()
             || wifi_left_on().await
         {
-            let bound_radios = collect_resource::<InterfaceWifiState>(client)
-                .await?
-                .into_iter()
-                // dynamic, or only bound with the same board and version (hAP ax², 7.23.8,
-                // router-stall-burri): RouterOS takes a change then but doesn't use it
-                .filter(|radio| radio.dynamic == Some(true) || radio.bound)
-                .filter_map(|radio| radio.default_name)
-                .collect();
+            let current = WifiDeviceDataCurrent::fetch(client).await?;
+            let bound_radios = bound(
+                &collect_resource::<InterfaceWifiState>(client).await?,
+                &current,
+            );
             (
-                Some(WifiDeviceDataCurrent::fetch(client).await?),
+                Some(current),
                 Some(WifiDeviceDataTarget::detect_device(client).await?),
                 bound_radios,
             )
@@ -1011,4 +1008,28 @@ pub(super) fn following_renames(
             .collect();
     }
     current
+}
+
+/// The radios CAPsMAN has bound, by default name: dynamic ones, and bound ones running with
+/// the controller's values, which report its SSID (hAP ax², 7.23.8, router-stall-burri:
+/// RouterOS takes a change then but doesn't use it). A radio flagged bound without SSID
+/// (lab-wap, wAP ac with `wifi-qcom-ac` freshly installed, 7.24.6: „SSID not set“, its
+/// configuration one that doesn't exist) offers itself to no controller, which then sees no
+/// radio of the CAP: it gets NetBox's configuration like any other.
+pub(super) fn bound(
+    radios: &[InterfaceWifiState],
+    current: &WifiDeviceDataCurrent,
+) -> Box<[AsciiString]> {
+    radios
+        .iter()
+        .filter(|radio| {
+            radio.dynamic == Some(true)
+                || radio.bound
+                    && current.wifi.iter().any(|port| {
+                        port.default_name == radio.default_name
+                            && port.data.configuration_ssid.is_some()
+                    })
+        })
+        .filter_map(|radio| radio.default_name.clone())
+        .collect()
 }

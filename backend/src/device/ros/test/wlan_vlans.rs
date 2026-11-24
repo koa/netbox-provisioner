@@ -770,3 +770,38 @@ async fn controller_without_radios_leaves_the_bridge_to_the_caps() {
     let configuration = &target.configuration[&AsciiString::from("wlan104")].0;
     assert_eq!(configuration.datapath_bridge, None);
 }
+
+/// A radio CAPsMAN bound reports the controller's SSID; one only flagged bound, without SSID
+/// (lab-wap, 7.24.6), isn't bound: it gets NetBox's configuration. A dynamic one is always.
+#[test]
+fn a_radio_flagged_bound_without_ssid_is_not_bound() {
+    let mut wifi = build_wifi_ports(b"C52iG-5HaxD2HaxD").into_vec();
+    wifi[0].data.configuration_ssid = Some("lab-wlan".into());
+    let current = WifiDeviceDataCurrent {
+        provisioning: Box::new([]),
+        datapath: Box::new([]),
+        cap: Default::default(),
+        capsman: Default::default(),
+        wifi: wifi.into(),
+        configuration: Box::new([]),
+        certificate: Box::new([]),
+    };
+    let radio = |name: &str, dynamic: bool, bound: bool| {
+        crate::device::answer::parsed::<mikrotik_model::model::InterfaceWifiState>(&[
+            (".id", "*1"),
+            ("default-name", name),
+            ("dynamic", if dynamic { "true" } else { "false" }),
+            ("bound", if bound { "true" } else { "false" }),
+            ("inactive", "true"),
+            ("master", "true"),
+            ("running", "false"),
+        ])
+    };
+    let bound = crate::device::ros::cfg::bound(
+        &[radio("wifi1", false, true), radio("wifi2", false, true)],
+        &current,
+    );
+    assert_eq!(bound.as_ref(), [AsciiString::from("wifi1")]);
+    let bound = crate::device::ros::cfg::bound(&[radio("wifi2", true, false)], &current);
+    assert_eq!(bound.as_ref(), [AsciiString::from("wifi2")]);
+}
