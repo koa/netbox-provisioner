@@ -144,6 +144,8 @@ Gerät anschliessen (`helper::connect_device`, nur für Anwohner):
 - was im Weg ist, geht zuerst, nacheinander auf dem Stand, den das davor lässt: die bisherige
   Verbindung des Geräts an seinem Port und am alten Anschluss („Verbindung abräumen“), was am
   Port oder in der Dose steckt, dort nur Geräte des Anwohners (sonst `FOREIGN_DEVICE_AT_PORT`),
+  die Bridge, in der der Port des Routers oder der des Geräts ist („Aus Bridge lösen“ mit dessen
+  VLANs; eine Verbindung braucht den Port für sich, die Bridge und ihre anderen Ports bleiben),
   und das VLAN des Ports (eine Verbindung hat Adressen, kein VLAN);
 - dann „Verbindung“ (Kabel, `/31` des Transfer-Pools, `ospf`, MTU, Labels) und, wo es fehlt,
   „Loopback“; die Schritte jedes Teils hinter die davor geschoben (`PlanStep::shift`);

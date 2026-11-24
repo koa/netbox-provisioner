@@ -119,6 +119,72 @@ fn the_routers_port_loses_its_vlan() {
     );
 }
 
+struct PortInBridge {
+    port: InterfaceAccess,
+    bridge: InterfaceAccess,
+}
+
+/// A router's port in a bridge leaves it, its VLANs with it: a link has the port for itself.
+/// The bridge and its other ports stay.
+#[test]
+fn the_routers_port_leaves_its_bridge() {
+    let mut raw = crate::topology::test::example_response();
+    let topology = crate::topology::test::topology_from(raw.clone());
+    let device_port = linked_port(&topology);
+    let device = device_port.device().expect("its device");
+    // a free port of a router with a bridge
+    let PortInBridge { port, bridge } = by_id(&topology)
+        .filter(|router| router.has_routeros() && router.id() != device.id())
+        .find_map(|router| {
+            let ports = ports_by_id(&router);
+            let bridge = ports.iter().find(|other| other.is_bridge())?.clone();
+            let port = ports.into_iter().find(|port| {
+                port.is_ethernet_port()
+                    && port.cable().is_none()
+                    && port.bridge().is_none()
+                    && port.ips().is_empty()
+            })?;
+            Some(PortInBridge { port, bridge })
+        })
+        .expect("a free port of a router with a bridge");
+    for found in raw["data"]["device_list"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+        .flat_map(|device| device["interfaces"].as_array_mut().into_iter().flatten())
+        .filter(|interface| {
+            interface["id"].as_str().and_then(|id| id.parse().ok()) == Some(port.id().0)
+        })
+    {
+        found["bridge"] = serde_json::json!({ "id": bridge.id().0.to_string() });
+    }
+    let topology = crate::topology::test::topology_from(raw);
+    let in_bridge = topology.get_interface_by_id(port.id()).expect("the port");
+    assert_eq!(in_bridge.bridge().map(|b| b.id()), Some(bridge.id()));
+    let input = ConnectDeviceInput {
+        port: port.id().0,
+        socket: None,
+        device_port: device_port.id().0,
+    };
+    let plan = prepare(&topology, &input).expect("a plan, not PortInBridge");
+    assert!(
+        plan.steps.iter().any(|step| matches!(
+            step,
+            PlanStep::UpdatePort(update) if update.interface.id == port.id().0
+                && update.bridge_before == Some(bridge.id().0)
+                && update.bridge_id.is_none()
+        )),
+        "{:?}",
+        plan.steps
+    );
+    let after = plan.preview_topology().expect("a preview");
+    let left = after
+        .get_interface_by_id(port.id())
+        .expect("the port after");
+    assert!(left.bridge().is_none());
+    assert!(after.get_interface_by_id(bridge.id()).is_some());
+}
+
 /// Another port of the device to the same router port (the Anschluss changed): the old link
 /// goes, the router's port is free for the new one.
 #[test]

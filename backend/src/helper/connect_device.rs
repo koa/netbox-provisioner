@@ -6,10 +6,12 @@
 //! transfer pool, `ospf`, MTU, labels) and, where it lacks one, its loopback. What was in the
 //! way goes first, one after the other on NetBox as the one before leaves it: the device's old
 //! link („Verbindung abräumen“ at its port), what is at the router's port or plugged into the
-//! socket, and the VLAN of the router's port (a link has addresses, no VLAN). As with „Kabel
+//! socket, a bridge either port is in („Aus Bridge lösen“: a link has the port for itself) and
+//! the VLAN of the router's port (a link has addresses, no VLAN). As with „Kabel
 //! übernehmen“, the steps of each part are shifted behind those before.
 use super::{
     CableEnd, CreateCable, NetboxPlan, PlanStep, UpdatePortVlan,
+    bridge_leave::{self, BridgeLeaveInput},
     connection::{self, ConnectionInput},
     disconnect::{self, DisconnectInput},
     loopback, port_name,
@@ -178,6 +180,19 @@ fn prepare(topology: &Arc<Topology>, input: &ConnectDeviceInput) -> Result<Netbo
                 Err(Error::NothingToDisconnect(_)) => {}
                 Err(error) => return Err(error),
             }
+        }
+    }
+    // a link has the port for itself: out of a bridge at either end (its VLANs go with it)
+    for end in [input.port, input.device_port] {
+        let topology = now(&plan)?;
+        let port = interface(&topology, end)?;
+        if port.bridge().is_some() {
+            let owner = port.device().ok_or(Error::UnknownInterface(end))?;
+            let leave = BridgeLeaveInput {
+                device: owner.id().0,
+                port: end,
+            };
+            plan.append(bridge_leave::plan(&topology, &leave)?);
         }
     }
     // a link has addresses, no VLAN
