@@ -119,8 +119,11 @@ fn prepare(topology: &Arc<Topology>, input: &ConnectDeviceInput) -> Result<Netbo
     let device = device_port
         .device()
         .ok_or(Error::UnknownInterface(input.device_port))?;
-    if !device.has_routeros() {
-        return Err(Error::NoRouterOs(device.name().into()));
+    // both ends: the link is a routed one, set up on both devices
+    for end in [&router, &device] {
+        if !end.has_routeros() {
+            return Err(Error::NoRouterOs(end.name().into()));
+        }
     }
     let socket = input
         .socket

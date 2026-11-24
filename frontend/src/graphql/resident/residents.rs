@@ -84,6 +84,7 @@ pub struct ResidentPort {
     pub network: Option<Named>,
     pub foreign_network: bool,
     pub far_ends: Vec<FarEnd>,
+    pub routeros: bool,
 }
 
 #[derive(cynic::Enum, Debug, Clone, PartialEq, Eq)]

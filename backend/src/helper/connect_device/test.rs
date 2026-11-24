@@ -251,3 +251,26 @@ fn the_anschluss_moves_on_the_device() {
         .expect("the router's port");
     assert!(router_port.cable().is_none(), "{:?}", plan.steps);
 }
+
+/// A port of a device without RouterOS takes no link: the provisioner can't set its end up.
+#[test]
+fn a_switch_without_routeros_takes_no_device() {
+    let topology = example_topology();
+    let device_port = linked_port(&topology);
+    let switch_port = by_id(&topology)
+        .filter(|device| !device.has_routeros())
+        .flat_map(|device| ports_by_id(&device))
+        .find(|port| port.is_ethernet_port())
+        .expect("a port of a device without RouterOS");
+    let switch = switch_port.device().expect("its device");
+    let input = ConnectDeviceInput {
+        port: switch_port.id().0,
+        socket: None,
+        device_port: device_port.id().0,
+    };
+    match prepare(&topology, &input) {
+        Err(Error::NoRouterOs(name)) => assert_eq!(&*name, switch.name()),
+        Err(other) => panic!("{other:?}"),
+        Ok(plan) => panic!("a plan: {:?}", plan.steps),
+    }
+}

@@ -427,6 +427,11 @@ impl PortsTab<'_> {
 
     /// A device to link to the free port, and those the drafts link there.
     fn connect_choice(&self, port: &ResidentPort) -> Html {
+        // a link is routed: the provisioner sets it up at both ends
+        if !port.routeros {
+            let socket = port.kind == PortKind::Socket;
+            return html!(<p><small>{t::no_device_here(socket)}</small></p>);
+        }
         let key = PortKey::of(port);
         let here = |device: &ResidentDevice| {
             self.drafts

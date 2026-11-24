@@ -42,6 +42,7 @@ fn socket(id: i32, network: Option<Named>, far_ends: Vec<FarEnd>) -> ResidentPor
         network,
         foreign_network: false,
         far_ends,
+        routeros: true,
     }
 }
 

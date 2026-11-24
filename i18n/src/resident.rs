@@ -246,6 +246,20 @@ pub fn comes_here(device: &str) -> String {
     format!("{device} kommt hierher")
 }
 pub const NOT_HERE: &str = "doch nicht";
+/// a port without RouterOS at it (of a socket: at the switch behind it) takes no device;
+/// `socket`: a socket's
+pub fn no_device_here(socket: bool) -> &'static str {
+    match socket {
+        true => {
+            "Hier kann kein Gerät angeschlossen werden: hinter dieser Dose steht kein Switch, \
+             den der Provisioner einrichten kann."
+        }
+        false => {
+            "Hier kann kein Gerät angeschlossen werden: dieses Gerät kann der Provisioner nicht \
+             einrichten."
+        }
+    }
+}
 pub const REMOVE_DEVICE: &str = "Gerät entfernen";
 pub const NOT_CONNECTED: &str = "Nicht angeschlossen";
 pub const NOT_CONNECTED_HINT: &str = "Wähle rechts beim Gerät, wo du es anschliesst.";

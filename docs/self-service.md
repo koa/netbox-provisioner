@@ -79,7 +79,9 @@ Gespeichert werden die Entwürfe des UI zusammen: `changes` ist eine Liste, jede
   die Dose zeigt), oder `vlan: null` für keines;
 - `connectDevice: { device, port, kind, devicePort }`: eines seiner RouterOS-Geräte an einen
   eigenen Port, eine eigene Dose oder einen Port eines anderen eigenen Geräts;
-  `devicePort` ist der Port des Geräts, ohne ihn sein Anschluss;
+  `devicePort` ist der Port des Geräts, ohne ihn sein Anschluss. Die Verbindung ist geroutet
+  und wird an beiden Enden eingerichtet: Ein Port eines Geräts ohne RouterOS, bei einer Dose
+  der Switch dahinter, nimmt keines (`NO_ROUTEROS` mit seinem Namen; `ResidentPort.routeros`);
 - `disconnectDevice: <Gerät>`: eines seiner Geräte abhängen;
 - `deviceRoom: { device, location }`: der Raum (NetBox-Location) eines seiner Geräte.
 
@@ -230,7 +232,8 @@ Badge. Eine Auswahl, die dem gespeicherten Stand entspricht, ist kein Entwurf.
   Ports, „Netz des Betreibers“ oder gestrichelt „Kein Netz“. Links lässt sich wählen:
   - „Netz“ (eines seiner Netze oder „Kein Netz“), wo nur eigene Geräte ohne Anbindung am
     Kabel hängen;
-  - „Oder Gerät anschliessen“ an einem freien Port;
+  - „Oder Gerät anschliessen“ an einem freien Port mit RouterOS (bei einer Dose: am Switch
+    dahinter); sonst sagt die Zeile „Hier kann kein Gerät angeschlossen werden“ und warum;
   - „Gerät entfernen“, wo ein angebundenes eigenes Gerät hängt.
 
   Die Karte eines eigenen Geräts hat neben dem Namen „Raum ändern“ (ein Dialog „Wo steht …?“;

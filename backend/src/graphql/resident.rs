@@ -147,6 +147,9 @@ pub struct ResidentPort {
     foreign_network: bool,
     /// the ports at the other end of its cable; of a socket the device plugged in
     far_ends: Box<[FarEnd]>,
+    /// its device runs RouterOS, of a socket the switch its rear port leads to: only there
+    /// the provisioner can link a device (`connectDevice`)
+    routeros: bool,
 }
 
 /// The other end of a cable: a port of a device.
@@ -394,6 +397,7 @@ fn port(owned: &Owned, interface: &InterfaceAccess) -> Option<ResidentPort> {
         network: network.own(owned),
         foreign_network: network.foreign(owned),
         far_ends,
+        routeros: device.has_routeros(),
     })
 }
 
@@ -407,11 +411,11 @@ fn socket_port(owned: &Owned, socket: &FrontPortAccess) -> Option<ResidentPort> 
         .iter()
         .filter_map(|far| far_end(owned, far))
         .collect();
-    let network = socket
-        .interface_behind()
-        .as_ref()
-        .map(PortNetwork::of)
-        .unwrap_or_default();
+    let behind = socket.interface_behind();
+    let network = behind.as_ref().map(PortNetwork::of).unwrap_or_default();
+    let routeros = behind
+        .and_then(|port| port.device())
+        .is_some_and(|switch| switch.has_routeros());
     Some(ResidentPort {
         id: AccessTopology::id(socket).0,
         kind: PortKind::Socket,
@@ -427,6 +431,7 @@ fn socket_port(owned: &Owned, socket: &FrontPortAccess) -> Option<ResidentPort> 
         network: network.own(owned),
         foreign_network: network.foreign(owned),
         far_ends,
+        routeros,
     })
 }
 
