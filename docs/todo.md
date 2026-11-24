@@ -29,7 +29,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z19 | Wartungsfenster? | vorerst nicht (2026-10-23) | C10 |
 | Z20 | Netz-Update pro Site oder über mehrere? | mehrere Sites, frei gewählt (2026-10-23) | C10 |
 | Z39 | Reiner L2-Switch (C18): Wie wird er in NetBox modelliert, und welche VLANs trägt sein Trunk? | Custom Field `l3_uplink` am Port des alten Switches zum L3-Switch, dessen L3-Funktionen dort umgesetzt werden; VLAN-IDs automatisch aus einem auf beiden Switches unbenutzten Bereich (2026-11-07) | C18 |
-| Z40 | DNS der Geräte-Adressen (C19): Welcher Server beantwortet die Einträge? (a) ein eigener autoritativer Server (im Provisioner oder daneben, Zone aus NetBox), an den die übergeordnete Zone delegiert, Vorwärts- und Rückwärts-Zonen; (b) im bestehenden Blocky, als Einträge seiner Konfiguration (`customDNS`), die der Provisioner schreiben müsste; (c) wie (a), Blocky gibt die Zonen per `conditional` an den eigenen Server weiter, wo es keine Delegation gibt (intern). Was Blocky davon kann (Reload, PTR), ist noch zu prüfen. Und welche Namen: `<port>.<gerät>.<zone>`, oder `dns_name` der NetBox-Adresse, wo gesetzt? | **offen** | C19 |
 | Z41 | Zertifikat eines OpenVPN-Servers (E26): Woher weiss der Provisioner, dass ein Gerät einen OpenVPN-Server hat (ein Service in NetBox, ein Custom Field am Gerät)? Stellt `www_ca` auch dieses Zertifikat aus, oder eine eigene CA für OpenVPN (die Clients sollten nur ihr trauen)? | **offen** | E26 |
 | Z42 | Was bekommt ein Anwohner, und woher weiss man, welche WLANs und welche WLAN-Gruppe ihm gehören? | Geräte, Ports fremder Geräte und VLANs (`owner`); die WLANs auf seinen VLANs gehören ihm, seine WLAN-Gruppe ist die seiner WLANs (2026-11-17; Bedingung `vlan__owner__users` in der Lab-NetBox geprüft) | C7 |
 | Z43 | Eine WLAN-Gruppe pro Anwohner oder alle APs einer Gruppe mit allen WLANs? | alle APs strahlen alle WLANs der Gruppe aus (2026-11-17) | C7 |
@@ -65,7 +64,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | C8 | Überwachung: Collector, Prometheus-Metriken (Alarme dort, Z13), Ping zum Uplink-Gateway (Z14), Zustandsseite, Ansicht für Anwohner | [Überwachung](concepts/monitoring.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](network-update.md#tests) | L | Regel, Plan, Rollout und eingefärbte Knoten der Netz-Ansicht erledigt; offen: CHR-Test der Kette `entry -- a -- target` |
 | C18 | Reiner L2-Switch als „Extender“: Ein alter Switch ohne L3-Offload oder mit anderen Problemen (CRS2xx, CRS354) hängt an einem modernen Switch oder Router, der seine L3-Funktionen über einen Trunk übernimmt: Port oder Bridge, mit IP oder VLAN (Z39) | [Reiner L2-Switch](concepts/l2-extender.md) | M–L | offen |
-| C19 | DNS für alle Adressen auf Geräte-Ports: Vorwärts- (A, AAAA) und Rückwärts-Einträge (PTR) aus NetBox, ein Server dafür (Z40); zuerst ein Konzept | – | M–L | offen |
 
 ## D. In Arbeit, Rest offen
 
