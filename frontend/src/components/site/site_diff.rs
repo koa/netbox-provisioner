@@ -5,7 +5,8 @@
 //! NetBox' order and one line high each (no row moves or grows while it reads): the summary of
 //! its diff with what needs a closer look (addresses removed, OSPF, bridge ports), the rest of
 //! the diff in a modal.
-//! Opened again, it picks up the site's last job, running or not. What the provisioner learned
+//! Opened again, it picks up the site's last job, running or not; with `fresh` (the preview
+//! before clearing the automatic rollout's error) it starts a new one. What the provisioner learned
 //! of a device since (`knownDiff`, subscribed: the device page read it after an apply) goes
 //! before the job's reading; a device changed since and not read again says so.
 use crate::{
@@ -42,6 +43,12 @@ use yew_nested_router::components::Link;
 #[derive(Debug, Clone, PartialEq, Properties)]
 pub struct SiteDiffProps {
     pub site: u32,
+    /// start a new check at once instead of showing the last one
+    #[prop_or_default]
+    pub fresh: bool,
+    /// the check has read every device
+    #[prop_or_default]
+    pub on_finished: Callback<()>,
 }
 
 #[derive(Clone)]
@@ -105,18 +112,22 @@ impl Component for SiteDiff {
     fn create(ctx: &Context<Self>) -> Self {
         let scope = ctx.link().clone();
         let site = ctx.props().site as i32;
-        spawn_local(async move {
-            let last = request(scope.clone(), SiteDiffJobs::build(SiteVariables { site }))
-                .await
-                .ok()
-                .and_then(|data| {
-                    data.jobs
-                        .into_iter()
-                        .find(|job| job.kind == JobKind::SiteDiff)
-                })
-                .map(|job| job.id);
-            scope.send_message(SiteDiffMsg::Last(last));
-        });
+        if ctx.props().fresh {
+            scope.send_message(SiteDiffMsg::Start);
+        } else {
+            spawn_local(async move {
+                let last = request(scope.clone(), SiteDiffJobs::build(SiteVariables { site }))
+                    .await
+                    .ok()
+                    .and_then(|data| {
+                        data.jobs
+                            .into_iter()
+                            .find(|job| job.kind == JobKind::SiteDiff)
+                    })
+                    .map(|job| job.id);
+                scope.send_message(SiteDiffMsg::Last(last));
+            });
+        }
         let scope = ctx.link().clone();
         let known_subscription = watch(
             ctx.link(),
@@ -198,6 +209,9 @@ impl Component for SiteDiff {
                     }
                 }
                 self.job_error = job.error.as_ref().map(ServerProblem::from);
+                if job.state == JobState::Done && self.state != Some(JobState::Done) {
+                    ctx.props().on_finished.emit(());
+                }
                 self.state = Some(job.state);
                 self.job_started = Some(read_at(job.age));
             }

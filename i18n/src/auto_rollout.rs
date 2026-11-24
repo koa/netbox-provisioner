@@ -6,6 +6,12 @@ pub const NOT_SEEN: &str =
     "Noch keine Runde hat die Site gesehen; die erste prüft, ob ihre Geräte wie in NetBox sind.";
 pub const READY: &str = "Bereit: Änderungen in NetBox gehen ohne Anwenden von Hand auf die Geräte.";
 pub const CLEAR: &str = "Fehler aufheben und ausrollen";
+pub const PREVIEW_CLEAR: &str = "Fehler aufheben …";
+pub const PREVIEW_TITLE: &str = "Fehler aufheben: was ausrollt";
+pub const PREVIEW_HINT: &str = "Wie weit jedes Gerät der Site von NetBox ist, frisch gelesen. Nach \
+    dem Aufheben rollt gleich eine Runde die automatischen Geräte aus; die manuellen bleiben, \
+    bis ein Admin sie anwendet. Aufheben geht, sobald alle Geräte gelesen sind.";
+pub const CANCEL: &str = "Abbrechen";
 pub const RELEASE: &str = "Freigeben und mit ausrollen";
 pub const RELEASED: &str = "Freigegeben, kommt mit der nächsten Runde";
 pub const ACCEPT: &str = "Als Stand übernehmen";

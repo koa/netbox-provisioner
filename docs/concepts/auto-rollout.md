@@ -92,8 +92,8 @@ sicher, aber das ganze Netz kurz weg; wer das nicht will, nimmt dieses Gerät au
 
 - Stand pro Änderung: umgesetzt ([Automatisches Rollout](../auto-rollout.md#stand-pro-änderung)).
   Offen: das Label pro Element im Anwohner-UI (C21).
-- Ein Admin, der im Fehlerzustand aufhebt, sieht vorher die Vorschau aller gesammelten
-  Änderungen (heute: „Abweichung von NetBox“ der Site von Hand).
+- Vorschau beim Aufheben des Fehlers: umgesetzt
+  ([Automatisches Rollout](../auto-rollout.md#fehlerzustand)).
 
 ## Entschieden (2026-11-17)
 

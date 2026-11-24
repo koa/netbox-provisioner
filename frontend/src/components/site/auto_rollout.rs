@@ -1,8 +1,10 @@
 //! Scope: A site's automatic rollout: its state, the last round, the changes not everywhere yet,
-//! clearing an error and releasing a device; not the rounds (backend `auto_rollout`).
+//! clearing an error (after a preview of the site's diff) and releasing a device; not the
+//! rounds (backend `auto_rollout`).
 //!
 //! Shown for a site with the custom field `auto_rollout` only, subscribed: a round, a cleared
 //! error or a release shows at once. Clearing and releasing need `allowApply`, like applying.
+use super::site_diff::SiteDiff;
 use crate::{
     error::FrontendError,
     graphql::{
@@ -22,7 +24,8 @@ use crate::{
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
 use i18n::auto_rollout as t;
 use patternfly_yew::prelude::{
-    Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle,
+    Alert, AlertType, Bullseye, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle,
+    Modal, ModalVariant,
 };
 use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
 
@@ -35,6 +38,8 @@ pub struct AutoRollout {
     state: Option<SiteAutoRollout>,
     allow_apply: bool,
     error: Option<FrontendError>,
+    /// the preview before clearing the error is open; `true` once its check read every device
+    preview: Option<bool>,
     _subscription: Subscription,
 }
 
@@ -42,6 +47,9 @@ pub enum AutoRolloutMsg {
     Loaded(Option<Box<SiteAutoRollout>>),
     AllowApply(bool),
     Error(FrontendError),
+    /// opens the preview before clearing, or closes it
+    Preview(bool),
+    PreviewRead,
     Clear,
     Release(i32),
     Accept(i32),
@@ -81,6 +89,7 @@ impl Component for AutoRollout {
             state: None,
             allow_apply: false,
             error: None,
+            preview: None,
             _subscription: subscription,
         }
     }
@@ -93,7 +102,14 @@ impl Component for AutoRollout {
             }
             AutoRolloutMsg::AllowApply(allowed) => self.allow_apply = allowed,
             AutoRolloutMsg::Error(error) => self.error = Some(error),
+            AutoRolloutMsg::Preview(open) => self.preview = open.then_some(false),
+            AutoRolloutMsg::PreviewRead => {
+                if let Some(read) = self.preview.as_mut() {
+                    *read = true;
+                }
+            }
             AutoRolloutMsg::Clear => {
+                self.preview = None;
                 let scope = ctx.link().clone();
                 let site = ctx.props().site as i32;
                 spawn_local(async move {
@@ -102,7 +118,6 @@ impl Component for AutoRollout {
                         scope.send_message(AutoRolloutMsg::Error(error));
                     }
                 });
-                return false;
             }
             AutoRolloutMsg::Release(device) => {
                 let scope = ctx.link().clone();
@@ -145,13 +160,13 @@ impl Component for AutoRollout {
                 SiteError::Other(other) => t::SiteError::Other(other),
             };
             let devices = names(&error.devices);
-            let onclick = ctx.link().callback(|_| AutoRolloutMsg::Clear);
+            let onclick = ctx.link().callback(|_| AutoRolloutMsg::Preview(true));
             html! {
                 <Alert inline=true r#type={AlertType::Danger}
                     title={t::error(reason, &devices, &t::ago(error.age.into()))}>
                     <Button variant={ButtonVariant::Secondary} disabled={!self.allow_apply}
                         {onclick}>
-                        {t::CLEAR}
+                        {t::PREVIEW_CLEAR}
                     </Button>
                 </Alert>
             }
@@ -213,6 +228,7 @@ impl Component for AutoRollout {
                     {not_seen}
                     {last}
                     {open}
+                    {self.preview_view(ctx)}
                 </CardBody>
             </Card>
         }
@@ -220,6 +236,37 @@ impl Component for AutoRollout {
 }
 
 impl AutoRollout {
+    /// The preview before clearing the error: a new check of the site; clearing goes once it
+    /// has read every device.
+    fn preview_view(&self, ctx: &Context<Self>) -> Html {
+        let Some(read) = self.preview else {
+            return Html::default();
+        };
+        let link = ctx.link();
+        let onclose = link.callback(|()| AutoRolloutMsg::Preview(false));
+        let footer = html! {
+            <>
+                <Button variant={ButtonVariant::Primary} label={t::CLEAR}
+                    disabled={!read || !self.allow_apply}
+                    onclick={link.callback(|_| AutoRolloutMsg::Clear)}/>
+                <Button variant={ButtonVariant::Link} label={t::CANCEL}
+                    onclick={link.callback(|_| AutoRolloutMsg::Preview(false))}/>
+            </>
+        };
+        html! {
+            <div class="pf-v6-c-backdrop">
+                <Bullseye>
+                    <Modal title={t::PREVIEW_TITLE} variant={ModalVariant::Large} {onclose}
+                        {footer}>
+                        <p>{t::PREVIEW_HINT}</p>
+                        <SiteDiff site={ctx.props().site} fresh=true
+                            on_finished={link.callback(|()| AutoRolloutMsg::PreviewRead)}/>
+                    </Modal>
+                </Bullseye>
+            </div>
+        }
+    }
+
     fn last_round(&self, ctx: &Context<Self>, last: &LastRound, state: &SiteAutoRollout) -> Html {
         let outcome = match &last.outcome {
             RoundOutcome::NothingToDo => t::Outcome::NothingToDo,

@@ -130,8 +130,11 @@ Gerät darin geht in den Fehlerzustand „gescheitert“ mit den Geräten, die s
 ## Fehlerzustand
 
 Pro Site: Eine Site im Fehler wird in den Runden übergangen, die anderen laufen weiter.
-NetBox bleibt, wie es ist. „Fehler aufheben und ausrollen“ (`clearAutoRolloutError`, braucht
-`allow_apply`) setzt sie auf bereit und startet gleich eine Runde, die ihre Diffs ausrollt.
+NetBox bleibt, wie es ist. „Fehler aufheben …“ öffnet zuerst die Vorschau: eine frische
+„Abweichung von NetBox“ der Site (`SiteDiff` mit `fresh`) mit jedem Gerät, das ausrollen würde.
+Erst wenn sie alle Geräte gelesen hat, geht „Fehler aufheben und ausrollen“
+(`clearAutoRolloutError`, braucht `allow_apply`): Es setzt die Site auf bereit und startet gleich
+eine Runde, die ihre Diffs ausrollt.
 
 Metriken an `/metrics`, für den Alarm im Alertmanager:
 
@@ -220,3 +223,9 @@ nächste Runde weiter, ohne lab-np2 anzuwenden.
   automatisch hinaus. Mit dem Aggregate vorübergehend auf `192.168.0.0/17` hielt
   `192.168.200.1/24` an diesem Port die Runde an („Outward“); mit `/16` zurück ging dieselbe
   Adresse automatisch hinaus. Adresse und Port entfernt, ebenfalls automatisch.
+- **Journal:** Der Eintrag eines automatischen Anwendens an lab-hex nannte „Geändert:
+  /interface/ethernet ~1, /ip/address ~1, /routing/ospf/interface-template ~2“.
+- **Vorschau beim Aufheben:** Lab im Zustand des lokalen Provisioners in den Fehler gesetzt (ein
+  echtes Scheitern lässt sich nicht gezielt auslösen), dazu ein Label an lab-hex: Der Dialog las
+  die Site frisch, „Fehler aufheben und ausrollen“ ging erst danach; aufgehoben, rollte die
+  Runde lab-hex aus. Label zurück, ebenfalls automatisch.
