@@ -32,7 +32,7 @@ use crate::{
         interface_live::client_name,
         metrics::{BridgeHost, Lease, WlanBand, WlanClient},
         neighbors::{self, SeenNeighbor},
-        uplink::{self, UplinkPing, UplinkQuality},
+        uplink::{self, UplinkPing, UplinkQuality, UplinkReading},
     },
     error_info::ApiError,
     facts::Freshness,
@@ -49,7 +49,7 @@ use crate::{
         ownership::{Belonging, Owned},
     },
 };
-use async_graphql::{Context, Object, SimpleObject, futures_util::future::join_all};
+use async_graphql::{Context, Enum, Object, SimpleObject, futures_util::future::join_all};
 use ipnet::IpNet;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
@@ -151,12 +151,43 @@ pub struct NetworkInternet {
     network: u32,
     /// the network's router first
     way: Box<[WayHop]>,
-    /// the way ends at a router with an uplink; else at a management root without one (the
-    /// management proxy's device)
-    has_uplink: bool,
-    /// the pings to the uplink's gateway, at most a minute old; none without an uplink, where
+    uplink_state: UplinkState,
+    /// the pings to the uplink's gateway, at most a minute old, with `uplink_state` `PINGED`
+    uplink: Option<ResidentUplink>,
+}
+
+/// How a network's uplink stands, from the reading at the way's end.
+#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UplinkState {
+    /// the way ends at a management root without an uplink (the management proxy's device)
+    NoUplink,
     /// its router isn't reached or didn't answer
-    uplink: Option<UplinkQuality>,
+    Unanswered,
+    /// it has no active default route: no internet
+    NoDefaultRoute,
+    /// its default route goes out an interface without a next hop's address (PPPoE, LTE):
+    /// nothing to ping
+    NoAddress,
+    Pinged,
+}
+
+/// The pings to the uplink's gateway as a resident sees them: without the gateway's address.
+#[derive(SimpleObject, Debug, Clone)]
+pub struct ResidentUplink {
+    /// the share lost, 0 to 1
+    loss: f64,
+    /// the average round trip of the answered ones, milliseconds
+    rtt_ms: Option<f64>,
+}
+
+impl From<&UplinkPing> for ResidentUplink {
+    fn from(ping: &UplinkPing) -> Self {
+        let quality = UplinkQuality::from(ping);
+        ResidentUplink {
+            loss: quality.loss,
+            rtt_ms: quality.rtt_ms,
+        }
+    }
 }
 
 #[derive(SimpleObject, Debug, Clone)]
@@ -578,20 +609,36 @@ impl QueryLive {
         let pings = uplink_pings(ways.iter().filter_map(|way| way.uplink.as_ref()), &reached).await;
         let internet = ways
             .into_iter()
-            .map(|way| NetworkInternet {
-                network: way.network.0,
-                has_uplink: way.uplink.is_some(),
-                uplink: way
+            .map(|way| {
+                // the reading of the uplink's router, where it answered
+                let reading = way
                     .uplink
-                    .and_then(|router| pings.get(&router.id())?.as_ref().map(UplinkQuality::from)),
-                way: way
-                    .routers
-                    .iter()
-                    .map(|router| WayHop {
-                        device: named(router),
-                        reached: reached(router),
-                    })
-                    .collect(),
+                    .as_ref()
+                    .and_then(|router| pings.get(&router.id()));
+                let uplink_state = match reading {
+                    _ if way.uplink.is_none() => UplinkState::NoUplink,
+                    None => UplinkState::Unanswered,
+                    Some(UplinkReading::NoDefaultRoute) => UplinkState::NoDefaultRoute,
+                    Some(UplinkReading::NoAddress { .. }) => UplinkState::NoAddress,
+                    Some(UplinkReading::Pinged(_)) => UplinkState::Pinged,
+                };
+                let uplink = match reading {
+                    Some(UplinkReading::Pinged(ping)) => Some(ResidentUplink::from(ping)),
+                    _ => None,
+                };
+                NetworkInternet {
+                    network: way.network.0,
+                    uplink_state,
+                    uplink,
+                    way: way
+                        .routers
+                        .iter()
+                        .map(|router| WayHop {
+                            device: named(router),
+                            reached: reached(router),
+                        })
+                        .collect(),
+                }
             })
             .collect();
         Ok(LiveState {
@@ -694,7 +741,7 @@ fn plugged_in(device: u32, uplink: u32, seen: &[SeenNeighbor]) -> Option<Interfa
 /// A network's way out: its routers in turn, and the one of them with the uplink.
 struct WayOut {
     network: VlanId,
-    routers: Vec<DeviceAccess>,
+    routers: Box<[DeviceAccess]>,
     uplink: Option<DeviceAccess>,
 }
 
@@ -710,7 +757,7 @@ fn way_out(tree: &ManagementTree, vlan: &VlanAccess) -> Option<WayOut> {
         if uplink::has_uplink(&router) {
             return Some(WayOut {
                 network: vlan.id,
-                routers,
+                routers: routers.into(),
                 uplink: Some(router),
             });
         }
@@ -723,7 +770,7 @@ fn way_out(tree: &ManagementTree, vlan: &VlanAccess) -> Option<WayOut> {
             None => {
                 return Some(WayOut {
                     network: vlan.id,
-                    routers,
+                    routers: routers.into(),
                     uplink: None,
                 });
             }
@@ -735,11 +782,11 @@ fn way_out(tree: &ManagementTree, vlan: &VlanAccess) -> Option<WayOut> {
 const UPLINK_AGE: Duration = Duration::from_secs(60);
 
 /// The pings of each of `routers` (an uplink each) reached, at most [`UPLINK_AGE`] old, each
-/// router once, all at once; missing where it didn't answer, `None` without a default route.
+/// router once, all at once; missing where it didn't answer.
 async fn uplink_pings<'r>(
     routers: impl Iterator<Item = &'r DeviceAccess>,
     reached: &impl Fn(&DeviceAccess) -> Option<bool>,
-) -> BTreeMap<DeviceId, Option<UplinkPing>> {
+) -> BTreeMap<DeviceId, UplinkReading> {
     let mut asked = BTreeMap::<DeviceId, DeviceAccess>::new();
     for router in routers.filter(|router| reached(router) != Some(false)) {
         asked.entry(router.id()).or_insert_with(|| router.clone());
@@ -751,7 +798,7 @@ async fn uplink_pings<'r>(
             .ok()
             .flatten()?;
         let reader = accessible.reader().at(Freshness::MaxAge(UPLINK_AGE));
-        Some((router.id(), uplink::ping(&reader).await.ok().flatten()))
+        Some((router.id(), uplink::ping(&reader).await.ok()?))
     }))
     .await
     .into_iter()

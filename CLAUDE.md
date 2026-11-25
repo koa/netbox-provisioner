@@ -200,9 +200,12 @@ once); the view reads changes and live state every 15 s and sums them up on top.
 `LiveState.internet` is each network's way out (`graphql::resident::live::way_out`, C8): from
 the router with the network's DHCP server up the `ManagementTree` to the first router with an
 uplink (`device::uplink::has_uplink`) or a root, each hop reached or not, and that router's
-pings to its gateway (`Freshness::MaxAge` 60 s, so the 15 s poll shares one); the network's
-card says „Internet: gut/gestört (… ms, … % Verlust)“, „unterbrochen“ at a hop not reached,
-„nicht gemessen“ without uplink (the lab: lab-np2 is the root, no uplink in NetBox).
+reading (`device::uplink::UplinkReading`, `Freshness::MaxAge` 60 s, so the 15 s poll shares
+one) as `UplinkState` and, pinged, `ResidentUplink` (no gateway address for residents); the
+network's card says „Internet: gut/gestört (… ms, … % Verlust)“, „unterbrochen“ at a hop not
+reached or without a default route at the uplink, „nicht gemessen“ without uplink (the lab:
+lab-np2 is the root, no uplink in NetBox), unanswered, or a default route out an interface
+without a next hop's address (PPPoE, LTE: `NoAddress`, nothing to ping).
 A change keeps its user alone (`Change.by`); `ChangeState.forResident` names the resident. A
 device
 is linked to the resident's port, socket or another own device's port by

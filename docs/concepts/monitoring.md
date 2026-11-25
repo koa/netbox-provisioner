@@ -79,8 +79,11 @@ Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
   zeigt die Kette die Router, denn zwischen zwei Routern im Baum liegt nicht immer ein Kabel
   (ein Switch auf L2). „Internet: unterbrochen, nicht erreicht: …“, wenn einer fehlt; sonst
   entscheiden die Pings des Uplink-Routers (höchstens 60 s alt): „gut“ ohne Verlust, „gestört“
-  mit, „Das Gateway des Uplinks antwortet nicht“; „nicht gemessen“ ohne Uplink auf dem Weg
-  (im Lab: lab-np2 ist die Wurzel, ohne Uplink in NetBox).
+  mit, „Das Gateway des Uplinks antwortet nicht“, „unterbrochen“ ohne Default-Route am Uplink;
+  „nicht gemessen“ ohne Uplink auf dem Weg (im Lab: lab-np2 ist die Wurzel, ohne Uplink in
+  NetBox), wenn der Uplink-Router nicht antwortet oder seine Default-Route über ein Interface
+  ohne Adresse des Gateways geht (PPPoE, LTE). Die Anwohner sehen die Adresse des Gateways
+  nicht (`ResidentUplink`).
 
 ## Grenzen
 

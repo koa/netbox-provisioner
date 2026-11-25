@@ -151,8 +151,20 @@ pub struct LiveState {
 pub struct NetworkInternet {
     pub network: i32,
     pub way: Vec<WayHop>,
-    pub has_uplink: bool,
-    pub uplink: Option<UplinkQuality>,
+    pub uplink_state: UplinkState,
+    pub uplink: Option<ResidentUplink>,
+}
+
+#[derive(cynic::Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UplinkState {
+    NoUplink,
+    Unanswered,
+    NoDefaultRoute,
+    NoAddress,
+    Pinged,
+    /// a state of a newer server
+    #[cynic(fallback)]
+    Other,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -162,7 +174,7 @@ pub struct WayHop {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-pub struct UplinkQuality {
+pub struct ResidentUplink {
     pub loss: f64,
     pub rtt_ms: Option<f64>,
 }

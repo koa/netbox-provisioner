@@ -1,6 +1,6 @@
 //! Scope: Tests of the uplink's gateway and the ping's summary; nothing else.
 
-use super::{UplinkPing, default_gateway, rtt, summary};
+use super::{NextHop, UplinkPing, default_gateway, rtt, summary};
 use crate::device::{access::Row, answer::parsed};
 use mikrotik_model::model::IpRoute;
 use std::time::Duration;
@@ -50,7 +50,10 @@ fn the_gateway_is_the_active_default_route_s_next_hop() {
     ]);
     let other_table = route(&[("gateway", "192.0.2.2"), ("routing-table", "vpn")]);
     let routes = [connected, standby, other_table, route(&[])];
-    assert_eq!(default_gateway(&routes), Some([10, 0, 2, 2].into()));
+    assert_eq!(
+        default_gateway(&routes),
+        Some(NextHop::Address([10, 0, 2, 2].into()))
+    );
     assert_eq!(default_gateway(&routes[..3]), None);
 }
 
@@ -61,7 +64,10 @@ fn a_recursive_route_counts_its_next_hop() {
         ("gateway", "198.51.100.1"),
         ("immediate-gw", "192.0.2.1%ether1"),
     ]);
-    assert_eq!(default_gateway(&[recursive]), Some([192, 0, 2, 1].into()));
+    assert_eq!(
+        default_gateway(&[recursive]),
+        Some(NextHop::Address([192, 0, 2, 1].into()))
+    );
 }
 
 #[test]
@@ -99,4 +105,14 @@ fn a_round_trip_in_routeros_units() {
     assert_eq!(rtt("12ms"), Some(Duration::from_millis(12)));
     assert_eq!(rtt("1s5ms"), Some(Duration::from_millis(1005)));
     assert_eq!(rtt("12"), None);
+}
+
+/// PPPoE's default route goes out the interface, without an address to ping.
+#[test]
+fn a_default_route_out_an_interface_has_no_address() {
+    let pppoe = route(&[("gateway", "pppoe-out1"), ("immediate-gw", "pppoe-out1")]);
+    assert_eq!(
+        default_gateway(&[pppoe]),
+        Some(NextHop::Interface("pppoe-out1".into()))
+    );
 }

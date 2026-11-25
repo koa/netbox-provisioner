@@ -321,6 +321,8 @@ pub fn internet_measured(loss: f64, rtt_ms: Option<f64>) -> String {
         None => format!("Internet: {how} ({percent} % Verlust)"),
     }
 }
+pub const INTERNET_NO_DEFAULT_ROUTE: &str =
+    "Internet: unterbrochen, der Uplink hat keine Route ins Internet";
 pub const INTERNET_NO_ANSWER: &str = "Internet: Das Gateway des Uplinks antwortet nicht";
 pub const INTERNET_UNMEASURED: &str = "Internet: nicht gemessen";
 /// the routers on the way that the others don't reach

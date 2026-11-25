@@ -91,7 +91,10 @@ alle.
 oder er verteilt die Default-Route, `propagate_default_route`, auch ohne den Tag) pingt
 pro Scrape 5-mal im Abstand von 200 ms den nächsten Hop seiner aktiven IPv4-Default-Route der
 Tabelle `main` (`immediate-gw`; `device::uplink`), nach seinen übrigen Lesungen. Gemessen wird
-der Uplink, nicht das Internet dahinter (Z14). Ohne aktive Default-Route fehlen beide.
+der Uplink, nicht das Internet dahinter (Z14). Ohne aktive Default-Route fehlen beide, ebenso
+bei einer Default-Route über ein Interface ohne Adresse des nächsten Hops (PPPoE, LTE): Dort
+gibt es nichts zu pingen (`UplinkReading::NoAddress`); die Seite „Zustand“ meldet das nicht als
+fehlende Route.
 
 **WLAN-Clients** stehen beim Gerät, dessen Registrierungstabelle sie hat: beim Controller für
 seine CAPs, beim AP für seine eigenen Radios, bei einer Funkstrecke beim AP-Ende. Labels:

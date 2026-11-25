@@ -1,7 +1,7 @@
 //! Scope: Tests of how a network's internet is judged; nothing else.
 use super::{Internet, judge};
 use crate::graphql::resident::{
-    live::{NetworkInternet, UplinkQuality, WayHop},
+    live::{NetworkInternet, ResidentUplink, UplinkState, WayHop},
     residents::Named,
 };
 
@@ -15,17 +15,20 @@ fn hop(id: i32, name: &str, reached: Option<bool>) -> WayHop {
     }
 }
 
-fn internet(way: Vec<WayHop>, uplink: Option<UplinkQuality>) -> NetworkInternet {
+fn internet(way: Vec<WayHop>, uplink: Option<ResidentUplink>) -> NetworkInternet {
     NetworkInternet {
         network: 1,
         way,
-        has_uplink: true,
+        uplink_state: match uplink {
+            Some(_) => UplinkState::Pinged,
+            None => UplinkState::Unanswered,
+        },
         uplink,
     }
 }
 
-fn pings(loss: f64) -> Option<UplinkQuality> {
-    Some(UplinkQuality {
+fn pings(loss: f64) -> Option<ResidentUplink> {
+    Some(ResidentUplink {
         loss,
         rtt_ms: Some(12.0),
     })
@@ -56,4 +59,22 @@ fn the_uplink_s_pings_decide_otherwise() {
     );
     assert_eq!(judge(&internet(way(), pings(1.0))), Internet::NoAnswer);
     assert_eq!(judge(&internet(way(), None)), Internet::Unmeasured);
+}
+
+/// Without a default route at the uplink the internet is cut; without an address to ping
+/// (PPPoE) it is unmeasured.
+#[test]
+fn a_missing_default_route_is_no_unmeasured_uplink() {
+    let state = |uplink_state| NetworkInternet {
+        network: 1,
+        way: vec![hop(1, "core", Some(true))],
+        uplink_state,
+        uplink: None,
+    };
+    assert_eq!(
+        judge(&state(UplinkState::NoDefaultRoute)),
+        Internet::NoDefaultRoute
+    );
+    assert_eq!(judge(&state(UplinkState::NoAddress)), Internet::Unmeasured);
+    assert_eq!(judge(&state(UplinkState::NoUplink)), Internet::Unmeasured);
 }

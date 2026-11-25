@@ -64,22 +64,47 @@ impl UplinkPing {
     }
 }
 
-/// Pings the device's default gateway; none without an active default route to an address.
-pub async fn ping(device: &impl Reads) -> Result<Option<UplinkPing>, Error> {
+/// What a router's uplink reading found.
+#[derive(Debug, Clone, PartialEq)]
+pub enum UplinkReading {
+    /// no active IPv4 default route in the main table: no internet
+    NoDefaultRoute,
+    /// the default route goes out an interface without a next hop's address (PPPoE, LTE):
+    /// nothing to ping, the uplink unmeasured
+    NoAddress {
+        interface: Box<str>,
+    },
+    Pinged(UplinkPing),
+}
+
+/// The next hop of the default route.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum NextHop {
+    Address(IpAddr),
+    Interface(Box<str>),
+}
+
+/// Reads the device's default route and pings its next hop's address.
+pub async fn ping(device: &impl Reads) -> Result<UplinkReading, Error> {
     let routes = collect_resource::<IpRoute>(device).await?;
-    let Some(gateway) = default_gateway(&routes) else {
-        return Ok(None);
+    let gateway = match default_gateway(&routes) {
+        None => return Ok(UplinkReading::NoDefaultRoute),
+        Some(NextHop::Interface(interface)) => return Ok(UplinkReading::NoAddress { interface }),
+        Some(NextHop::Address(gateway)) => gateway,
     };
     let ping = Ping {
         address: gateway,
         count: COUNT,
         interval: INTERVAL,
     };
-    Ok(Some(summary(gateway, &observe(device, &ping).await?)))
+    Ok(UplinkReading::Pinged(summary(
+        gateway,
+        &observe(device, &ping).await?,
+    )))
 }
 
 /// The next hop of the active IPv4 default route of the main table.
-pub(crate) fn default_gateway(routes: &[IpRoute]) -> Option<IpAddr> {
+pub(crate) fn default_gateway(routes: &[IpRoute]) -> Option<NextHop> {
     routes
         .iter()
         .filter(|route| {
@@ -91,21 +116,22 @@ pub(crate) fn default_gateway(routes: &[IpRoute]) -> Option<IpAddr> {
                     .as_ref()
                     .is_none_or(|table| &table[..] == b"main")
         })
-        .find_map(|route| {
+        .map(|route| {
             let hop = route
                 .status
                 .immediate_gw
                 .as_ref()
                 .unwrap_or(&route.cfg.gateway);
             match hop {
-                IpOrInterface::Ip(ip) => Some(*ip),
-                IpOrInterface::IpWithInterface(ip) => Some(ip.ip),
-                IpOrInterface::Interface(_) => match &route.cfg.gateway {
-                    IpOrInterface::Ip(ip) => Some(*ip),
-                    _ => None,
+                IpOrInterface::Ip(ip) => NextHop::Address(*ip),
+                IpOrInterface::IpWithInterface(ip) => NextHop::Address(ip.ip),
+                IpOrInterface::Interface(interface) => match &route.cfg.gateway {
+                    IpOrInterface::Ip(ip) => NextHop::Address(*ip),
+                    _ => NextHop::Interface(String::from_utf8_lossy(interface).into()),
                 },
             }
         })
+        .next()
 }
 
 /// The last row of a ping counts them all (`sent`, `received`, `avg-rtt`).
@@ -127,6 +153,28 @@ pub(crate) fn summary(gateway: IpAddr, rows: &[Row]) -> UplinkPing {
     }
 }
 
+/// A unit of a round trip, in microseconds.
+struct Unit {
+    name: &'static str,
+    micros: u64,
+}
+
+/// `ms` before `s`, which it starts with.
+const UNITS: &[Unit] = &[
+    Unit {
+        name: "ms",
+        micros: 1_000,
+    },
+    Unit {
+        name: "us",
+        micros: 1,
+    },
+    Unit {
+        name: "s",
+        micros: 1_000_000,
+    },
+];
+
 /// A round trip as RouterOS gives it: `1ms234us`, `342us`, `12ms`.
 fn rtt(value: &str) -> Option<Duration> {
     let mut total = Duration::ZERO;
@@ -135,11 +183,9 @@ fn rtt(value: &str) -> Option<Duration> {
         let digits = rest.find(|c: char| !c.is_ascii_digit())?;
         let number: u64 = rest[..digits].parse().ok()?;
         rest = &rest[digits..];
-        let (unit, after) = [("ms", 1_000), ("us", 1), ("s", 1_000_000)]
-            .into_iter()
-            .find_map(|(unit, micros)| rest.strip_prefix(unit).map(|after| (micros, after)))?;
-        total += Duration::from_micros(number * unit);
-        rest = after;
+        let unit = UNITS.iter().find(|unit| rest.starts_with(unit.name))?;
+        total += Duration::from_micros(number * unit.micros);
+        rest = &rest[unit.name.len()..];
     }
     Some(total)
 }

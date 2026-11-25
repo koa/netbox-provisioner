@@ -18,7 +18,7 @@ use super::{
 use crate::{
     device::{
         poe::{self, PoeProblem},
-        uplink::{self, UplinkPing, UplinkQuality},
+        uplink::{self, UplinkQuality, UplinkReading},
     },
     error_info::ErrorInfo,
     facts::Freshness,
@@ -89,8 +89,8 @@ pub struct ConditionLink {
     pub b: InterfaceRef,
 }
 
-/// What an uplink router's pings got: none without an active default route.
-pub type Uplinks = BTreeMap<DeviceId, Option<UplinkPing>>;
+/// What each uplink router's reading found, those that answered.
+pub type Uplinks = BTreeMap<DeviceId, UplinkReading>;
 
 pub async fn network_condition(devices: Vec<DeviceAccess>) -> NetworkCondition {
     let readers = readers(&devices);
@@ -126,9 +126,8 @@ pub async fn network_condition(devices: Vec<DeviceAccess>) -> NetworkCondition {
     }
 }
 
-/// The pings to `device`'s uplink: none where it isn't reached or didn't answer, `Some(None)`
-/// without a default route.
-async fn ping(device: &DeviceAccess) -> Option<Option<UplinkPing>> {
+/// The reading of `device`'s uplink; none where it isn't reached or didn't answer.
+async fn ping(device: &DeviceAccess) -> Option<UplinkReading> {
     let accessible = device.connect(DeviceTarget::default()).await.ok()??;
     let reader = accessible.reader().at(Freshness::MaxAge(DEVICE_DATA_AGE));
     uplink::ping(&reader).await.ok()
@@ -177,8 +176,10 @@ pub(crate) fn build(
             }
         }
         match uplinks.get(&device.id()) {
-            Some(None) => findings.push(finding(ConditionKind::NoDefaultRoute, device)),
-            Some(Some(ping)) if ping.received < ping.sent || ping.sent == 0 => {
+            Some(UplinkReading::NoDefaultRoute) => {
+                findings.push(finding(ConditionKind::NoDefaultRoute, device))
+            }
+            Some(UplinkReading::Pinged(ping)) if ping.received < ping.sent || ping.sent == 0 => {
                 findings.push(ConditionFinding {
                     uplink: Some(ping.into()),
                     ..finding(ConditionKind::UplinkLoss, device)

@@ -2,7 +2,10 @@
 
 use super::*;
 use crate::{
-    device::poe::{EthernetPort, PoePorts, monitor_reading},
+    device::{
+        poe::{EthernetPort, PoePorts, monitor_reading},
+        uplink::UplinkPing,
+    },
     network_state::device_data::Resources,
     topology::{
         Cable, CablePort, Device, Interface, InterfaceId, IpAddressData, IpAddressId,
@@ -153,7 +156,7 @@ fn a_healthy_network_has_no_findings() {
         received: 5,
         rtt: Some(Duration::from_millis(2)),
     };
-    let uplinks = Uplinks::from([(net.devices[0].id(), Some(ping))]);
+    let uplinks = Uplinks::from([(net.devices[0].id(), UplinkReading::Pinged(ping))]);
     let condition = build(&net.devices, &edges, &data, &uplinks);
     assert_eq!(kinds(&condition), vec![]);
     assert_eq!(condition.devices.len(), 3);
@@ -191,7 +194,7 @@ fn the_findings_most_urgent_first() {
         received: 4,
         rtt: Some(Duration::from_millis(12)),
     };
-    let uplinks = Uplinks::from([(core, Some(ping))]);
+    let uplinks = Uplinks::from([(core, UplinkReading::Pinged(ping))]);
     let condition = build(&net.devices, &edges, &data, &uplinks);
     assert_eq!(
         kinds(&condition),
@@ -245,7 +248,7 @@ fn a_dead_link_and_no_default_route() {
         edge(net.to_a, EdgeState::Down(DownReason::NoSegment)),
         edge(net.to_b, EdgeState::Up),
     ];
-    let uplinks = Uplinks::from([(net.devices[0].id(), None)]);
+    let uplinks = Uplinks::from([(net.devices[0].id(), UplinkReading::NoDefaultRoute)]);
     let condition = build(&net.devices, &edges, &data, &uplinks);
     assert_eq!(
         kinds(&condition),
@@ -254,4 +257,22 @@ fn a_dead_link_and_no_default_route() {
             (ConditionKind::NoDefaultRoute, "core"),
         ]
     );
+}
+
+/// A default route out an interface (PPPoE) has nothing to ping: no finding.
+#[test]
+fn a_default_route_without_an_address_is_no_finding() {
+    let net = net();
+    let data = net
+        .devices
+        .iter()
+        .map(|device| (device.id(), up_since(LONG)))
+        .collect();
+    let edges = [edge(net.to_a, EdgeState::Up), edge(net.to_b, EdgeState::Up)];
+    let reading = UplinkReading::NoAddress {
+        interface: "pppoe-out1".into(),
+    };
+    let uplinks = Uplinks::from([(net.devices[0].id(), reading)]);
+    let condition = build(&net.devices, &edges, &data, &uplinks);
+    assert_eq!(kinds(&condition), vec![]);
 }

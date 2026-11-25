@@ -18,7 +18,7 @@ pub(crate) use render::{DeviceSample, LinkSample, Snapshot};
 
 use crate::{
     config::CONFIG,
-    device::uplink,
+    device::uplink::{self, UplinkReading},
     facts::Freshness,
     network_state::{
         device_data,
@@ -144,10 +144,10 @@ async fn sample(device: &DeviceAccess, since: Instant) -> DeviceSample {
     let map = device_data::read_accessible(&accessible, freshness).await;
     // a router with an uplink; after the readings, one device's reads stay sequential
     let uplink = match uplink::has_uplink(device) && metrics.is_some() {
-        true => uplink::ping(&accessible.reader().at(freshness))
-            .await
-            .ok()
-            .flatten(),
+        true => match uplink::ping(&accessible.reader().at(freshness)).await {
+            Ok(UplinkReading::Pinged(ping)) => Some(ping),
+            _ => None,
+        },
         false => None,
     };
     DeviceSample {

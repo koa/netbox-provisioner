@@ -351,10 +351,13 @@ async fn the_default_route_of_an_internet_uplink_goes_out_over_ospf() {
 
     // the uplink's quality: pings to the active default route's next hop; here the management
     // port's (QEMU's gateway), which stays active beside the provider's
-    let ping = backend::device::uplink::ping(&router_api)
-        .await
-        .expect("uplink ping")
-        .expect("a default gateway");
+    let backend::device::uplink::UplinkReading::Pinged(ping) =
+        backend::device::uplink::ping(&router_api)
+            .await
+            .expect("uplink ping")
+    else {
+        panic!("no default gateway to ping");
+    };
     eprintln!("router uplink: {ping:?}");
     let active = default_routes(&router_api, "0.0.0.0/0")
         .await

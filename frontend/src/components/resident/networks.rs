@@ -9,7 +9,7 @@ use super::{
     status::State,
 };
 use crate::graphql::resident::{
-    live::NetworkInternet,
+    live::{NetworkInternet, UplinkState},
     residents::{Resident, ResidentNetwork, ResidentWlan},
 };
 use i18n::resident as t;
@@ -102,11 +102,14 @@ pub fn networks(
 enum Internet {
     /// routers on its way, by name, that the others don't reach
     Cut(String),
+    /// the uplink's router has no default route
+    NoDefaultRoute,
     /// the uplink's gateway answered none of the pings
     NoAnswer,
     /// `loss` 0 to 1
     Measured { loss: f64, rtt_ms: Option<f64> },
-    /// no uplink on the way, or its router didn't answer
+    /// no uplink on the way, its router didn't answer, or its default route has no address to
+    /// ping (PPPoE, LTE)
     Unmeasured,
 }
 
@@ -118,14 +121,23 @@ fn judge(internet: &NetworkInternet) -> Internet {
         .filter(|hop| hop.reached == Some(false))
         .map(|hop| hop.device.name.as_str())
         .collect::<Vec<_>>();
-    match &internet.uplink {
-        _ if !cut.is_empty() => Internet::Cut(cut.join(", ")),
-        Some(uplink) if uplink.loss >= 1.0 => Internet::NoAnswer,
-        Some(uplink) => Internet::Measured {
-            loss: uplink.loss,
-            rtt_ms: uplink.rtt_ms,
+    if !cut.is_empty() {
+        return Internet::Cut(cut.join(", "));
+    }
+    match internet.uplink_state {
+        UplinkState::NoDefaultRoute => Internet::NoDefaultRoute,
+        UplinkState::Pinged => match &internet.uplink {
+            Some(uplink) if uplink.loss >= 1.0 => Internet::NoAnswer,
+            Some(uplink) => Internet::Measured {
+                loss: uplink.loss,
+                rtt_ms: uplink.rtt_ms,
+            },
+            None => Internet::Unmeasured,
         },
-        None => Internet::Unmeasured,
+        UplinkState::NoUplink
+        | UplinkState::Unanswered
+        | UplinkState::NoAddress
+        | UplinkState::Other => Internet::Unmeasured,
     }
 }
 
@@ -136,13 +148,14 @@ fn internet(state: State, network: i32) -> Option<Html> {
     let internet = live.internet.iter().find(|i| i.network == network)?;
     let judged = judge(internet);
     let class = match judged {
-        Internet::Cut(_) | Internet::NoAnswer => "pf-m-error",
+        Internet::Cut(_) | Internet::NoDefaultRoute | Internet::NoAnswer => "pf-m-error",
         Internet::Measured { loss, .. } if loss > 0.0 => "pf-m-warning",
         Internet::Measured { .. } => "pf-m-success",
         Internet::Unmeasured => "",
     };
     let text = match judged {
         Internet::Cut(names) => t::internet_cut(&names),
+        Internet::NoDefaultRoute => t::INTERNET_NO_DEFAULT_ROUTE.to_string(),
         Internet::NoAnswer => t::INTERNET_NO_ANSWER.to_string(),
         Internet::Measured { loss, rtt_ms } => t::internet_measured(loss, rtt_ms),
         Internet::Unmeasured => t::INTERNET_UNMEASURED.to_string(),
