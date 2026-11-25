@@ -27,8 +27,8 @@ und sie, wo möglich, auf ein schlankeres VPN wie WireGuard umstellen.
   VM, mit Rolle (Peer, Hub, Spoke) und äusserer IP.
 
 - **Erreichbarkeit der Standorte** (vom Benutzer, 2026-11-25): Die meisten IPv4-Endpunkte haben
-  dynamische Adressen, einige liegen hinter CGNAT. IPv6 gibt der Provider nur an einem Standort,
-  dort statisch mit einem /48.
+  dynamische Adressen, einige liegen hinter CGNAT. Zwei Standorte haben IPv6 mit einem /48,
+  einer davon statisch; ob der zweite auch, ist nicht gesagt.
 - **NetBox-Termination** (Lab, geprüft): `outside_ip` ist ein Verweis auf eine IP-Adresse in
   NetBox, `role` `peer`, `hub` oder `spoke`; für einen Hostnamen gibt es kein Feld.
 
@@ -36,9 +36,10 @@ und sie, wo möglich, auf ein schlankeres VPN wie WireGuard umstellen.
 
 - **Wer wen erreicht:** Ein Standort hinter CGNAT nimmt keine Verbindung an, er kann nur selbst
   aufbauen. Ein Standort mit dynamischer IPv4 ist erreichbar, aber nur über einen Namen, der
-  nachgeführt wird (DDNS, etwa RouterOS' `/ip cloud`). Fest erreichbar ist nur der Standort mit
-  IPv6, und nur für Standorte, die selbst IPv6 haben, also heute keinen. Ob seine IPv4 öffentlich
-  ist, ist nicht bekannt.
+  nachgeführt wird (DDNS, etwa RouterOS' `/ip cloud`). Über IPv6 erreichen sich nur die beiden
+  Standorte mit IPv6: Zwischen ihnen geht ein direkter Tunnel ohne CGNAT, und sie sind zusammen
+  die naheliegenden zwei Hubs. Alle übrigen erreichen sie nur über IPv4; ob die beiden eine
+  öffentliche IPv4 haben, ist nicht bekannt.
 - **Hub und Spokes statt Vollvermaschung:** Zwei Standorte hinter CGNAT verbinden sich nie
   direkt. Es braucht mindestens einen Hub, den alle erreichen, und der Verkehr zwischen Spokes
   läuft über ihn (bei BGP: der Hub gibt die Routen der Spokes weiter). Direkte Tunnel nur zwischen
@@ -96,5 +97,6 @@ Clients, die kein WireGuard können.
 - Z59 bis Z63 in [todo.md](../todo.md#entscheidungen).
 - Welche Gegenstellen RouterOS sind, die der Provisioner erreicht, und welche nicht (Server,
   fremde Router).
-- Welche Standorte hinter CGNAT sind, welche eine öffentliche dynamische IPv4 haben, und ob der
-  Standort mit IPv6 auch eine öffentliche IPv4 hat.
+- Welche Standorte hinter CGNAT sind, welche eine öffentliche dynamische IPv4 haben, ob die
+  beiden Standorte mit IPv6 auch eine öffentliche IPv4 haben, und ob das IPv6 des zweiten
+  statisch ist.

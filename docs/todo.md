@@ -45,7 +45,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z60 | Gegenstelle in einem Netz ausserhalb NetBox (C22): ein Gerät dafür in NetBox (eigene Site „extern“, nur Tunnel-Interface und äussere IP), oder der Tunnel mit einer Termination und die Gegenstelle in der Beschreibung? | **offen** | C22 |
 | Z61 | BGP mit den VPNs in NetBox (C22)? Am 2026-10-02 entschieden: bleibt von Hand, ohne NetBox-Modell; mit den VPNs neu zu entscheiden | **offen** | C22 |
 | Z62 | Erzeugt der Provisioner die WireGuard-Tunnel aus NetBox (Schlüssel abgeleitet wie `ospf_auth`) oder dokumentiert NetBox sie nur und der Provisioner vergleicht? | **offen** | C22 |
-| Z63 | Hub der VPNs (C22): Standorte hinter CGNAT nehmen keine Verbindung an, also bauen sie zu einem Hub auf, über den auch der Verkehr zwischen ihnen läuft. Der Standort mit fester IPv6 (/48), nur über IPv6 fest erreichbar, das heute kein anderer Standort hat; ein Standort mit öffentlicher dynamischer IPv4 über DDNS; oder ein Server mit fester Adresse ausserhalb (VPS)? Zwei Hubs für Ausfallsicherheit? | **offen** | C22 |
+| Z63 | Hub der VPNs (C22): Standorte hinter CGNAT nehmen keine Verbindung an, also bauen sie zu einem Hub auf, über den auch der Verkehr zwischen ihnen läuft. Die beiden Standorte mit IPv6 (/48) als zwei Hubs, untereinander direkt über IPv6, für die übrigen über ihre IPv4 (öffentlich? fest oder DDNS?); oder ein Server mit fester Adresse ausserhalb (VPS)? | **offen** | C22 |
 
 ## A. Sicherheit
 
@@ -68,7 +68,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | C8 | Überwachung: Collector, Prometheus-Metriken (Alarme dort, Z13), Ping zum Uplink-Gateway (Z14), Zustandsseite, Ansicht für Anwohner | [Überwachung](concepts/monitoring.md) | L | offen |
 | C10 | Updates im ganzen Netz: mehrere Sites (Z20), Pilot vorgeschlagen (Z18), ohne Wartungsfenster (Z19) | [Updates im ganzen Netz](network-update.md#tests) | L | Regel, Plan, Rollout und eingefärbte Knoten der Netz-Ansicht erledigt; offen: CHR-Test der Kette `entry -- a -- target` |
 | C18 | Reiner L2-Switch als „Extender“: Ein alter Switch ohne L3-Offload oder mit anderen Problemen (CRS2xx, CRS354) hängt an einem modernen Switch oder Router, der seine L3-Funktionen über einen Trunk übernimmt: Port oder Bridge, mit IP oder VLAN (Z39) | [Reiner L2-Switch](concepts/l2-extender.md) | M–L | offen |
-| C22 | VPNs: OpenVPN- und IPsec-Verbindungen zwischen den Netzen (Routing über BGP), auch zu einem Netz ausserhalb NetBox, lesend erfassen, in NetBox dokumentieren und wo möglich auf WireGuard umstellen; die meisten IPv4-Endpunkte dynamisch, einige hinter CGNAT, IPv6 fest nur an einem Standort (Z59–Z63) | [VPNs](concepts/vpn.md) | L | offen |
+| C22 | VPNs: OpenVPN- und IPsec-Verbindungen zwischen den Netzen (Routing über BGP), auch zu einem Netz ausserhalb NetBox, lesend erfassen, in NetBox dokumentieren und wo möglich auf WireGuard umstellen; die meisten IPv4-Endpunkte dynamisch, einige hinter CGNAT, IPv6 mit /48 an zwei Standorten (Z59–Z63) | [VPNs](concepts/vpn.md) | L | offen |
 
 ## D. In Arbeit, Rest offen
 
