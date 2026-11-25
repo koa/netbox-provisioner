@@ -8,6 +8,7 @@
 //! Opened again, it follows the newest rollout.
 use crate::{
     components::{
+        device_link::DeviceLink,
         job::{JobView, reboots, update_phase},
         widgets::popup::Select,
     },
@@ -30,7 +31,6 @@ use crate::{
         request,
     },
     i18n::rollout as t,
-    routes::AppRoute,
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{
@@ -48,7 +48,6 @@ use yew::{
     html::Scope,
     platform::{spawn_local, time::sleep},
 };
-use yew_nested_router::components::Link;
 
 pub struct Rollout {
     sites: Option<Result<Vec<Site>, FrontendError>>,
@@ -605,9 +604,11 @@ fn row(index: usize, device: &PlannedDevice, target: &str, last: Html) -> Html {
                 }
             </td>
             <td>
-                <Link<AppRoute> to={AppRoute::device(device.site_id as u32, device.id as u32)}>
-                    {device.name.clone()}
-                </Link<AppRoute>>
+                <DeviceLink
+                    site={Some(device.site_id as u32)}
+                    id={device.id as u32}
+                    name={device.name.clone()}
+                />
             </td>
             <td>{device.site.clone()}</td>
             <td>{version}</td>

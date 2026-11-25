@@ -33,8 +33,10 @@ use yew::{
 
 mod changes;
 mod drafts;
+mod network_device;
 mod network_devices;
 mod networks;
+mod port_name;
 mod ports;
 mod qr_dialog;
 mod room_dialog;

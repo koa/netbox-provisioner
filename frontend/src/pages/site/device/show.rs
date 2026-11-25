@@ -1,5 +1,4 @@
 //! Scope: The device page; not its cards (`components::device`).
-use crate::routes::AppRoute;
 use crate::target::SelectedTarget;
 use crate::{
     components::{
@@ -15,6 +14,7 @@ use crate::{
             routeros::{Routeros, UpdateRequest},
             setup::Setup,
         },
+        device_link::DeviceLink,
         job::JobView,
     },
     error::{FrontendError, ServerProblem},
@@ -44,7 +44,6 @@ use patternfly_yew::prelude::{
     CodeBlockCode, Spinner, SpinnerSize,
 };
 use yew::{Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
-use yew_nested_router::components::Link;
 
 pub struct ShowDevice {
     id: u32,
@@ -458,15 +457,11 @@ impl ShowDevice {
                 { for self.batch_jobs.iter().map(|job| html! {
                     <div class="batch-job" key={job.job}>
                         <h3>
-                            if let Some(site) = job.site {
-                                <Link<AppRoute>
-                                    to={AppRoute::device(site as u32, job.device as u32)}
-                                >
-                                    {&*job.name}
-                                </Link<AppRoute>>
-                            } else {
-                                {&*job.name}
-                            }
+                            <DeviceLink
+                                site={job.site.map(|site| site as u32)}
+                                id={job.device as u32}
+                                name={job.name.to_string()}
+                            />
                         </h3>
                         <JobView id={job.job} on_finished={ctx.link().callback(|_| ShowDeviceMessage::BatchJobFinished)}/>
                     </div>

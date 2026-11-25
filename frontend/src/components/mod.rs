@@ -2,9 +2,10 @@
 //!
 //! The components, by what they show: `frame` is around every page (breadcrumb, login),
 //! `widgets` are general building blocks without a subject of their own, `device` and `site`
-//! show what belongs to one device or one site. A component shown for several subjects (a job,
-//! findings, what devices see, the NetBox helpers, the network map, the saved jobs) is a module of its own here.
+//! show what belongs to one device or one site. A component shown for several subjects (a job, a
+//! device's link, findings, what devices see, the NetBox helpers, the network map, the saved jobs) is a module of its own here.
 pub mod device;
+pub mod device_link;
 pub mod diff_view;
 pub mod findings;
 pub mod frame;

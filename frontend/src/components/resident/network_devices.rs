@@ -1,13 +1,11 @@
 //! Scope: The devices in one of a resident's networks, read from the devices on a click: their
 //! names, addresses and WLAN; not the network card around it (`components::resident`).
+use super::network_device::NetworkDeviceItem;
 use crate::{
     error::FrontendError,
     graphql::{
         request_resident,
-        resident::live::{
-            NetworkDevice, NetworkDevices, NetworkDevicesQuery, NetworkDevicesVariables, WlanBand,
-            WlanFrequency, WlanStandard,
-        },
+        resident::live::{NetworkDevices, NetworkDevicesQuery, NetworkDevicesVariables},
     },
 };
 use cynic::QueryBuilder;
@@ -106,7 +104,9 @@ impl Component for NetworkDevicesView {
                 } else {
                     html! {
                         <ul class="resident-facts">
-                            { for read.devices.iter().map(device) }
+                            { for read.devices.iter().map(|device| html! {
+                                <NetworkDeviceItem key={device.mac_address.clone()} device={device.clone()}/>
+                            }) }
                         </ul>
                     }
                 };
@@ -127,46 +127,4 @@ impl Component for NetworkDevicesView {
             }
         }
     }
-}
-
-/// A device: its name, its address with the MAC as tooltip, and how it is connected.
-fn device(device: &NetworkDevice) -> Html {
-    let name = device.hostname.as_deref().unwrap_or(t::NO_HOSTNAME);
-    let address = device.address.as_deref().unwrap_or(&device.mac_address);
-    let wlan = device
-        .wlan
-        .as_ref()
-        .map(|wlan| {
-            let band = wlan.band.as_ref().map(band).unwrap_or_default();
-            t::wlan_connection(&wlan.access_point, &band, wlan.signal)
-        })
-        .unwrap_or_default();
-    html! {
-        <li key={device.mac_address.clone()}>
-            {name}{" "}
-            <span title={device.mac_address.clone()}>{address}</span>
-            {" "}<small>{wlan}</small>
-        </li>
-    }
-}
-
-/// „5 GHz (ax)“; empty for a band of a newer server.
-fn band(band: &WlanBand) -> String {
-    let ghz = match band.frequency {
-        WlanFrequency::Ghz2 => "2,4",
-        WlanFrequency::Ghz5 => "5",
-        WlanFrequency::Ghz6 => "6",
-        WlanFrequency::Other => return String::new(),
-    };
-    let standard = band.standard.and_then(|standard| match standard {
-        WlanStandard::A => Some("a"),
-        WlanStandard::B => Some("b"),
-        WlanStandard::G => Some("g"),
-        WlanStandard::N => Some("n"),
-        WlanStandard::Ac => Some("ac"),
-        WlanStandard::Ax => Some("ax"),
-        WlanStandard::Be => Some("be"),
-        WlanStandard::Other => None,
-    });
-    t::wlan_band(ghz, standard)
 }

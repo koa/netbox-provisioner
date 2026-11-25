@@ -7,6 +7,7 @@ use super::{
 };
 use crate::{
     components::{
+        device_link::DeviceLink,
         findings::finding_list,
         netbox_helper::HelperKind,
         widgets::popup::{MenuActionItem, MenuGroup, PopupMenu},
@@ -16,7 +17,6 @@ use crate::{
         types::{AddressRef, DeviceRef, InterfaceRef, Severity},
     },
     i18n::interfaces as t,
-    routes::AppRoute,
 };
 use patternfly_yew::prelude::{
     Alert, AlertType, Button, ButtonVariant, Cell, CellContext, Color, Icon, Label,
@@ -25,7 +25,6 @@ use patternfly_yew::prelude::{
 };
 use std::rc::Rc;
 use yew::{Callback, Html, Properties, function_component, html, html_nested};
-use yew_nested_router::components::Link;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Column {
@@ -485,11 +484,12 @@ fn customer_addresses(row: &Row, v6: bool) -> Html {
 
 /// A device, as a link to its page here.
 pub fn device(device: &DeviceRef) -> Html {
-    match device.site {
-        Some(site) => {
-            html!(<Link<AppRoute> to={AppRoute::device(site as u32, device.id as u32)}>{&device.name}</Link<AppRoute>>)
-        }
-        None => html!({ &device.name }),
+    html! {
+        <DeviceLink
+            site={device.site.map(|site| site as u32)}
+            id={device.id as u32}
+            name={device.name.clone()}
+        />
     }
 }
 

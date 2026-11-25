@@ -6,7 +6,7 @@
 //! also where it is one of the change's devices): „wird ausgerollt“ while a device is pending,
 //! else „nicht ausgerollt“ where one failed, else „wartet“; all rolled out, the live state
 //! decides. A text stands only where something isn't ok.
-use super::ports::{sub, title};
+use super::port_name::place;
 use crate::graphql::resident::{
     changes::{ChangeDevice, ChangeState, HoldReason, RolloutState},
     live::{LiveState, PortLive},
@@ -178,15 +178,6 @@ pub fn hold_reason(reason: &HoldReason) -> String {
         HoldReason::Outward => rollout::HoldReason::Outward,
         HoldReason::Other(other) => rollout::HoldReason::Other(other),
     })
-}
-
-/// A port in a text: a socket by its name, another port by itself and its device („Port ether3
-/// an lab-np2“), as its label names the device at it.
-fn place(port: &ResidentPort) -> String {
-    match port.kind {
-        PortKind::Socket => title(port),
-        _ => sub(port),
-    }
 }
 
 fn same_kind(a: &PortKind, b: &PortKind) -> bool {

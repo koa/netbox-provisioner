@@ -10,12 +10,14 @@
 use super::{
     card_header,
     drafts::{Drafts, LinkDraft, PortKey, current_link, uplink_id},
+    network_device::NetworkDeviceItem,
+    port_name::{place, sub, title},
     status::State,
 };
 use crate::{
     components::widgets::popup::Select,
     graphql::resident::{
-        live::{NetworkDevice, PortHosts, SeenUplink},
+        live::{PortHosts, SeenUplink},
         residents::{
             FarEnd, Named, PortKind, Resident, ResidentDevice, ResidentLocation, ResidentPort,
         },
@@ -510,19 +512,13 @@ impl PortsTab<'_> {
                 Some(device) if self.stands_at(device, port) => self.device_card(device, room),
                 Some(device) => {
                     let path = t::location_path(self.device_room(device).path);
-                    let status = self.state.device(device, self.upstream(device), self.at(device.id)).map(
-                        |status| html!(<div class="pf-v6-c-card__actions">{status.label()}</div>),
-                    );
+                    let status =
+                        self.state
+                            .device(device, self.upstream(device), self.at(device.id));
+                    let title = html!(<h4 class="pf-v6-c-card__title-text">{&device.name}</h4>);
                     html! {
                         <div class="pf-v6-c-card pf-m-compact">
-                            <div class="pf-v6-c-card__header">
-                                {status}
-                                <div class="pf-v6-c-card__header-main">
-                                    <div class="pf-v6-c-card__title">
-                                        <h4 class="pf-v6-c-card__title-text">{&device.name}</h4>
-                                    </div>
-                                </div>
-                            </div>
+                            {card_header(title, false, Callback::noop(), status.as_ref())}
                             <div class="pf-v6-c-card__body">{t::see_room(&path)}</div>
                         </div>
                     }
@@ -546,12 +542,11 @@ impl PortsTab<'_> {
             .devices;
         (!devices.is_empty()).then(|| {
             html! {
-                <table class="pf-v6-c-table pf-m-compact pf-m-no-border-rows sock-devices"
-                    aria-label={t::devices_at(&title(port))}>
-                    <tbody class="pf-v6-c-table__tbody">
-                        { for devices.iter().map(device_row) }
-                    </tbody>
-                </table>
+                <ul class="resident-facts sock-devices" aria-label={t::devices_at(&title(port))}>
+                    { for devices.iter().map(|device| html! {
+                        <NetworkDeviceItem key={device.mac_address.clone()} device={device.clone()}/>
+                    }) }
+                </ul>
             }
         })
     }
@@ -701,10 +696,7 @@ impl PortsTab<'_> {
             })
             .map(|port| Place::Port {
                 port: PortKey::of(port),
-                name: match port.kind {
-                    PortKind::Socket => title(port),
-                    _ => sub(port),
-                },
+                name: place(port),
             });
         let entries = operator
             .clone()
@@ -846,24 +838,6 @@ fn cable_room<'a>(tab: &'a PortsTab, cable: &Cable<'a>, device: &'a ResidentDevi
     }
 }
 
-/// A port row's name: its label, a socket by its wall and place, or the port's name.
-pub(super) fn title(port: &ResidentPort) -> String {
-    match &port.label {
-        Some(label) => label.clone(),
-        // a socket's device is the wall it is in, named after the room
-        None if port.kind == PortKind::Socket => t::socket_name(&port.device.name, &port.name),
-        None => port.name.clone(),
-    }
-}
-
-/// A port by itself and its device: „Port ether3 an lab-np2“, „Port ether2 von lab-wap“.
-pub(super) fn sub(port: &ResidentPort) -> String {
-    match port.on_own_device {
-        true => t::own_port(&port.name, &port.device.name),
-        false => t::port_of(&port.name, &port.device.name),
-    }
-}
-
 /// The socket or port in another room a device's cable comes from: a patch cable from a socket.
 fn patched_from(port: &ResidentPort) -> String {
     match port.kind {
@@ -903,23 +877,6 @@ fn cable_card(cable: &Cable) -> Html {
 }
 
 /// A device at the cable the provisioner doesn't link: another's, or one without RouterOS.
-/// A device behind a port: the name its DHCP client sent (none without), its address with the
-/// MAC as tooltip.
-fn device_row(device: &NetworkDevice) -> Html {
-    let random = u8::from_str_radix(device.mac_address.get(..2).unwrap_or_default(), 16)
-        .is_ok_and(|first| first & 2 != 0);
-    html! {
-        <tr class="pf-v6-c-table__tr" key={device.mac_address.clone()}>
-            <td class="pf-v6-c-table__td">{device.hostname.clone().unwrap_or_default()}</td>
-            <td class="pf-v6-c-table__td">
-                <code title={t::mac_title(&device.mac_address, random)} class="sock-address">
-                    {device.address.clone().unwrap_or_default()}
-                </code>
-            </td>
-        </tr>
-    }
-}
-
 fn far_card(end: &FarEnd) -> Html {
     let own = end
         .own_device

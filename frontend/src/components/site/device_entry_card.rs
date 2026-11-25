@@ -3,19 +3,18 @@
 //! A device of a site as a card on the site page: its name linking to the device page, and
 //! whether it answers a ping.
 use crate::{
+    components::device_link::DeviceLink,
     error::FrontendError,
     graphql::{
         authenticated::list_devices::{PingDevice, PingDeviceVariables, PingResult as Pinged},
         request_response,
     },
     i18n,
-    routes::AppRoute,
 };
 use cynic::QueryBuilder;
 use patternfly_yew::prelude::{Card, CardBody, CardHeader, CardTitle, Spinner, SpinnerSize};
 use std::net::IpAddr;
 use yew::{Component, Context, Html, Properties, html, platform::spawn_local};
-use yew_nested_router::components::Link;
 
 /// A device as the site page lists it.
 #[derive(Debug, Clone, PartialEq)]
@@ -122,7 +121,6 @@ impl Component for DeviceEntryCard {
             PingResult::Failed(e) => (e.to_html(), Html::default(), None),
             PingResult::None => Default::default(),
         };
-        let to = AppRoute::device(device.site, device.id);
         let serial = device
             .serial
             .as_deref()
@@ -134,7 +132,7 @@ impl Component for DeviceEntryCard {
 
         html! {
             <Card>
-                <CardHeader><CardTitle><Link<AppRoute> {to}>{title}</Link<AppRoute>></CardTitle></CardHeader>
+                <CardHeader><CardTitle><DeviceLink site={Some(device.site)} id={device.id} name={title.to_string()}/></CardTitle></CardHeader>
                 <CardBody>
                     <div class="device-address">{address}</div>
                     <div class="device-ping">{ping_result_data}</div>

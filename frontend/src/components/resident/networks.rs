@@ -4,11 +4,11 @@
 use super::{
     drafts::{Drafts, WlanDraft},
     network_devices::NetworkDevicesView,
-    ports,
+    port_name::place,
     qr_dialog::QrDialog,
     status::State,
 };
-use crate::graphql::resident::residents::{PortKind, Resident, ResidentNetwork, ResidentWlan};
+use crate::graphql::resident::residents::{Resident, ResidentNetwork, ResidentWlan};
 use i18n::resident as t;
 use patternfly_yew::prelude::{
     Button, ButtonVariant, Content, Form, FormGroup, FormHelperText, InputState, Switch, TextInput,
@@ -101,10 +101,7 @@ fn cabled(resident: &Resident, network: &ResidentNetwork) -> Html {
         .iter()
         .filter(|port| !port.foreign_network)
         .filter(|port| port.network.as_ref().is_some_and(|n| n.id == network.id))
-        .map(|port| match port.kind {
-            PortKind::Socket => ports::title(port),
-            _ => ports::sub(port),
-        })
+        .map(place)
         .collect::<Vec<_>>();
     let text = match names.is_empty() {
         true => t::NO_CABLED_PORTS.to_string(),

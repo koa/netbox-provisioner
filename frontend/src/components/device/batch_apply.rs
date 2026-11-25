@@ -5,6 +5,7 @@
 //! batch, this one first, shows its changes as the batch would plan them (with the others:
 //! OSPF segments with every end in it move) before anything is applied.
 use crate::{
+    components::device_link::DeviceLink,
     components::diff_view::DiffView,
     error::{FrontendError, ServerProblem},
     graphql::authenticated::types::CfgDiff,
@@ -16,7 +17,6 @@ use crate::{
         request, request_response,
     },
     i18n::{apply_warning, batch as t, device},
-    routes::AppRoute,
 };
 use cynic::{MutationBuilder, QueryBuilder};
 use patternfly_yew::prelude::{
@@ -27,7 +27,6 @@ use std::collections::{BTreeSet, HashMap};
 use yew::{
     Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local,
 };
-use yew_nested_router::components::Link;
 
 /// A job of a started batch, as the device page shows it next to the others.
 #[derive(Debug, Clone, PartialEq)]
@@ -282,11 +281,11 @@ impl BatchApply {
         let picked = self.picked.contains(&id);
         let site = candidate.device.site.as_ref();
         let name = html! {
-            if let Some(site) = site {
-                <Link<AppRoute> to={AppRoute::device(site.id as u32, id as u32)}>{&candidate.device.name}</Link<AppRoute>>
-            } else {
-                {&candidate.device.name}
-            }
+            <DeviceLink
+                site={site.map(|site| site.id as u32)}
+                id={id as u32}
+                name={candidate.device.name.clone()}
+            />
         };
         let planned = picked.then(|| self.planned_view(id));
         html! {

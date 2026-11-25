@@ -10,6 +10,7 @@
 //! of a device since (`knownDiff`, subscribed: the device page read it after an apply) goes
 //! before the job's reading; a device changed since and not read again says so.
 use crate::{
+    components::device_link::DeviceLink,
     components::diff_view::{DiffView, summary_line, total},
     error::{FrontendError, ServerProblem},
     graphql::{
@@ -26,7 +27,6 @@ use crate::{
     },
     i18n::site_diff as t,
     reading_time::read_at,
-    routes::AppRoute,
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{
@@ -38,7 +38,6 @@ use yew::{
     Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local,
     platform::time::sleep,
 };
-use yew_nested_router::components::Link;
 
 #[derive(Debug, Clone, PartialEq, Properties)]
 pub struct SiteDiffProps {
@@ -281,7 +280,7 @@ impl Component for SiteDiff {
                             let id = row.id;
                             let ondetails = link.callback(move |_| SiteDiffMsg::Details(Some(id)));
                             html! {<>
-                                <dt><Link<AppRoute> to={AppRoute::device(site, row.id as u32)}>{&*row.name}</Link<AppRoute>></dt>
+                                <dt><DeviceLink site={Some(site)} id={row.id as u32} name={row.name.to_string()}/></dt>
                                 <dd>{read_view(&read, ondetails)}</dd>
                             </>}
                         }) }

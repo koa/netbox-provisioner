@@ -46,7 +46,7 @@ pub const READ_AGAIN: &str = "Erneut lesen";
 pub const NO_DEVICES: &str = "Keine Geräte gefunden";
 pub const NO_HOSTNAME: &str = "Ohne Namen";
 
-/// the table of the devices behind a port, for screen readers
+/// the list of the devices behind a port, for screen readers
 pub fn devices_at(port: &str) -> String {
     format!("Geräte an {port}")
 }

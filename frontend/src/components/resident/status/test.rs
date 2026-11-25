@@ -298,19 +298,6 @@ fn a_cabled_port_without_link() {
     );
 }
 
-/// A port in a text is the socket by its name, another port by itself and its switch: its
-/// label names the device at it.
-#[test]
-fn a_port_in_a_text() {
-    let mut port = socket(13, None, Vec::new());
-    assert_eq!(super::place(&port), "Wohnzimmer");
-    port.kind = PortKind::Interface;
-    port.name = "ether3".into();
-    port.label = Some("lab-wap".into());
-    port.device = named(11, "lab-np2");
-    assert_eq!(super::place(&port), "Port ether3 an lab-np2");
-}
-
 /// A WLAN on part of its access points is a problem, on none down; switched off, off.
 #[test]
 fn a_network_by_its_access_points() {
