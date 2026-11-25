@@ -35,6 +35,9 @@ und sie, wo möglich, auf ein schlankeres VPN wie WireGuard umstellen.
   | 2 | öffentlich, dynamisch | keins |
   | 3 | Mobilfunk hinter CGNAT | keins |
 
+  Router und Anschlüsse unterscheiden sich stark: von einem CCR2004 an 10 Gbit/s symmetrisch bis
+  zu einem Chateau an 50 Mbit/s LTE.
+
 - **NetBox-Termination** (Lab, geprüft): `outside_ip` ist ein Verweis auf eine IP-Adresse in
   NetBox, `role` `peer`, `hub` oder `spoke`; für einen Hostnamen gibt es kein Feld.
 
@@ -55,6 +58,22 @@ und sie, wo möglich, auf ein schlankeres VPN wie WireGuard umstellen.
   andere Standort baut zu beiden einen Tunnel auf, über ihre IPv4; fällt ein Hub aus, läuft alles
   über den anderen. Der Verkehr zwischen zwei Spokes geht über einen Hub (bei BGP: der Hub gibt
   die Routen der Spokes weiter). Ein Server ausserhalb (VPS) ist damit nicht nötig.
+- **Leistung zählt beim Hub:** Ein Hub trägt den Verkehr zwischen den Spokes doppelt (hinein und
+  hinaus), dazu die Verschlüsselung aller Tunnel. Hubs gehören also an die stärksten Anschlüsse
+  mit den stärksten Routern. Sind das nicht die beiden IPv6-Standorte, ändert sich die Wahl: ein
+  starker IPv4-Standort kann Hub sein (über DDNS erreichbar wie die anderen), und ein schwacher
+  IPv6-Standort ist dann nur Spoke. Was ein Router an WireGuard schafft, ist nicht geprüft
+  (MikroTiks Testergebnisse pro Modell, oder ein Messen im Lab).
+- **Bevorzugter Weg nach Leistung:** Bei zwei Hubs soll der Verkehr über den stärkeren laufen und
+  den schwächeren nur bei Ausfall nehmen; mit BGP über Local Preference oder AS-Path pro Tunnel,
+  mit OSPF über die Kosten. Wo zwei starke Spokes viel miteinander austauschen und einer
+  erreichbar ist, lohnt ein direkter Tunnel daneben.
+- **Kleine MTU auf Mobilfunk:** LTE hat oft weniger als 1500 Byte; die Tunnel-MTU richtet sich
+  nach dem schwächsten Glied (WireGuard braucht 60 Byte über IPv4, 80 über IPv6). Nicht geprüft
+  für die drei Anschlüsse.
+- **In NetBox die Leistung:** Der Internetanschluss eines Standorts als Circuit mit
+  `commit_rate` (Lab geprüft: das Feld gibt es), daraus Hub-Wahl und Gewichtung; das Board steht
+  schon am Gerät.
 - **Die Spokes hängen an DDNS:** Alle Tunnel zu den Hubs laufen über deren dynamische IPv4. Ob
   RouterOS einen Namen als `endpoint-address` eines WireGuard-Peers neu auflöst, wenn sich die
   Adresse dahinter ändert, ist nicht geprüft; das ist die wichtigste Frage des Entwurfs. Prüfen
@@ -113,3 +132,4 @@ Clients, die kein WireGuard können.
 - Welche Gegenstellen RouterOS sind, die der Provisioner erreicht, und welche nicht (Server,
   fremde Router).
 - Ob RouterOS den DDNS-Namen eines WireGuard-Peers neu auflöst (CHR-Test, siehe oben).
+- Welche Standorte die starken sind (Router, Anschluss), insbesondere die beiden mit IPv6.
