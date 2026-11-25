@@ -33,8 +33,8 @@ mit Pocket-ID:
   Owner unter `users` ein. Die Mitglieder stehen damit nur in NetBox, der Provider meldet nur an.
   Ein Benutzer, den es in NetBox schon gibt, wird beim Login nicht übernommen, NetBox legt einen
   zweiten an: Benutzer nicht von Hand anlegen.
-- Der Provisioner findet die Owner über `preferred_username`. Ob Pocket-ID darin den
-  Benutzernamen gibt, den NetBox anlegt, ist zu prüfen.
+- Der Provisioner findet die Owner über `preferred_username`. Pocket-ID gibt darin den
+  Benutzernamen, den NetBox beim Login anlegt (im Lab geprüft, [Login](../login.md#pocket-id)).
 - `auth_users` bleibt als Notschalter für Admins, bis die Gruppen verlässlich sind.
 
 ## Leserechte in NetBox
@@ -56,9 +56,9 @@ zu sehen, obwohl es im Lab einen Tenant mit Zugangsdaten und zwei Funkbrücken m
 Bedingung über das VLAN (`vlan__owner__users`) ebenso (2026-11-17, zwei Owner mit je einem VLAN
 und einem WLAN darauf): Jeder sieht in REST und GraphQL nur das WLAN auf seinem VLAN, samt PSK.
 Mit Keycloak auch das Login von NetBox selbst (2026-11-20): Der neue Benutzer kommt in
-„Anwohner“ und sieht mit seinem Owner nur dessen WLAN. Offen: die Berechtigungen in der
-produktiven NetBox, dasselbe mit Pocket-ID, und ob für Ports und WLAN-Gruppen eine ähnliche
-Bedingung nötig wird.
+„Anwohner“ und sieht mit seinem Owner nur dessen WLAN; mit Pocket-ID ebenso (2026-11-25). Offen:
+die Berechtigungen in der produktiven NetBox (von Hand wie in `local/netbox/seed-residents.py`),
+und ob für Ports und WLAN-Gruppen eine ähnliche Bedingung nötig wird.
 
 ## Anwohner-UI
 

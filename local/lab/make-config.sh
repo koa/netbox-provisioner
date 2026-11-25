@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Writes the provisioner config for the lab to .lab-netbox/provisioner/config.yaml: the local
-# NetBox (local/netbox/run-netbox.sh) with its API token, the local Keycloak and the lab
-# credentials. Run the provisioner (or a backend example) with that directory as CWD.
+# NetBox (local/netbox/run-netbox.sh) with its API token, the local Keycloak (with
+# LAB_OIDC=pocket-id the local Pocket-ID) and the lab credentials. Run the provisioner (or a backend example) with that directory as CWD.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 out="$root/.lab-netbox/provisioner"
@@ -48,10 +48,18 @@ if [ ! -s "$lab/www-root.key" ]; then
   rm "$lab/www-ca.csr" "$lab/www-ca.ext"
 fi
 pem() { sed 's/^/      /' "$1"; }
+# the login: the local Keycloak, or with LAB_OIDC=pocket-id the local Pocket-ID
+# (local/pocket-id, admins by the group admin; groups needs its scope there)
+if [ "${LAB_OIDC:-}" = pocket-id ]; then
+  auth="  auth_issuer: http://localhost:8190
+  auth_scopes: openid profile email groups offline_access"
+else
+  auth="  auth_issuer: http://localhost:8180/realms/lab"
+fi
 cat >"$out/config.yaml" <<YAML
 settings:
   auth_client_id: netbox-provisioner
-  auth_issuer: http://localhost:8180/realms/lab
+$auth
   auth_users: [lab-admin]
   server_port: 8082
   netbox_url: http://127.0.0.1:8001/graphql/

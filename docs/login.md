@@ -90,8 +90,16 @@ angemeldet, ohne Hinweis und ohne abgelehntes Token. `auth_scopes` bleibt darum 
 Für die Rollen ([self-service.md](self-service.md#rollen)) braucht das ID-Token den Claim
 `groups` (Admins) und `preferred_username` (der Benutzername, den NetBox beim Login über
 Pocket-ID anlegt). Bei Pocket-ID kommt `groups` mit dem Scope `groups`, also
-`auth_scopes: "openid profile email groups offline_access"`. Mit Pocket-ID ist das noch nicht
-geprüft, ebenso wenig, welchen Claim NetBox als Benutzernamen nimmt.
+`auth_scopes: "openid profile email groups offline_access"`. Im Lab mit Pocket-ID 2.19.2 geprüft
+(2026-11-25, `local/pocket-id/`, Provisioner und NetBox mit `LAB_OIDC=pocket-id`):
+
+- Das ID-Token hat `preferred_username` (der Benutzername in Pocket-ID), `name` und `groups`;
+  ohne Gruppe ist `groups` leer (`[]`), nicht weg wie bei Keycloak.
+- `admin` in der Gruppe `admin` ist `ADMIN`, `meier` und `huber` sind `RESIDENT` ihrer Owner.
+- NetBox legt beim ersten Login `weber` an, also `preferred_username`, mit E-Mail und Namen, in
+  der Gruppe „Anwohner“; ein zweiter Login nimmt denselben Benutzer. Ohne Owner sieht er kein
+  Wireless LAN, bei „Familie Meier“ eingetragen genau `lab-wlan`, im Provisioner `RESIDENT`;
+  wieder ausgetragen nach dem Cache von 30 s `NOBODY` mit dem Hinweis.
 
 ## Keycloak (Lab)
 
@@ -103,6 +111,16 @@ Benutzer haben feste IDs (`lab-admin`, `lab-reader`), damit `auth_users` in
 Gruppe `admin`, ein Group-Membership-Mapper setzt den Claim `groups`. Die Anwohner
 `meier`/`meier` und `huber`/`huber` sind in der Lab-NetBox Mitglieder ihrer Owner
 (`local/netbox/seed-residents.py`); `reader` ist weder Admin noch Anwohner.
+
+## Pocket-ID (Lab)
+
+`local/pocket-id/run-pocket-id.sh` startet Pocket-ID aus nixpkgs auf `http://localhost:8190`, mit
+einem statischen API-Schlüssel in `.lab-netbox/pocket-id/api-key`. `local/pocket-id/seed.py` legt
+damit an, was `realm.json` für Keycloak hat: `admin` (Gruppe `admin`), `meier`, `huber`, `weber`
+(NetBox unbekannt), den Public Client `netbox-provisioner` und den Client `netbox` mit Secret, beide
+ohne Zustimmungsseite. Einen Passkey braucht niemand: `run-pocket-id.sh token <user>` gibt einen
+Login-Link für einmal. `LAB_OIDC=pocket-id` vor `local/lab/run-provisioner.sh` und
+`local/netbox/run-netbox.sh` meldet Provisioner und NetBox dort an statt bei Keycloak.
 
 ## NetBox über OIDC
 
@@ -144,4 +162,4 @@ Benutzer. Ein Anwohner meldet sich darum zuerst bei NetBox an, dann trägt ihn e
 seinem Owner ein. Im Lab sind `meier` und `huber` so angelegte Benutzer: Für den Login bei
 NetBox ist `fischer` da.
 
-Mit Pocket-ID ist das noch nicht geprüft.
+Mit Pocket-ID ebenso geprüft ([Pocket-ID](#pocket-id)), mit dem Benutzer `weber`.

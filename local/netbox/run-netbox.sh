@@ -2,7 +2,7 @@
 # Local NetBox for the lab: PostgreSQL, Redis and NetBox from nixpkgs, as plain user
 # processes (no root, no containers). Data in $LAB_NETBOX_DATA (default
 # ../../.lab-netbox). Creates the database, the superuser admin/admin and the API
-# token printed at the end on first start; NetBox on http://127.0.0.1:8001/.
+# token in api-token there on first start; NetBox on http://127.0.0.1:8001/.
 #   local/netbox/run-netbox.sh          start (stays in the foreground)
 #   local/netbox/run-netbox.sh manage … run a NetBox management command
 set -euo pipefail
@@ -35,11 +35,12 @@ fi
 pg_ctl -D "$pg" -o "-k $socket -c listen_addresses=''" -l "$LAB_NETBOX_DATA/pg.log" -w start
 redis-server --port "$LAB_REDIS_PORT" --bind 127.0.0.1 --save '' --daemonize yes \
   --logfile "$LAB_NETBOX_DATA/redis.log"
-# sends the webhooks (the provisioner's automatic rollout)
-netbox rqworker high default low >"$LAB_NETBOX_DATA/rqworker.log" 2>&1 &
+# sends the webhooks (the provisioner's automatic rollout); in a process group of its own, which
+# the cleanup stops as a whole (`netbox` is a wrapper, the worker its child)
+setsid netbox rqworker high default low >"$LAB_NETBOX_DATA/rqworker.log" 2>&1 &
 rqworker=$!
 cleanup() {
-  kill "$rqworker" 2>/dev/null || true
+  kill -- "-$rqworker" 2>/dev/null || true
   redis-cli -p "$LAB_REDIS_PORT" shutdown nosave >/dev/null 2>&1 || true
   pg_ctl -D "$pg" -m fast stop >/dev/null 2>&1 || true
 }
@@ -59,5 +60,5 @@ token.save()
 print(f'nbt_{token.key}.{token.token}')
 " | tail -1 >"$LAB_NETBOX_DATA/api-token"
 fi
-echo "NetBox on http://127.0.0.1:8001/ (admin/admin), API token: $(cat "$LAB_NETBOX_DATA/api-token")"
+echo "NetBox on http://127.0.0.1:8001/ (admin/admin), API token in $LAB_NETBOX_DATA/api-token"
 netbox runserver --insecure 127.0.0.1:8001
