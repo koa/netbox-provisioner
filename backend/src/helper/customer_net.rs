@@ -30,6 +30,7 @@ use crate::{
     },
 };
 use async_graphql::{InputObject, OneofObject, SimpleObject};
+use i18n::changelog::Plan;
 use ipnet::{IpNet, Ipv4Net};
 use std::{
     net::{IpAddr, Ipv4Addr},
@@ -212,7 +213,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
         });
     }
     // the interface the gateway goes on, the VLAN it has, how it reads
-    let (existing, vlan, what) = match input.target {
+    let (existing, vlan, what, described) = match input.target {
         CustomerNetTarget::Interface(id) => {
             let interface = topology
                 .get_interface_by_id(InterfaceId(id))
@@ -222,7 +223,11 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
                 Some(label) => format!("{} {} ({label})", device.name(), interface.name()),
                 None => format!("{} {}", device.name(), interface.name()),
             };
-            (Some(interface), None, what)
+            let described = Plan::CustomerNetPort {
+                port: super::changelog_port(&device, &interface),
+                label: interface.label().map(Into::into),
+            };
+            (Some(interface), None, what, described)
         }
         CustomerNetTarget::Vlan(id) => {
             let vlan = topology
@@ -236,7 +241,12 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
                 vlan.name().unwrap_or_default(),
                 vlan.vlan_id().unwrap_or_default()
             );
-            (vlan_interface(&device, &vlan), Some(vlan), what)
+            let described = Plan::CustomerNetVlan {
+                device: device.name().into(),
+                vlan: vlan.name().unwrap_or_default().into(),
+                vid: vlan.vlan_id().unwrap_or_default(),
+            };
+            (vlan_interface(&device, &vlan), Some(vlan), what, described)
         }
     };
     // an address of the family a network is wanted for: the port has its network
@@ -253,7 +263,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
             });
         }
     }
-    let mut plan = NetboxPlan::new(&device, format!("Kunden-Netz {what}"));
+    let mut plan = NetboxPlan::new(&device, described);
     let rest = NetboxRest::reader()?;
     let routes = Routes::read(topology).await?;
     plan.checked_with = Some(routes.router.clone());

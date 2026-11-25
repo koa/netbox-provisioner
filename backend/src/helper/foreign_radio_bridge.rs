@@ -36,6 +36,7 @@ use crate::{
         natural::naturalize_interface,
     },
 };
+use i18n::changelog::Plan;
 use ipnet::IpNet;
 use std::sync::Arc;
 
@@ -75,7 +76,10 @@ pub(super) async fn plan_with(
     }
     let mut plan = NetboxPlan::new(
         &ap,
-        format!("Funkbrücke {} – {}", ap.name(), station.name()),
+        Plan::RadioBridge {
+            ap: ap.name().into(),
+            station: station.name().into(),
+        },
     );
     let mut sides = Vec::new();
     for (device, router_port, other) in [

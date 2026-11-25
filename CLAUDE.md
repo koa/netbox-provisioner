@@ -467,8 +467,10 @@ preview, since the new primary IP may not be on the device yet. Writing (`writeN
 job: it recomputes the plan, refuses one whose `fingerprint` changed, checks before each step that
 what it builds on is unchanged (no `lo` yet, address or prefix free, ports without cable, label,
 MTU and primary IP as planned), and emits a `NetboxWritten` event per object with the old values; `undoNetboxWrite` replays those backwards
-(lost on a server restart). Every write carries `changelog_message` (`<plan description>
-(<user>)`); writing needs `allow_netbox_write` and `netbox_write_token` (`NetboxWritesAllowed`),
+(lost on a server restart). Every write carries `changelog_message`: what the plan does
+(`NetboxPlan.description`, typed `i18n::changelog::Plan`s, one per part) and who, worded by
+`i18n::changelog::message` (a resident's change: the user for the resident,
+`Started::ForResident`); writing needs `allow_netbox_write` and `netbox_write_token` (`NetboxWritesAllowed`),
 the lab config sets both. The topology is fetched again after each write or undo.
 
 `backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR

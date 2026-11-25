@@ -29,6 +29,7 @@ use crate::{
     },
 };
 use async_graphql::InputObject;
+use i18n::changelog::Plan;
 use ipnet::IpNet;
 use std::sync::Arc;
 
@@ -64,14 +65,9 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
         .collect::<Result<Vec<_>, _>>()?;
     let mut plan = NetboxPlan::new(
         &device,
-        format!(
-            "Richtfunk abräumen {}",
-            sides
-                .iter()
-                .map(|s| s.device.name())
-                .collect::<Vec<_>>()
-                .join(" – ")
-        ),
+        Plan::RadioDisconnect {
+            devices: sides.iter().map(|s| s.device.name().into()).collect(),
+        },
     );
 
     // the L3 ends, each once

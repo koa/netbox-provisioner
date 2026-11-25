@@ -11,6 +11,7 @@ use crate::{
     topology::{DeviceId, InterfaceId, Topology, findings::device_ref},
 };
 use async_graphql::InputObject;
+use i18n::changelog::Plan;
 use ipnet::IpNet;
 use std::sync::Arc;
 
@@ -42,11 +43,10 @@ pub fn plan(topology: &Arc<Topology>, input: &AddressTakeoverInput) -> Result<Ne
     let holder = topology.smallest_prefix_holding(network);
     let mut plan = NetboxPlan::new(
         &device,
-        format!(
-            "Adresse übernehmen {address} an {} {}",
-            device.name(),
-            interface.name()
-        ),
+        Plan::AddressTakeover {
+            address: address.to_string().into(),
+            port: super::changelog_port(&device, &interface),
+        },
     );
     let new_prefix = holder.is_none_or(|holder| holder.prefix != network)
         && network.prefix_len() < network.max_prefix_len()
@@ -58,7 +58,10 @@ pub fn plan(topology: &Arc<Topology>, input: &AddressTakeoverInput) -> Result<Ne
                 .map(|holder| holder.prefix.to_string())
                 .unwrap_or_default()
                 .into(),
-            description: format!("Übernommen von {} {}", device.name(), interface.name()).into(),
+            description: i18n::changelog::address_taken_over(&super::changelog_port(
+                &device, &interface,
+            ))
+            .into(),
             // a pool's prefixes are no site's, as those of the other helpers
             site: holder
                 .is_none_or(|holder| holder.pool.is_none())

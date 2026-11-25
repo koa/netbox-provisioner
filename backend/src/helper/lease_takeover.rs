@@ -14,6 +14,7 @@ use crate::{
     topology::{DeviceId, Topology, access::AccessTopology, findings::DeviceRef},
 };
 use async_graphql::{InputObject, SimpleObject};
+use i18n::changelog::Plan;
 use ipnet::IpNet;
 use mikrotik_model::MacAddress;
 use serde_json::Value;
@@ -160,7 +161,11 @@ pub(crate) fn base(
     let site = router.site().ok_or(Error::NoSite(router.name().into()))?;
     let mut plan = NetboxPlan::new(
         &router,
-        format!("Lease übernehmen {name} {address} an {}", router.name()),
+        Plan::LeaseTakeover {
+            name: name.to_string().into(),
+            address: address.to_string().into(),
+            router: router.name().into(),
+        },
     );
     plan.steps.push(PlanStep::CreateDevice(CreateDevice {
         name: name.into(),

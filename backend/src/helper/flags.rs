@@ -15,6 +15,7 @@ use crate::{
     },
 };
 use async_graphql::{Enum, InputObject, SimpleObject};
+use i18n::changelog::Plan;
 use std::sync::Arc;
 
 /// A tag of an interface that changes its config.
@@ -127,7 +128,12 @@ pub fn plan(topology: &Arc<Topology>, input: &FlagsInput) -> Result<NetboxPlan, 
     let device = topology
         .get_device_by_id(&DeviceId(input.device))
         .ok_or(Error::UnknownDevice(input.device))?;
-    let mut plan = NetboxPlan::new(&device, format!("Flags {}", device.name()));
+    let mut plan = NetboxPlan::new(
+        &device,
+        Plan::Flags {
+            device: device.name().into(),
+        },
+    );
     let mut interfaces = Vec::<InterfaceAccess>::new();
     for change in &input.changes {
         let interface = topology

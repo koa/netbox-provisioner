@@ -26,6 +26,7 @@ use crate::{
     },
 };
 use async_graphql::{InputObject, SimpleObject};
+use i18n::changelog::Plan;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -298,7 +299,10 @@ pub(crate) fn base(
     };
     let mut plan = NetboxPlan::new(
         &router,
-        format!("Neues Gerät {name} an {} {}", router.name(), port.name()),
+        Plan::NewDevice {
+            name: name.to_string().into(),
+            port: super::changelog_port(&router, &port),
+        },
     );
     plan.steps.push(PlanStep::CreateDevice(CreateDevice {
         name: name.into(),

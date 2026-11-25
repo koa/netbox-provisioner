@@ -13,6 +13,7 @@ use crate::{
     },
 };
 use async_graphql::InputObject;
+use i18n::changelog::Plan;
 use std::sync::Arc;
 
 /// The port, for the device whose page asks (its job writes it).
@@ -35,12 +36,10 @@ pub fn plan(topology: &Arc<Topology>, input: &BridgeLeaveInput) -> Result<Netbox
     let owner = port.device().ok_or(Error::UnknownInterface(input.port))?;
     let mut plan = NetboxPlan::new(
         &device,
-        format!(
-            "Aus Bridge lösen {} {} ({})",
-            owner.name(),
-            port.name(),
-            bridge.name()
-        ),
+        Plan::BridgeLeave {
+            port: super::changelog_port(&owner, &port),
+            bridge: bridge.name().into(),
+        },
     );
     plan.steps.push(PlanStep::UpdatePort(UpdatePort {
         interface: interface_ref(&port),

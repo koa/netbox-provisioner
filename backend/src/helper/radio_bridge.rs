@@ -41,6 +41,7 @@ use crate::{
     },
 };
 use async_graphql::{InputObject, SimpleObject};
+use i18n::changelog::Plan;
 use ipnet::{IpNet, Ipv4Net};
 use std::{net::IpAddr, sync::Arc};
 
@@ -184,7 +185,10 @@ fn link_plan(topology: &Arc<Topology>, input: &RadioBridgeInput) -> Result<LinkP
     }
     let mut plan = NetboxPlan::new(
         &ap,
-        format!("Funkbrücke {} – {}", ap.name(), station.name()),
+        Plan::RadioBridge {
+            ap: ap.name().into(),
+            station: station.name().into(),
+        },
     );
     let mut sides = Vec::new();
     for (device, role, router_port, address, other) in [

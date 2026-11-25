@@ -20,6 +20,7 @@ use crate::{
     },
 };
 use async_graphql::InputObject;
+use i18n::changelog::Plan;
 use ipnet::IpNet;
 use std::sync::Arc;
 
@@ -44,7 +45,9 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
     let far = port.connected_interfaces().first().cloned();
     let mut plan = NetboxPlan::new(
         &device,
-        format!("Verbindung abräumen {} {}", port_device.name(), port.name()),
+        Plan::ConnectionCleared {
+            port: super::changelog_port(&port_device, &port),
+        },
     );
 
     if let Some(cable) = port.cable() {

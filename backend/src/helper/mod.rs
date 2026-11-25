@@ -53,6 +53,7 @@ use crate::{
     },
 };
 use async_graphql::{ComplexObject, OneofObject, SimpleObject};
+use i18n::changelog;
 use ipnet::IpNet;
 use serde_json::{Value, json};
 use std::{
@@ -209,8 +210,9 @@ pub(crate) struct FreeNetwork {
 #[graphql(complex)]
 pub struct NetboxPlan {
     pub steps: Vec<PlanStep>,
-    /// what the changelog of NetBox says, with the user
-    pub description: Box<str>,
+    /// what it does, for the changelog of NetBox (`i18n::changelog::message`, with the user)
+    #[graphql(skip)]
+    pub description: Vec<changelog::Plan>,
     /// the router whose routes the new addresses were checked against
     pub checked_with: Option<Box<str>>,
     /// addresses NetBox has free that the network routes: passed over, to be documented
@@ -257,10 +259,12 @@ impl NetboxPlan {
 }
 
 impl NetboxPlan {
-    pub fn new(device: &DeviceAccess, description: impl Into<Box<str>>) -> Self {
+    /// A plan for `device` doing `description`; none for a part [`append`](Self::append)ed
+    /// to a plan that says it.
+    pub fn new(device: &DeviceAccess, description: impl Into<Option<changelog::Plan>>) -> Self {
         Self {
             steps: Vec::new(),
-            description: description.into(),
+            description: description.into().into_iter().collect(),
             checked_with: None,
             undocumented: Vec::new(),
             cut_off: Vec::new(),
@@ -329,12 +333,7 @@ impl NetboxPlan {
             step.shift(offset);
             step
         }));
-        if !part.description.is_empty() {
-            self.description = match self.description.is_empty() {
-                true => part.description,
-                false => format!("{}; {}", self.description, part.description).into(),
-            };
-        }
+        self.description.extend(part.description);
         self.undocumented.extend(part.undocumented);
         for cut in part.cut_off {
             if !self.cut_off.iter().any(|known| known.id == cut.id) {
@@ -698,6 +697,25 @@ pub(crate) fn new_psk() -> Box<str> {
 }
 
 /// `device port`, for messages.
+/// `port` of `device` for the changelog (`i18n::changelog::Port`).
+pub(crate) fn changelog_port(device: &DeviceAccess, port: &InterfaceAccess) -> changelog::Port {
+    changelog::Port {
+        device: device.name().into(),
+        name: port.name().into(),
+    }
+}
+
+/// `interface` of its own device for the changelog.
+pub(crate) fn changelog_port_of(interface: &InterfaceAccess) -> changelog::Port {
+    changelog::Port {
+        device: interface
+            .device()
+            .map(|d| d.name().into())
+            .unwrap_or_default(),
+        name: interface.name().into(),
+    }
+}
+
 pub(crate) fn port_name(interface: &InterfaceAccess) -> Box<str> {
     let device = interface.device();
     format!(
@@ -733,7 +751,7 @@ mod test {
             .list_devices()
             .find(|d| d.has_routeros() && d.primary_ip_v4().is_some())
             .expect("a router");
-        let mut plan = NetboxPlan::new(&device, "test");
+        let mut plan = NetboxPlan::new(&device, None);
         plan.steps = vec![
             PlanStep::CreateInterface(CreateInterface {
                 device: device_ref(&device),
@@ -801,7 +819,7 @@ mod test {
         let a = free_port(None);
         let b = free_port(a.device().map(|d| d.id()));
         let (a_device, b_device) = (a.device().unwrap(), b.device().unwrap());
-        let mut plan = NetboxPlan::new(&a_device, "test");
+        let mut plan = NetboxPlan::new(&a_device, None);
         let update = |end: &InterfaceAccess, far: &DeviceAccess| {
             PlanStep::UpdateInterface(UpdateInterface {
                 interface: interface_ref(end),

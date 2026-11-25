@@ -627,16 +627,17 @@ fn vtep_peers(
         .collect()
 }
 
-/// The user (`user_label`, as the admins' jobs name it) and whom it acts for, for NetBox'
-/// changelog and the job: „Hans Meier for Familie Meier“.
-fn started_by(context: &Context<'_>, topology: &Topology, owner: OwnerId) -> Box<str> {
-    let user = user_label(context);
-    let name = topology
+/// The user (`user_label`, as the admins' jobs name it) and the resident it acts for.
+fn started_by(context: &Context<'_>, topology: &Topology, owner: OwnerId) -> Started {
+    let resident = topology
         .owners()
         .find(|(id, _)| *id == owner)
-        .map(|(_, data)| data.name.to_string())
+        .map(|(_, data)| data.name.clone())
         .unwrap_or_default();
-    format!("{user} for {name}").into()
+    Started::ForResident {
+        user: user_label(context).to_string().into(),
+        resident,
+    }
 }
 
 fn saved_change(job: &job::Job) -> SavedChange {
@@ -765,26 +766,29 @@ impl MutationResident {
             .first()
             .ok_or(Error::NothingToChange)?
             .device(&topology)?;
-        let user = started_by(context, &topology, owner);
+        let started = started_by(context, &topology, owner);
+        // NetBox' changelog names both
+        let user: Box<str> = match &started {
+            Started::ForResident { user, resident } => {
+                i18n::changelog::for_resident(user, resident).into()
+            }
+            Started::By(user) => user.clone(),
+            Started::Resumed { .. } | Started::Automatic => Box::default(),
+        };
         // the change keeps the user alone, its resident apart
         let who = crate::graphql::user_label(context);
         let holder = self.topology.clone();
         let current: Arc<Topology> = topology.clone();
-        let job = job::start(
-            &device,
-            JobKind::NetboxWrite,
-            Started::By(user.clone()),
-            |log| async move {
-                let result = helper::write(&helpers, &current, &fingerprint, &user, &log).await;
-                if let (Ok(plan), Some(job)) = (&result, log.job_id()) {
-                    let devices = auto_rollout::configured(changed_devices(plan, &configured));
-                    auto_rollout::note_change(job, &who, Some(owner.0), devices, undo);
-                }
-                log.enter(crate::device_state::NetboxState::Refetching);
-                refetch(&holder).await;
-                result.map(drop)
-            },
-        )?;
+        let job = job::start(&device, JobKind::NetboxWrite, started, |log| async move {
+            let result = helper::write(&helpers, &current, &fingerprint, &user, &log).await;
+            if let (Ok(plan), Some(job)) = (&result, log.job_id()) {
+                let devices = auto_rollout::configured(changed_devices(plan, &configured));
+                auto_rollout::note_change(job, &who, Some(owner.0), devices, undo);
+            }
+            log.enter(crate::device_state::NetboxState::Refetching);
+            refetch(&holder).await;
+            result.map(drop)
+        })?;
         let mut saved_for = SAVED_FOR.lock_anyway();
         // a job the jobs no longer keep is asked for in vain
         saved_for.retain(|id, _| job::get(*id).is_some());

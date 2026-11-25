@@ -22,11 +22,17 @@ use crate::{
         findings::IpVersion,
     },
 };
+use i18n::changelog::Plan;
 use ipnet::IpNet;
 use std::net::IpAddr;
 
 pub async fn plan(device: &DeviceAccess) -> Result<NetboxPlan, Error> {
-    let mut plan = NetboxPlan::new(device, format!("Loopback {}", device.name()));
+    let mut plan = NetboxPlan::new(
+        device,
+        Plan::Loopback {
+            device: device.name().into(),
+        },
+    );
     let mut routes = None;
     add_to(&mut plan, device, &mut routes).await?;
     Ok(plan)

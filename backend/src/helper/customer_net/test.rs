@@ -20,7 +20,7 @@ fn a_vlan_gets_its_interface_with_the_gateway() {
         .expect("a VLAN without interface");
     let site = device.site().unwrap().id();
     let name: Box<str> = vlan.name().unwrap().into();
-    let mut plan = NetboxPlan::new(&device, "test");
+    let mut plan = NetboxPlan::new(&device, None);
     plan.steps = vec![
         PlanStep::CreateInterface(CreateInterface {
             device: device_ref(&device),

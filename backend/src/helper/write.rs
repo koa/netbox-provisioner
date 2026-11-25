@@ -76,7 +76,7 @@ pub async fn write(
         return Err(Error::PlanOutdated);
     }
     log.enter(NetboxState::Writing);
-    let rest = NetboxRest::writer(format!("{} ({user})", plan.description))?;
+    let rest = NetboxRest::writer(i18n::changelog::message(&plan.description, user))?;
     let mut created = Vec::<Option<u32>>::with_capacity(plan.steps.len());
     // the ids the plan's preview gives the objects it creates: step `n` has `u32::MAX - n`
     let first_created = u32::MAX - plan.steps.len() as u32;
@@ -95,7 +95,7 @@ pub async fn write(
         };
         let step = &step
             .with_real_ids(real)
-            .ok_or_else(|| Error::NetboxChanged(plan.description.clone()))?;
+            .ok_or_else(|| Error::NetboxChanged(plan.device().name().into()))?;
         let id = write_step(&rest, step, &created, on_new_device, log).await?;
         created.push(id);
     }

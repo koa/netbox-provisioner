@@ -25,6 +25,7 @@ use crate::{
     },
 };
 use async_graphql::{InputObject, SimpleObject};
+use i18n::changelog::Plan;
 use ipnet::IpNet;
 use std::sync::Arc;
 
@@ -59,13 +60,10 @@ pub async fn plan(topology: &Arc<Topology>, input: &ConnectionInput) -> Result<N
     }
     let mut plan = NetboxPlan::new(
         &a_device,
-        format!(
-            "Verbindung {} {} – {} {}",
-            a_device.name(),
-            a.name(),
-            b_device.name(),
-            b.name()
-        ),
+        Plan::Connection {
+            a: super::changelog_port(&a_device, &a),
+            b: super::changelog_port(&b_device, &b),
+        },
     );
 
     if !a.connected_interfaces().iter().any(|i| i.id() == b.id()) {

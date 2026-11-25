@@ -30,6 +30,7 @@ use crate::{
         natural::naturalize_interface,
     },
 };
+use i18n::changelog::Plan;
 use std::sync::Arc;
 
 /// A device's port to a router's port, or to a socket in front of it.
@@ -95,7 +96,7 @@ pub async fn plan(
         .get_interface_by_id(InterfaceId(input.device_port))
         .and_then(|port| port.device())
         .ok_or(Error::UnknownInterface(input.device_port))?;
-    let mut lo = NetboxPlan::new(&device, "");
+    let mut lo = NetboxPlan::new(&device, None);
     let mut routes: Option<Routes> = None;
     loopback::add_to(&mut lo, &device, &mut routes).await?;
     plan.append(lo);
@@ -130,13 +131,10 @@ fn prepare(topology: &Arc<Topology>, input: &ConnectDeviceInput) -> Result<Netbo
         .map(|id| FrontPortAccess::create(topology.clone(), FrontPortId(id)));
     let mut plan = NetboxPlan::new(
         &router,
-        format!(
-            "Anschluss {} {} an {} {}",
-            device.name(),
-            device_port.name(),
-            router.name(),
-            port.name()
-        ),
+        Plan::Uplink {
+            device: super::changelog_port(&device, &device_port),
+            router: super::changelog_port(&router, &port),
+        },
     );
     let now = |plan: &NetboxPlan| match plan.steps.is_empty() {
         true => Ok(topology.clone()),

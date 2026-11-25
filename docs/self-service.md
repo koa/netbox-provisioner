@@ -98,7 +98,8 @@ Die Abfragen:
 - `saveChange(resident, changes, fingerprint)`: schreibt den Plan, wenn er noch der gezeigte
   ist, in einem `NetboxWrite`-Job auf dem Gerät der ersten Änderung (wie die Helfer der Admins,
   mit Rückgängig dort).
-  Im NetBox-Changelog steht „WLAN lab-wlan (meier for Familie Meier)“.
+  Im NetBox-Changelog steht „WLAN lab-wlan (Hans Meier für Familie Meier)“, im Journal
+  „Gestartet von Hans Meier für Familie Meier“.
 - `savedChange(job)`: wie das Speichern steht (`SAVING`, `SAVED`, `FAILED` mit dem Fehler), nur
   für den Anwohner des Jobs oder einen Admin.
 

@@ -37,6 +37,10 @@ pub fn how(outcome: Outcome) -> &'static str {
 pub fn started_by(user: &str) -> String {
     format!("Gestartet von {user}")
 }
+/// by a login acting for a resident
+pub fn started_for(user: &str, resident: &str) -> String {
+    format!("Gestartet von {user} für {resident}")
+}
 pub const RESUMED: &str = "Nach einem Neustart des Provisioners weitergeführt";
 pub const AUTOMATIC: &str = "Vom automatischen Rollout gestartet";
 
@@ -78,7 +82,10 @@ pub fn power_cycled(device: &str, port: &str) -> String {
 }
 
 pub fn netbox_written(objects: usize) -> String {
-    format!("{objects} Objekte in NetBox geschrieben")
+    match objects {
+        1 => "1 Objekt in NetBox geschrieben".into(),
+        _ => format!("{objects} Objekte in NetBox geschrieben"),
+    }
 }
 
 /// What the job leaves on the device, which acts by itself unless someone takes it away.

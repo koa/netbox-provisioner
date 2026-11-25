@@ -25,6 +25,7 @@ use crate::{
     },
 };
 use async_graphql::{InputObject, SimpleObject};
+use i18n::changelog::Plan;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, InputObject)]
@@ -260,7 +261,13 @@ pub fn plan(topology: &Arc<Topology>, input: &PortVlanInput) -> Result<NetboxPla
         if before.is_none() && tagged.is_empty() {
             return Err(Error::NothingToChange);
         }
-        let mut plan = NetboxPlan::new(&device, format!("kein VLAN an {}", port_name(&port)));
+        let mut plan = NetboxPlan::new(
+            &device,
+            Plan::PortVlan {
+                port: super::changelog_port_of(&port),
+                vid: None,
+            },
+        );
         plan.steps.push(PlanStep::UpdatePortVlan(UpdatePortVlan {
             interface: interface_ref(&port),
             vlan: None,
@@ -283,7 +290,10 @@ pub fn plan(topology: &Arc<Topology>, input: &PortVlanInput) -> Result<NetboxPla
     conflict(&device, &vlan, Some(port.id()))?;
     let mut plan = NetboxPlan::new(
         &device,
-        format!("VLAN {} an {}", chosen.vid, port_name(&port)),
+        Plan::PortVlan {
+            port: super::changelog_port_of(&port),
+            vid: Some(chosen.vid),
+        },
     );
     plan.steps.push(PlanStep::UpdatePortVlan(UpdatePortVlan {
         interface: interface_ref(&port),

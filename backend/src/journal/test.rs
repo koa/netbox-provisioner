@@ -369,3 +369,18 @@ fn every_state_is_worded() {
     .concat();
     assert!(missing.is_empty(), "{missing:?}");
 }
+
+#[test]
+fn a_change_for_a_resident_names_both() {
+    let mut entry = entry(JobKind::NetboxWrite, Outcome::Done, Vec::new());
+    entry.started = Started::ForResident {
+        user: "Hans Meier".into(),
+        resident: "Familie Meier".into(),
+    };
+    assert!(
+        entry
+            .comments()
+            .contains("Gestartet von Hans Meier für Familie Meier")
+    );
+    assert_eq!(entry.record()["by"], "Hans Meier");
+}

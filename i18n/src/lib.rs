@@ -60,5 +60,8 @@ pub mod journal;
 /// The helpers that write to NetBox (`components::netbox_helper`).
 pub mod helper;
 
+/// What a helper's write says in NetBox's changelog (`backend::helper`).
+pub mod changelog;
+
 /// A helper in a modal with its steps (`components::helper_flow`).
 pub mod helper_flow;

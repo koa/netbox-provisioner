@@ -15,6 +15,7 @@ use crate::{
     },
 };
 use async_graphql::InputObject;
+use i18n::changelog::Plan;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, InputObject)]
@@ -102,7 +103,12 @@ pub fn plan(topology: &Arc<Topology>, input: &WlanInput) -> Result<NetboxPlan, E
         .wlan_group()
         .and_then(|group| group.controller())
         .ok_or(Error::UnknownWlan(input.wlan))?;
-    let mut plan = NetboxPlan::new(&controller, format!("WLAN {ssid_before}"));
+    let mut plan = NetboxPlan::new(
+        &controller,
+        Plan::Wlan {
+            ssid: ssid_before.to_string().into(),
+        },
+    );
     plan.steps
         .push(PlanStep::UpdateWirelessLan(UpdateWirelessLan {
             id: input.wlan,

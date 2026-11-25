@@ -38,6 +38,9 @@ pub const KEEP: usize = 20;
 pub enum Started {
     /// the name or email of the login
     By(Box<str>),
+    /// by the login `user` for the resident `resident` (its self-service, or an admin's
+    /// support view)
+    ForResident { user: Box<str>, resident: Box<str> },
     /// went on after a restart of the provisioner, writing on in its entry from before
     Resumed { entry: Option<u64> },
     /// by the automatic rollout (`auto_rollout`)
@@ -74,7 +77,7 @@ pub async fn follow(
             }
             entry
         }
-        Started::By(_) | Started::Automatic => None,
+        Started::By(_) | Started::ForResident { .. } | Started::Automatic => None,
     };
     let mut failing = false;
     loop {
@@ -447,7 +450,7 @@ impl Entry {
             "touched": names(&touched(&self.events)),
             "run": self.run,
             "by": match &self.started {
-                Started::By(user) => Some(user),
+                Started::By(user) | Started::ForResident { user, .. } => Some(user),
                 Started::Resumed { .. } | Started::Automatic => None,
             },
             "at": SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
@@ -460,6 +463,7 @@ impl Entry {
         let mut lines = vec![t::heading(kind_name(self.kind), self.outcome)];
         lines.push(match &self.started {
             Started::By(user) => t::started_by(user),
+            Started::ForResident { user, resident } => t::started_for(user, resident),
             Started::Resumed { .. } => t::RESUMED.into(),
             Started::Automatic => t::AUTOMATIC.into(),
         });

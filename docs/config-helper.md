@@ -687,7 +687,8 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
   darf jeden Helfer. Anwohner schreiben über ihr eigenes Schema, nur an eigenen Objekten
   ([Self-Service](self-service.md#ändern)).
 - **Wer war es.** Jedes Schreiben trägt `changelog_message` mit Aktion und Benutzer aus dem
-  OIDC-Token (z.B. „Verbindung np1–np2 (koa)“). Im Changelog von NetBox steht so, wer im
+  OIDC-Token (z.B. „Verbindung lab-np1 ether2 – lab-np2 ether1 (koa)“; die Aktion ist im Plan
+  typisiert und wird in `i18n::changelog` gewortet). Im Changelog von NetBox steht so, wer im
   Provisioner was ausgelöst hat, auch wenn alle Änderungen mit demselben Token laufen.
 - **Keine Transaktion, aber Reihenfolge und Rückweg.** NetBox' REST-API hat keine Transaktion über
   mehrere Objekte. Der Plan schreibt in einer Reihenfolge, nach der jeder Zwischenstand gültig ist

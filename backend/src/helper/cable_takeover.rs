@@ -19,6 +19,7 @@ use crate::{
     },
 };
 use async_graphql::InputObject;
+use i18n::changelog::Plan;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, InputObject)]
@@ -53,7 +54,13 @@ pub async fn plan(
             step.shift(offset);
             step
         }));
-    plan.description = format!("Kabel übernehmen: {}", connection.description).into();
+    plan.description = connection
+        .description
+        .into_iter()
+        .map(|connection| Plan::CableTakeover {
+            connection: Box::new(connection),
+        })
+        .collect();
     plan.checked_with = connection.checked_with;
     plan.undocumented.extend(connection.undocumented);
     Ok(plan)
@@ -103,7 +110,7 @@ fn clear(
             Err(Error::NothingToDisconnect(_)) => continue,
             Err(error) => return Err(error),
         };
-        let plan = plan.get_or_insert_with(|| NetboxPlan::new(&device, ""));
+        let plan = plan.get_or_insert_with(|| NetboxPlan::new(&device, None));
         // only deletions and changes of existing objects: no step references another
         plan.steps.extend(cleared.steps);
         for cut in cleared.cut_off {

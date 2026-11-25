@@ -10,6 +10,7 @@ use crate::{
     Error,
     topology::{DeviceId, Topology, access::device::DeviceAccess, findings::device_ref},
 };
+use i18n::changelog::Plan;
 use std::sync::Arc;
 
 /// A device and the location it is put in, none for the site only.
@@ -36,7 +37,12 @@ pub fn plan(topology: &Arc<Topology>, input: &DeviceLocationInput) -> Result<Net
             path: data.path.clone(),
         })
     };
-    let mut plan = NetboxPlan::new(&device, format!("Raum von {}", device.name()));
+    let mut plan = NetboxPlan::new(
+        &device,
+        Plan::DeviceRoom {
+            device: device.name().into(),
+        },
+    );
     plan.steps
         .push(PlanStep::UpdateDeviceLocation(UpdateDeviceLocation {
             device: device_ref(&device),

@@ -277,7 +277,7 @@ async fn the_wave_nanos_of_the_export_pair_their_radios() {
         Some("berg-schmidrueti")
     );
     // over patch panels: switch-schmidrueti at one end, 1og-sw2 at the other
-    let mut plan = NetboxPlan::new(&ap, "test");
+    let mut plan = NetboxPlan::new(&ap, None);
     for (device, other, router_port) in [
         (&ap, &station, "switch-schmidrueti ether1"),
         (&station, &ap, "1og-sw2 ether14"),

@@ -20,6 +20,7 @@ use crate::{
     },
 };
 use async_graphql::InputObject;
+use i18n::changelog::Plan;
 use std::sync::Arc;
 
 /// The row's interface, for the device whose page asks (its job writes it).
@@ -44,7 +45,9 @@ pub fn plan(
         .ok_or(Error::UnknownInterface(input.interface))?;
     let mut plan = NetboxPlan::new(
         &device,
-        format!("Kunden-Anschluss abräumen {} {}", owner.name(), l3.name()),
+        Plan::CustomerDisconnect {
+            port: super::changelog_port(&owner, &l3),
+        },
     );
 
     let primary = [owner.primary_ip_v4(), owner.primary_ip_v6()];

@@ -24,6 +24,7 @@ use crate::{
     },
 };
 use async_graphql::{InputObject, SimpleObject};
+use i18n::changelog::Plan;
 use std::sync::Arc;
 
 /// The port that feeds and the port fed, for the device of `device` (one of their devices).
@@ -64,13 +65,10 @@ pub fn plan(topology: &Arc<Topology>, input: &PoeInput) -> Result<NetboxPlan, Er
     }
     let mut plan = NetboxPlan::new(
         device,
-        format!(
-            "PoE {} {} → {} {}",
-            pse_device.name(),
-            pse.name(),
-            pd_device.name(),
-            pd.name()
-        ),
+        Plan::Poe {
+            pse: super::changelog_port(&pse_device, &pse),
+            pd: super::changelog_port(&pd_device, &pd),
+        },
     );
     if !pse.connected_interfaces().iter().any(|i| i.id() == pd.id()) {
         for port in [&pse, &pd] {
@@ -102,7 +100,12 @@ fn pse_alone(port: &InterfaceAccess, device: u32) -> Result<NetboxPlan, Error> {
     if !port.is_ethernet() {
         return Err(Error::NotEthernet(port_name(port)));
     }
-    let mut plan = NetboxPlan::new(&owner, format!("PoE {} {}", owner.name(), port.name()));
+    let mut plan = NetboxPlan::new(
+        &owner,
+        Plan::PoeFeeding {
+            port: super::changelog_port(&owner, port),
+        },
+    );
     set_mode(&mut plan, port, PoeMode::Pse);
     Ok(plan)
 }
@@ -143,7 +146,12 @@ pub fn plan_remove(topology: &Arc<Topology>, input: &PoeRemoveInput) -> Result<N
         .device()
         .filter(|device| device.id() == DeviceId(input.device))
         .ok_or(Error::UnknownDevice(input.device))?;
-    let mut plan = NetboxPlan::new(&device, format!("no PoE {} {}", device.name(), port.name()));
+    let mut plan = NetboxPlan::new(
+        &device,
+        Plan::NoPoe {
+            port: super::changelog_port(&device, &port),
+        },
+    );
     let Some(mode) = port.poe() else {
         return Ok(plan);
     };
