@@ -26,33 +26,47 @@ und sie, wo möglich, auf ein schlankeres VPN wie WireGuard umstellen.
   Tenant, Owner, IPsec-Profil) und Tunnel-Terminations an einem Interface eines Geräts oder einer
   VM, mit Rolle (Peer, Hub, Spoke) und äusserer IP.
 
-- **Erreichbarkeit der Standorte** (vom Benutzer, 2026-11-25): Die meisten IPv4-Endpunkte haben
-  dynamische Adressen, einige liegen hinter CGNAT. Zwei Standorte haben IPv6 mit einem /48,
-  einer davon statisch; ob der zweite auch, ist nicht gesagt.
+- **Anschlüsse der Standorte** (vom Benutzer, 2026-11-25; in NetBox noch nicht vollständig, im
+  Export also nicht ganz zu sehen):
+
+  | Anzahl | IPv4 | IPv6 |
+  |---|---|---|
+  | 2 | öffentlich, dynamisch | statisches /48 |
+  | 2 | öffentlich, dynamisch | keins |
+  | 3 | Mobilfunk hinter CGNAT | keins |
+
 - **NetBox-Termination** (Lab, geprüft): `outside_ip` ist ein Verweis auf eine IP-Adresse in
   NetBox, `role` `peer`, `hub` oder `spoke`; für einen Hostnamen gibt es kein Feld.
 
 ## Was daraus folgt
 
-- **Wer wen erreicht:** Ein Standort hinter CGNAT nimmt keine Verbindung an, er kann nur selbst
-  aufbauen. Ein Standort mit dynamischer IPv4 ist erreichbar, aber nur über einen Namen, der
-  nachgeführt wird (DDNS, etwa RouterOS' `/ip cloud`). Über IPv6 erreichen sich nur die beiden
-  Standorte mit IPv6: Zwischen ihnen geht ein direkter Tunnel ohne CGNAT, und sie sind zusammen
-  die naheliegenden zwei Hubs. Alle übrigen erreichen sie nur über IPv4; ob die beiden eine
-  öffentliche IPv4 haben, ist nicht bekannt.
-- **Hub und Spokes statt Vollvermaschung:** Zwei Standorte hinter CGNAT verbinden sich nie
-  direkt. Es braucht mindestens einen Hub, den alle erreichen, und der Verkehr zwischen Spokes
-  läuft über ihn (bei BGP: der Hub gibt die Routen der Spokes weiter). Direkte Tunnel nur zwischen
-  Standorten, von denen mindestens einer erreichbar ist.
+- **Wer wen erreicht:**
+
+  | von \ zu | IPv6-Standort | IPv4-Standort | Mobilfunk |
+  |---|---|---|---|
+  | IPv6-Standort | IPv6, feste Adresse | IPv4 über DDNS | nie |
+  | IPv4-Standort | IPv4 über DDNS | IPv4 über DDNS | nie |
+  | Mobilfunk | IPv4 über DDNS | IPv4 über DDNS | nie |
+
+  Ein Mobilfunk-Standort nimmt keine Verbindung an, er baut nur selbst auf. Jede IPv4 ist
+  dynamisch, also nur über einen nachgeführten Namen erreichbar (DDNS, etwa RouterOS'
+  `/ip cloud`). Fest ist nur IPv6, und das nur zwischen den beiden IPv6-Standorten.
+- **Zwei Hubs:** die beiden IPv6-Standorte. Untereinander ein Tunnel über IPv6, ohne DDNS. Jeder
+  andere Standort baut zu beiden einen Tunnel auf, über ihre IPv4; fällt ein Hub aus, läuft alles
+  über den anderen. Der Verkehr zwischen zwei Spokes geht über einen Hub (bei BGP: der Hub gibt
+  die Routen der Spokes weiter). Ein Server ausserhalb (VPS) ist damit nicht nötig.
+- **Die Spokes hängen an DDNS:** Alle Tunnel zu den Hubs laufen über deren dynamische IPv4. Ob
+  RouterOS einen Namen als `endpoint-address` eines WireGuard-Peers neu auflöst, wenn sich die
+  Adresse dahinter ändert, ist nicht geprüft; das ist die wichtigste Frage des Entwurfs. Prüfen
+  lässt es sich auf CHRs mit einem statischen DNS-Eintrag, der umgestellt wird. Löst RouterOS
+  nicht neu auf, braucht es ein Skript, das den Peer nachführt (wie heute für GRE und IPsec).
 - **WireGuard passt dazu besser als GRE und IPsec:** Wer aufbaut, braucht keine eigene feste
   Adresse; die Gegenseite lernt seine neue Adresse aus dem nächsten Paket. Der Aufbauende hält
   den Tunnel durch NAT mit `persistent-keepalive` offen. Das Skript, das heute die lokale Adresse
-  von GRE und IPsec nachführt, entfällt so. Ob RouterOS einen Namen als `endpoint-address` bei
-  einer Adressänderung neu auflöst, ist nicht geprüft; davon hängen Tunnel zu einem Hub mit
-  dynamischer Adresse ab.
-- **In NetBox:** Die Rolle der Termination sagt Hub oder Spoke. `outside_ip` passt nur für eine
-  feste Adresse; für die übrigen braucht es ein Custom Field an der Termination, etwa
-  `endpoint` (DDNS-Name, leer für „baut nur selbst auf“).
+  von GRE und IPsec nachführt, entfällt so.
+- **In NetBox:** Die Rolle der Termination sagt Hub oder Spoke. `outside_ip` passt nur für die
+  festen IPv6-Adressen der Hubs; für die IPv4 braucht es ein Custom Field an der Termination,
+  etwa `endpoint` (DDNS-Name, leer für „baut nur selbst auf“, die Mobilfunk-Standorte).
 
 ## Vorschlag
 
@@ -61,7 +75,8 @@ und sie, wo möglich, auf ein schlankeres VPN wie WireGuard umstellen.
 Eine Seite „VPNs“ im Provisioner, die von allen RouterOS-Geräten liest, was an Tunneln und BGP da
 ist: OpenVPN-Server und -Clients, IPsec-Peers und Policies, GRE, WireGuard-Interfaces und -Peers,
 BGP-Verbindungen mit ihrem Zustand. Daneben, was NetBox davon kennt. Das ist die Grundlage zum
-Dokumentieren und zeigt danach Abweichungen. Jede Tabelle über einen mikrotik-model-Typ: BGP
+Dokumentieren und zeigt danach Abweichungen. Sie sieht nur Geräte, die in NetBox stehen und die
+der Provisioner erreicht; was dort fehlt, muss zuerst in NetBox. Jede Tabelle über einen mikrotik-model-Typ: BGP
 (`/routing/bgp/instance`, `connection`) ist modelliert, OpenVPN, IPsec, GRE und WireGuard
 noch nicht.
 
@@ -97,6 +112,4 @@ Clients, die kein WireGuard können.
 - Z59 bis Z63 in [todo.md](../todo.md#entscheidungen).
 - Welche Gegenstellen RouterOS sind, die der Provisioner erreicht, und welche nicht (Server,
   fremde Router).
-- Welche Standorte hinter CGNAT sind, welche eine öffentliche dynamische IPv4 haben, ob die
-  beiden Standorte mit IPv6 auch eine öffentliche IPv4 haben, und ob das IPv6 des zweiten
-  statisch ist.
+- Ob RouterOS den DDNS-Namen eines WireGuard-Peers neu auflöst (CHR-Test, siehe oben).
