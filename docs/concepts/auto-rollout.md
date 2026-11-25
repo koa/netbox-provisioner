@@ -89,8 +89,8 @@ sicher, aber das ganze Netz kurz weg; wer das nicht will, nimmt dieses Gerät au
 
 ## Selbst angestossen und Stand pro Änderung
 
-- Stand pro Änderung: umgesetzt ([Automatisches Rollout](../auto-rollout.md#stand-pro-änderung)).
-  Offen: das Label pro Element im Anwohner-UI (C21).
+- Stand pro Änderung: umgesetzt ([Automatisches Rollout](../auto-rollout.md#stand-pro-änderung)),
+  im Anwohner-UI als Label pro Element (C21, [Self-Service](self-service.md#anwohner-ui)).
 - Vorschau beim Aufheben des Fehlers: umgesetzt
   ([Automatisches Rollout](../auto-rollout.md#fehlerzustand)).
 
