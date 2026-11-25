@@ -26,6 +26,33 @@ und sie, wo möglich, auf ein schlankeres VPN wie WireGuard umstellen.
   Tenant, Owner, IPsec-Profil) und Tunnel-Terminations an einem Interface eines Geräts oder einer
   VM, mit Rolle (Peer, Hub, Spoke) und äusserer IP.
 
+- **Erreichbarkeit der Standorte** (vom Benutzer, 2026-11-25): Die meisten IPv4-Endpunkte haben
+  dynamische Adressen, einige liegen hinter CGNAT. IPv6 gibt der Provider nur an einem Standort,
+  dort statisch mit einem /48.
+- **NetBox-Termination** (Lab, geprüft): `outside_ip` ist ein Verweis auf eine IP-Adresse in
+  NetBox, `role` `peer`, `hub` oder `spoke`; für einen Hostnamen gibt es kein Feld.
+
+## Was daraus folgt
+
+- **Wer wen erreicht:** Ein Standort hinter CGNAT nimmt keine Verbindung an, er kann nur selbst
+  aufbauen. Ein Standort mit dynamischer IPv4 ist erreichbar, aber nur über einen Namen, der
+  nachgeführt wird (DDNS, etwa RouterOS' `/ip cloud`). Fest erreichbar ist nur der Standort mit
+  IPv6, und nur für Standorte, die selbst IPv6 haben, also heute keinen. Ob seine IPv4 öffentlich
+  ist, ist nicht bekannt.
+- **Hub und Spokes statt Vollvermaschung:** Zwei Standorte hinter CGNAT verbinden sich nie
+  direkt. Es braucht mindestens einen Hub, den alle erreichen, und der Verkehr zwischen Spokes
+  läuft über ihn (bei BGP: der Hub gibt die Routen der Spokes weiter). Direkte Tunnel nur zwischen
+  Standorten, von denen mindestens einer erreichbar ist.
+- **WireGuard passt dazu besser als GRE und IPsec:** Wer aufbaut, braucht keine eigene feste
+  Adresse; die Gegenseite lernt seine neue Adresse aus dem nächsten Paket. Der Aufbauende hält
+  den Tunnel durch NAT mit `persistent-keepalive` offen. Das Skript, das heute die lokale Adresse
+  von GRE und IPsec nachführt, entfällt so. Ob RouterOS einen Namen als `endpoint-address` bei
+  einer Adressänderung neu auflöst, ist nicht geprüft; davon hängen Tunnel zu einem Hub mit
+  dynamischer Adresse ab.
+- **In NetBox:** Die Rolle der Termination sagt Hub oder Spoke. `outside_ip` passt nur für eine
+  feste Adresse; für die übrigen braucht es ein Custom Field an der Termination, etwa
+  `endpoint` (DDNS-Name, leer für „baut nur selbst auf“).
+
 ## Vorschlag
 
 ### 1. Bestandsaufnahme (lesend)
@@ -42,7 +69,8 @@ noch nicht.
 - Ein `Tunnel` pro VPN-Verbindung, mit Encapsulation und Status; eine Tunnelgruppe pro Netz, das
   angebunden ist (z.B. „colab“, „Familie“).
 - Je Ende eine Termination am Tunnel-Interface des Geräts (ein virtuelles Interface, Name wie auf
-  dem Gerät), mit der äusseren IP; das Netz im Tunnel als Prefix mit den Adressen der Enden.
+  dem Gerät), mit Rolle (Hub, Spoke) und, wo fest, der äusseren IP, sonst dem Custom Field
+  `endpoint` (siehe oben); das Netz im Tunnel als Prefix mit den Adressen der Enden.
 - Die Gegenstelle in einem Netz ausserhalb NetBox: siehe Z60.
 
 ### 3. WireGuard erzeugen
@@ -65,8 +93,8 @@ Clients, die kein WireGuard können.
 
 ## Offen
 
-- Z59, Z60, Z61, Z62 in [todo.md](../todo.md#entscheidungen).
+- Z59 bis Z63 in [todo.md](../todo.md#entscheidungen).
 - Welche Gegenstellen RouterOS sind, die der Provisioner erreicht, und welche nicht (Server,
   fremde Router).
-- Ob das Skript zur Adresse von GRE und IPsec mit WireGuard entfällt (WireGuard braucht die
-  eigene äussere Adresse nicht).
+- Welche Standorte hinter CGNAT sind, welche eine öffentliche dynamische IPv4 haben, und ob der
+  Standort mit IPv6 auch eine öffentliche IPv4 hat.
