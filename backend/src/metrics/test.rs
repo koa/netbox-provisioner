@@ -8,6 +8,7 @@ use crate::{
         WirelessRadio, WlanClient,
     },
     device::poe::{PoePorts, monitor_reading},
+    device::uplink::UplinkPing,
     network_state::device_data::{DeviceMapData, HealthRow, Resources},
 };
 use mikrotik_model::MacAddress;
@@ -114,6 +115,12 @@ fn snapshot() -> Snapshot {
                 hostname: Some("laptop".into()),
             }]),
         }),
+        uplink: Some(UplinkPing {
+            gateway: [192, 0, 2, 1].into(),
+            sent: 5,
+            received: 4,
+            rtt: Some(Duration::from_micros(1500)),
+        }),
         wlan_groups: Box::new([]),
     };
     let ap = DeviceSample {
@@ -171,6 +178,7 @@ fn snapshot() -> Snapshot {
             interfaces: Box::new([]),
             leases: Box::new([]),
         }),
+        uplink: None,
         wlan_groups: Box::new([group("wlan-berg", &["berg"], &["cap-stall"])]),
     };
     let down = DeviceSample {
@@ -179,6 +187,7 @@ fn snapshot() -> Snapshot {
         up: false,
         map: None,
         metrics: None,
+        uplink: None,
         wlan_groups: Box::new([]),
     };
     Snapshot {
@@ -532,5 +541,20 @@ fn a_link_is_up_in_ospfv2_and_v3_apart() {
             (link("e02-ap", "ap", "e01-router", "cable"), 0.0),
             (link("wlan1", "station", "wlan1", "radio"), 0.0),
         ]
+    );
+}
+
+/// The pings to the uplink's gateway: the share lost and the average round trip.
+#[test]
+fn the_uplink_s_loss_and_round_trip() {
+    let families = families(&snapshot());
+    let router = labels(&["device=router", "gateway=192.0.2.1", "site=berg"]);
+    assert_eq!(
+        samples(&families, "mikrotik_uplink_ping_loss_ratio"),
+        vec![(router.clone(), 0.2)]
+    );
+    assert_eq!(
+        samples(&families, "mikrotik_uplink_ping_rtt_seconds"),
+        vec![(router, 0.0015)]
     );
 }

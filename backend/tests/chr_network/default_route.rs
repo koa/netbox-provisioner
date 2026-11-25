@@ -4,7 +4,8 @@
 //! `internet -- router -- inner`. `internet` is the provider, set up by hand with a DHCP server;
 //! `router` has its uplink tagged `internet`, `nat` and `dhcp-client` and the custom field
 //! `propagate_default_route`, so it gets its default from DHCP (through its own perimeter
-//! firewall) and originates it; `inner` learns it over OSPF.
+//! firewall) and originates it; `inner` learns it over OSPF. The router's pings to its uplink's
+//! gateway answer (`device::uplink`, for `/metrics`).
 
 use crate::chr_network::node::add;
 use crate::chr_network::scenario::boot_scenario;
@@ -347,4 +348,23 @@ async fn the_default_route_of_an_internet_uplink_goes_out_over_ospf() {
         collect_resource::<RoutingOspfLsaState>(&router_api).await
     );
     inner_has.expect("inner never learned the default route over OSPF");
+
+    // the uplink's quality: pings to the active default route's next hop; here the management
+    // port's (QEMU's gateway), which stays active beside the provider's
+    let ping = backend::device::uplink::ping(&router_api)
+        .await
+        .expect("uplink ping")
+        .expect("a default gateway");
+    eprintln!("router uplink: {ping:?}");
+    let active = default_routes(&router_api, "0.0.0.0/0")
+        .await
+        .into_iter()
+        .find(|route| route.contains(" active "))
+        .expect("an active default route");
+    assert!(
+        active.starts_with(&format!("{} ", ping.gateway)),
+        "{ping:?} {active}"
+    );
+    assert_eq!((ping.sent, ping.received), (5, 5), "{ping:?}");
+    assert!(ping.rtt.is_some(), "{ping:?}");
 }

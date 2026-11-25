@@ -44,6 +44,7 @@ pub mod site_diff;
 pub mod terminal;
 pub mod update;
 pub mod update_fallback;
+pub mod uplink;
 pub mod watchdog;
 pub mod www_certificate;
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]

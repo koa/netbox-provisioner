@@ -18,6 +18,7 @@ pub(crate) use render::{DeviceSample, LinkSample, Snapshot};
 
 use crate::{
     config::CONFIG,
+    device::uplink,
     facts::Freshness,
     network_state::{
         device_data,
@@ -142,10 +143,16 @@ async fn sample(device: &DeviceAccess, since: Instant) -> DeviceSample {
     let freshness = Freshness::Since(since);
     let metrics = accessible.metrics(freshness).await.ok();
     let map = device_data::read_accessible(&accessible, freshness).await;
+    // a router with an uplink in NetBox; after the readings, one device's reads stay sequential
+    let uplink = match device.interfaces().iter().any(|i| i.is_internet()) && metrics.is_some() {
+        true => uplink::ping(accessible.reader()).await.ok().flatten(),
+        false => None,
+    };
     DeviceSample {
         up: metrics.is_some(),
         map,
         metrics,
+        uplink,
         ..DeviceSample::down(device)
     }
 }

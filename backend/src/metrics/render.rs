@@ -12,6 +12,7 @@ use crate::{
         Capsman, DeviceMetrics, EthernetCounters, EthernetLink, InterfaceCounters, Lease,
         WirelessRadio, WlanClient,
     },
+    device::uplink::UplinkPing,
     network_state::device_data::{DeviceMapData, HealthRow, Resources},
     topology::access::device::DeviceAccess,
 };
@@ -57,6 +58,8 @@ pub(crate) struct DeviceSample {
     /// health, resources and PoE (the network map's reading)
     pub map: Option<DeviceMapData>,
     pub metrics: Option<DeviceMetrics>,
+    /// the pings to its uplink's gateway, at a router with an `internet` interface
+    pub uplink: Option<UplinkPing>,
     /// the Wireless LAN Groups the device is the controller or an AP of
     pub wlan_groups: Box<[WlanGroupSample]>,
 }
@@ -95,6 +98,7 @@ impl DeviceSample {
             up: false,
             map: None,
             metrics: None,
+            uplink: None,
             wlan_groups: device
                 .topology()
                 .list_wlan_groups()
@@ -186,6 +190,7 @@ fn labels<const N: usize>(values: [&str; N]) -> Box<[Box<str>]> {
 }
 
 const DEVICE: &[&str] = &["device", "site"];
+const UPLINK: &[&str] = &["device", "site", "gateway"];
 const LINK: &[&str] = &[
     "device",
     "site",
@@ -245,6 +250,12 @@ struct Families {
     wlan: WlanFamilies,
     lease: Family,
     link: LinkFamilies,
+    uplink: UplinkFamilies,
+}
+
+struct UplinkFamilies {
+    loss: Family,
+    rtt: Family,
 }
 
 struct LinkFamilies {
@@ -504,6 +515,20 @@ impl Default for Families {
                     "hostname",
                 ],
             ),
+            uplink: UplinkFamilies {
+                loss: Family::new(
+                    Gauge,
+                    "mikrotik_uplink_ping_loss_ratio",
+                    "the share of 5 pings to the uplink's gateway lost, 0 to 1",
+                    UPLINK,
+                ),
+                rtt: Family::new(
+                    Gauge,
+                    "mikrotik_uplink_ping_rtt_seconds",
+                    "the average round trip of the pings to the uplink's gateway answered",
+                    UPLINK,
+                ),
+            },
             link: LinkFamilies {
                 up: Family::new(
                     Gauge,
@@ -555,6 +580,13 @@ impl Families {
                 self.poe.push(device, site, row);
             }
         }
+        if let Some(ping) = &sample.uplink {
+            let labels = || labels([device, site, &ping.gateway.to_string()]);
+            self.uplink.loss.push(labels(), ping.loss());
+            if let Some(rtt) = ping.rtt {
+                self.uplink.rtt.push(labels(), rtt.as_secs_f64());
+            }
+        }
         if let Some(metrics) = &sample.metrics {
             for counters in &metrics.interfaces {
                 self.interface.push(device, site, counters);
@@ -603,6 +635,7 @@ impl Families {
             wlan,
             lease,
             link,
+            uplink,
         } = self;
         [
             up,
@@ -652,6 +685,8 @@ impl Families {
             lease,
             link.up,
             link.ipv6_up,
+            uplink.loss,
+            uplink.rtt,
         ]
         .into_iter()
         .flat_map(Family::render)
