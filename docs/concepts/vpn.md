@@ -109,7 +109,7 @@ Nicht gemessen (kein Lab-Gerät dafür); aus dem Wissen über RouterOS, im Einze
 
 IPsec passt also dort, wo **beide Enden feste Adressen** haben und viel Verkehr fliesst: zwischen
 den beiden Hubs über ihr statisches IPv6, GRE über IPv6 mit IPsec (in RouterOS `ipsec-secret`
-am GRE-Interface), ohne NAT und ohne Skript. CCR2004 und RB5009 können IPsec nach meinem Wissen
+am GRE-Interface; für IPv6 `/interface gre6`), ohne NAT und ohne Skript. CCR2004 und RB5009 können IPsec nach meinem Wissen
 in Hardware (nicht geprüft); 10 Gbit/s schafft wohl keiner der beiden verschlüsselt. Für die
 Spokes (dynamische IPv4, CGNAT) bleibt WireGuard: Ihre Anschlüsse sind langsamer als die
 Verschlüsselung, und sie brauchen kein Nachführen.
@@ -160,8 +160,9 @@ Für beide gilt:
 | Termination `role` | `peer` an beiden Enden |
 | Termination `outside_ip` | die statische IPv6-Adresse des Hubs, in NetBox an seinem Uplink oder Loopback |
 
-Auf dem Gerät: `/interface gre` mit lokaler und entfernter IPv6 aus den beiden `outside_ip`.
-IPsec dazu entweder mit `ipsec-secret` am GRE-Interface (RouterOS legt Peer und Policy selbst
+Auf dem Gerät: `/interface gre6` (GRE über IPv6) mit lokaler und entfernter Adresse aus den
+beiden `outside_ip`. IPsec dazu entweder mit `ipsec-secret` am GRE-Interface (bei `gre6` nicht
+geprüft) (RouterOS legt Peer und Policy selbst
 an, das NetBox-Profil wäre dann nur Beschreibung) oder ausdrücklich als Peer, Identity, Profil,
 Proposal und Policy im Transport-Modus aus dem NetBox-Profil. Vorschlag: ausdrücklich, damit das
 Profil in NetBox gilt; welche Proposals die Hubs in Hardware rechnen, ist zu prüfen.
