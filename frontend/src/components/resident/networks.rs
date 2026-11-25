@@ -8,7 +8,10 @@ use super::{
     qr_dialog::QrDialog,
     status::State,
 };
-use crate::graphql::resident::residents::{Resident, ResidentNetwork, ResidentWlan};
+use crate::graphql::resident::{
+    live::NetworkInternet,
+    residents::{Resident, ResidentNetwork, ResidentWlan},
+};
 use i18n::resident as t;
 use patternfly_yew::prelude::{
     Button, ButtonVariant, Content, Form, FormGroup, FormHelperText, InputState, Switch, TextInput,
@@ -82,6 +85,7 @@ pub fn networks(
                 <div class="pf-v6-c-card__body resident-network">
                     <div class="resident-wlan">
                         {text}
+                        {internet(state, network.id)}
                         {wlans}
                         {cabled(resident, network)}
                     </div>
@@ -91,6 +95,76 @@ pub fn networks(
         }
     });
     html!(<div class="resident-networks">{ for cards }</div>)
+}
+
+/// How a network's internet stands.
+#[derive(Debug, PartialEq)]
+enum Internet {
+    /// routers on its way, by name, that the others don't reach
+    Cut(String),
+    /// the uplink's gateway answered none of the pings
+    NoAnswer,
+    /// `loss` 0 to 1
+    Measured { loss: f64, rtt_ms: Option<f64> },
+    /// no uplink on the way, or its router didn't answer
+    Unmeasured,
+}
+
+/// A router on the way not reached cuts it; else the uplink's pings decide.
+fn judge(internet: &NetworkInternet) -> Internet {
+    let cut = internet
+        .way
+        .iter()
+        .filter(|hop| hop.reached == Some(false))
+        .map(|hop| hop.device.name.as_str())
+        .collect::<Vec<_>>();
+    match &internet.uplink {
+        _ if !cut.is_empty() => Internet::Cut(cut.join(", ")),
+        Some(uplink) if uplink.loss >= 1.0 => Internet::NoAnswer,
+        Some(uplink) => Internet::Measured {
+            loss: uplink.loss,
+            rtt_ms: uplink.rtt_ms,
+        },
+        None => Internet::Unmeasured,
+    }
+}
+
+/// The network's internet: how its uplink answers, or where its way is cut, and the way; none
+/// where nothing is known or the network has no router of its own.
+fn internet(state: State, network: i32) -> Option<Html> {
+    let live = state.live.filter(|live| live.known)?;
+    let internet = live.internet.iter().find(|i| i.network == network)?;
+    let judged = judge(internet);
+    let class = match judged {
+        Internet::Cut(_) | Internet::NoAnswer => "pf-m-error",
+        Internet::Measured { loss, .. } if loss > 0.0 => "pf-m-warning",
+        Internet::Measured { .. } => "pf-m-success",
+        Internet::Unmeasured => "",
+    };
+    let text = match judged {
+        Internet::Cut(names) => t::internet_cut(&names),
+        Internet::NoAnswer => t::INTERNET_NO_ANSWER.to_string(),
+        Internet::Measured { loss, rtt_ms } => t::internet_measured(loss, rtt_ms),
+        Internet::Unmeasured => t::INTERNET_UNMEASURED.to_string(),
+    };
+    let hops = internet
+        .way
+        .iter()
+        .map(|hop| match hop.reached {
+            Some(false) => t::hop_unreached(&hop.device.name),
+            _ => hop.device.name.clone(),
+        })
+        .collect::<Vec<_>>();
+    Some(html! {
+        <div class="pf-v6-c-helper-text resident-internet">
+            <div class={format!("pf-v6-c-helper-text__item {class}")}>
+                <span class="pf-v6-c-helper-text__item-text">{text}</span>
+            </div>
+            <div class="pf-v6-c-helper-text__item">
+                <span class="pf-v6-c-helper-text__item-text">{t::internet_way(&hops)}</span>
+            </div>
+        </div>
+    })
 }
 
 /// „Per Kabel an“: the resident's sockets and ports with the network as saved, a socket by its
@@ -413,3 +487,6 @@ fn random_psk() -> Option<String> {
     }
     Some(psk)
 }
+
+#[cfg(test)]
+mod test;

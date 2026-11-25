@@ -97,6 +97,7 @@ fn live(devices: Vec<DeviceLive>, ports: Vec<PortLive>, wlans: Vec<WlanLive>) ->
         devices,
         ports,
         wlans,
+        internet: Vec::new(),
     }
 }
 

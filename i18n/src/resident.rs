@@ -312,6 +312,28 @@ pub const KEEP_EDITING: &str = "Weiter bearbeiten";
 
 // a network's card
 
+/// The network's internet: the pings to its uplink's gateway, `loss` 0 to 1.
+pub fn internet_measured(loss: f64, rtt_ms: Option<f64>) -> String {
+    let percent = (loss * 100.0).round();
+    let how = if loss > 0.0 { "gestört" } else { "gut" };
+    match rtt_ms {
+        Some(rtt) => format!("Internet: {how} ({rtt:.0} ms, {percent} % Verlust)"),
+        None => format!("Internet: {how} ({percent} % Verlust)"),
+    }
+}
+pub const INTERNET_NO_ANSWER: &str = "Internet: Das Gateway des Uplinks antwortet nicht";
+pub const INTERNET_UNMEASURED: &str = "Internet: nicht gemessen";
+/// the routers on the way that the others don't reach
+pub fn internet_cut(names: &str) -> String {
+    format!("Internet: unterbrochen, nicht erreicht: {names}")
+}
+/// the routers from the network's to the one with the uplink
+pub fn internet_way(hops: &[String]) -> String {
+    format!("Weg: {}", hops.join(" → "))
+}
+pub fn hop_unreached(name: &str) -> String {
+    format!("{name} (nicht erreicht)")
+}
 pub fn network_card(title: &str) -> String {
     format!("Netz {title}")
 }

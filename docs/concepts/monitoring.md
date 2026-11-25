@@ -3,8 +3,8 @@
 Status: Konzept, zum Teil umgesetzt: Health, PoE, WLAN-Clients, System, Interfaces, Leases, die
 Strecken aus der LSDB und den Uplink-Ping liefert der Provisioner an `/metrics`
 ([Gerätemetriken](../device-metrics.md), C14, C8); die Seite „Zustand“ für Admins gibt es
-(`/condition`, siehe unten). Offen sind die Anwohner-Ansicht, die Radios von `/interface/wifi`
-und die 60-GHz-Strecken. Der Rest ist
+(`/condition`, siehe unten), ebenso die Internet-Zeile der Anwohner. Offen sind die Radios von
+`/interface/wifi` und die 60-GHz-Strecken. Der Rest ist
 Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](../network-map.md) auf.
 
 ## Ziel
@@ -72,6 +72,16 @@ Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
   Weg dorthin als Kette der Strecken mit ihrem Zustand. Gerechnet über den Baum aus
   `topology::management`: der Weg vom Router des Netzes zum NAT-Router.
 
+  **Umgesetzt (2026-11-25):** in der Karte jedes Netzes. Der Weg beginnt beim Router mit dem
+  DHCP-Server des Netzes und folgt dem Management-Baum bis zum ersten Router mit Uplink (Port mit
+  Tag `internet`, oder er verteilt die Default-Route; sonst bis zur Wurzel). Jeder Router darauf
+  ist erreicht oder nicht (aus der LSDB, wie die übrigen Live-Zustände): Statt der Strecken
+  zeigt die Kette die Router, denn zwischen zwei Routern im Baum liegt nicht immer ein Kabel
+  (ein Switch auf L2). „Internet: unterbrochen, nicht erreicht: …“, wenn einer fehlt; sonst
+  entscheiden die Pings des Uplink-Routers (höchstens 60 s alt): „gut“ ohne Verlust, „gestört“
+  mit, „Das Gateway des Uplinks antwortet nicht“; „nicht gemessen“ ohne Uplink auf dem Weg
+  (im Lab: lab-np2 ist die Wurzel, ohne Uplink in NetBox).
+
 ## Grenzen
 
 - Ein toter Router kann nicht sagen, was ihm fehlt; sichtbar ist nur, dass er weg ist und wie
@@ -86,7 +96,7 @@ Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
 1. Sammler mit LSDB und Prometheus-Metriken (Grundlage der Netz-Karte).
 2. Seite „Zustand“ für Admins.
 3. Funk, Health, Uplink-Ping (Uplink-Ping erledigt; Health nur gezeigt, Z16).
-4. Anwohner-Ansicht im [Anwohner-UI](../self-service.md#anwohner-ui).
+4. Anwohner-Ansicht im [Anwohner-UI](../self-service.md#anwohner-ui) (erledigt).
 
 ## Historie über Syslog
 

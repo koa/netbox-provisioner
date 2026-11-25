@@ -99,6 +99,9 @@ Live-Zustand. Ein Text steht nur, wenn etwas nicht Ok ist.
   Gerät an einem Port ohne Link sagt „… hat keinen Link“, eines hinter einem nicht erreichten
   eigenen Gerät sagt das. Ein WLAN ist „Problem“ auf einem Teil
   seiner Access Points, „gestört“ auf keinem, „aus“ ausgeschaltet.
+- **Internet** (`liveState.internet`, C8): in der Karte jedes Netzes „Internet: gut (12 ms, 0 %
+  Verlust)“ und der Weg über die Router bis zum Uplink, siehe
+  [Überwachung](monitoring.md); die Zusammenfassung oben nimmt sie nicht auf.
 - **Oben** fasst eine Meldung zusammen: jede Änderung, die noch nicht durch ist, mit dem Text
   ihres Elements, jedes nicht erreichte Gerät, jeder Port ohne Link, an dem NetBox ein Kabel
   hat, jedes Gerät, dessen Kabel ein Router an einem anderen Port sieht als am Anschluss

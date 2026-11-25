@@ -143,6 +143,28 @@ pub struct LiveState {
     pub devices: Vec<DeviceLive>,
     pub ports: Vec<PortLive>,
     pub wlans: Vec<WlanLive>,
+    pub internet: Vec<NetworkInternet>,
+}
+
+/// A network's way to the internet and the pings to its uplink's gateway.
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+pub struct NetworkInternet {
+    pub network: i32,
+    pub way: Vec<WayHop>,
+    pub has_uplink: bool,
+    pub uplink: Option<UplinkQuality>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+pub struct WayHop {
+    pub device: Named,
+    pub reached: Option<bool>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+pub struct UplinkQuality {
+    pub loss: f64,
+    pub rtt_ms: Option<f64>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]

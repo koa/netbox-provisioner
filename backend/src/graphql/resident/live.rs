@@ -32,6 +32,7 @@ use crate::{
         interface_live::client_name,
         metrics::{BridgeHost, Lease, WlanBand, WlanClient},
         neighbors::{self, SeenNeighbor},
+        uplink::{self, UplinkPing, UplinkQuality},
     },
     error_info::ApiError,
     facts::Freshness,
@@ -44,6 +45,7 @@ use crate::{
             interface::InterfaceAccess, vlan::VlanAccess,
         },
         findings::InterfaceRef,
+        management::ManagementTree,
         ownership::{Belonging, Owned},
     },
 };
@@ -136,6 +138,32 @@ pub struct LiveState {
     ports: Box<[PortLive]>,
     /// its WLANs, each with the access points that aren't reached
     wlans: Box<[WlanLive]>,
+    /// its networks' way to the internet, those with a router handing out their addresses
+    internet: Box<[NetworkInternet]>,
+}
+
+/// A network's way to the internet: its router, and the routers towards the management roots
+/// (`topology::management`) up to the first with an uplink (`device::uplink::has_uplink`), each
+/// reached or not; the pings there to its uplink's gateway.
+#[derive(SimpleObject, Debug, Clone)]
+pub struct NetworkInternet {
+    /// the VLAN
+    network: u32,
+    /// the network's router first
+    way: Box<[WayHop]>,
+    /// the way ends at a router with an uplink; else at a management root without one (the
+    /// management proxy's device)
+    has_uplink: bool,
+    /// the pings to the uplink's gateway, at most a minute old; none without an uplink, where
+    /// its router isn't reached or didn't answer
+    uplink: Option<UplinkQuality>,
+}
+
+#[derive(SimpleObject, Debug, Clone)]
+pub struct WayHop {
+    device: Named,
+    /// none where the map doesn't judge it (no OSPF of its own)
+    reached: Option<bool>,
 }
 
 #[derive(SimpleObject, Debug, Clone)]
@@ -434,6 +462,7 @@ impl QueryLive {
                 devices: Box::default(),
                 ports: Box::default(),
                 wlans: Box::default(),
+                internet: Box::default(),
             });
         };
         // reached; none where the map doesn't judge it
@@ -539,11 +568,38 @@ impl QueryLive {
                 }
             })
             .collect();
+        // after the switches: one device's reads stay sequential
+        let tree = ManagementTree::of(&topology, topology.management_proxy());
+        let ways = owned
+            .vlans
+            .iter()
+            .filter_map(|id| way_out(&tree, &VlanAccess::create(topology.clone(), *id)))
+            .collect::<Vec<_>>();
+        let pings = uplink_pings(ways.iter().filter_map(|way| way.uplink.as_ref()), &reached).await;
+        let internet = ways
+            .into_iter()
+            .map(|way| NetworkInternet {
+                network: way.network.0,
+                has_uplink: way.uplink.is_some(),
+                uplink: way
+                    .uplink
+                    .and_then(|router| pings.get(&router.id())?.as_ref().map(UplinkQuality::from)),
+                way: way
+                    .routers
+                    .iter()
+                    .map(|router| WayHop {
+                        device: named(router),
+                        reached: reached(router),
+                    })
+                    .collect(),
+            })
+            .collect();
         Ok(LiveState {
             known: true,
             devices,
             ports,
             wlans,
+            internet,
         })
     }
     /// Where the routers see `resident`'s RouterOS devices plugged in, where it isn't their
@@ -633,6 +689,74 @@ fn plugged_in(device: u32, uplink: u32, seen: &[SeenNeighbor]) -> Option<Interfa
         .filter(|neighbor| neighbor.device.as_ref().is_some_and(|d| d.id == device))
         .find_map(|neighbor| neighbor.interface.clone())
         .filter(|port| port.id != uplink)
+}
+
+/// A network's way out: its routers in turn, and the one of them with the uplink.
+struct WayOut {
+    network: VlanId,
+    routers: Vec<DeviceAccess>,
+    uplink: Option<DeviceAccess>,
+}
+
+/// The way of `vlan` from the router handing out its addresses (the first by id, where several
+/// do) along the management tree, up to the first router with an uplink
+/// (`uplink::has_uplink`), or the root; none without a DHCP server in it.
+fn way_out(tree: &ManagementTree, vlan: &VlanAccess) -> Option<WayOut> {
+    let topology = vlan.topology();
+    let mut router = dhcp_servers(vlan).into_values().next()?.device;
+    let mut routers = Vec::new();
+    loop {
+        routers.push(router.clone());
+        if uplink::has_uplink(&router) {
+            return Some(WayOut {
+                network: vlan.id,
+                routers,
+                uplink: Some(router),
+            });
+        }
+        let parent = tree
+            .parent(router.id())
+            .filter(|parent| routers.iter().all(|r| r.id() != *parent))
+            .and_then(|parent| topology.get_device_by_id(&parent));
+        match parent {
+            Some(parent) => router = parent,
+            None => {
+                return Some(WayOut {
+                    network: vlan.id,
+                    routers,
+                    uplink: None,
+                });
+            }
+        }
+    }
+}
+
+/// How old the uplink's pings may be: the concept's 60 s.
+const UPLINK_AGE: Duration = Duration::from_secs(60);
+
+/// The pings of each of `routers` (an uplink each) reached, at most [`UPLINK_AGE`] old, each
+/// router once, all at once; missing where it didn't answer, `None` without a default route.
+async fn uplink_pings<'r>(
+    routers: impl Iterator<Item = &'r DeviceAccess>,
+    reached: &impl Fn(&DeviceAccess) -> Option<bool>,
+) -> BTreeMap<DeviceId, Option<UplinkPing>> {
+    let mut asked = BTreeMap::<DeviceId, DeviceAccess>::new();
+    for router in routers.filter(|router| reached(router) != Some(false)) {
+        asked.entry(router.id()).or_insert_with(|| router.clone());
+    }
+    join_all(asked.into_values().map(|router| async move {
+        let accessible = router
+            .connect(DeviceTarget::default())
+            .await
+            .ok()
+            .flatten()?;
+        let reader = accessible.reader().at(Freshness::MaxAge(UPLINK_AGE));
+        Some((router.id(), uplink::ping(&reader).await.ok().flatten()))
+    }))
+    .await
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 /// The interfaces that are `vlan` (its VLAN interface, a port with it untagged) with a DHCP

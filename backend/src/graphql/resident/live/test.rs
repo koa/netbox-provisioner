@@ -1,9 +1,14 @@
 //! Scope: Tests of `graphql::resident::live`; nothing else.
-use super::{behind, joined, plugged_in};
+use super::{behind, joined, plugged_in, way_out};
 use crate::device::metrics::{BridgeHost, Capsman, Lease, WlanClient};
 use crate::{
     device::neighbors::SeenNeighbor,
-    topology::findings::{DeviceRef, InterfaceRef},
+    topology::{
+        VlanId,
+        access::device::DeviceAccess,
+        findings::{DeviceRef, InterfaceRef},
+        management::ManagementTree,
+    },
 };
 use std::{str::FromStr, time::Duration};
 
@@ -126,4 +131,33 @@ fn the_leases_behind_a_port() {
     assert_eq!(devices[0].hostname.as_deref(), Some("laptop"));
     assert_eq!(behind("e04-buero", &hosts, &leases).len(), 1);
     assert!(behind("ether5", &hosts, &leases).is_empty());
+}
+
+/// In the stored export, every network with a router handing out its addresses has a way out
+/// to a router with an uplink, each router the parent of the one before; one of them announces
+/// the default route without a port tagged `internet`.
+#[test]
+fn every_network_s_way_ends_at_an_uplink() {
+    let topology = crate::topology::test::example_topology();
+    let tree = ManagementTree::of(&topology, topology.management_proxy());
+    let ways = topology
+        .list_vlans()
+        .filter_map(|vlan| way_out(&tree, &vlan))
+        .collect::<Vec<_>>();
+    assert!(!ways.is_empty());
+    let without = ways
+        .iter()
+        .filter(|way| way.uplink.is_none())
+        .map(|way| way.network)
+        .collect::<Vec<_>>();
+    assert_eq!(without, Vec::<VlanId>::new());
+    for way in &ways {
+        for pair in way.routers.windows(2) {
+            assert_eq!(tree.parent(pair[0].id()), Some(pair[1].id()));
+        }
+        assert_eq!(
+            way.uplink.as_ref().map(DeviceAccess::id),
+            way.routers.last().map(DeviceAccess::id)
+        );
+    }
 }
