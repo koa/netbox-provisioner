@@ -104,9 +104,9 @@ Live-Zustand. Ein Text steht nur, wenn etwas nicht Ok ist.
   hat, jedes WLAN auf einem Teil seiner Access Points;
   sonst „Alles ok“. Änderungen und Live-Zustand liest die Ansicht alle 15 s neu.
 
-Nicht gebaut: seit wann ein Link fehlt (der Entwurf sagt „seit 09:15“), die Clients eines
-WLANs, die mit einem Access Point verschwinden, und ein falsch gestecktes Kabel als Meldung oben
-(der Anschluss zeigt es am Gerät, `seenUplinks`).
+Nicht gebaut: seit wann ein Link fehlt (der Entwurf sagt „seit 09:15“, E35), die Clients eines
+WLANs, die mit einem Access Point verschwinden (E36), und ein falsch gestecktes Kabel als Meldung
+oben (der Anschluss zeigt es am Gerät, `seenUplinks`, E37).
 
 ## Leases
 
