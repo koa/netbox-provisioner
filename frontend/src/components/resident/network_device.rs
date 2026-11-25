@@ -1,6 +1,6 @@
 //! Scope: One device in one of a resident's networks, wherever it is listed (the devices of a
 //! network, the devices behind a port); not reading them (`network_devices`, `components::resident`).
-use crate::graphql::resident::live::{NetworkDevice, WlanBand, WlanFrequency, WlanStandard};
+use crate::{graphql::resident::live::NetworkDevice, i18n::wlan_band};
 use i18n::resident as t;
 use yew::{Html, Properties, function_component, html};
 
@@ -22,7 +22,7 @@ pub fn network_device_item(props: &NetworkDeviceProps) -> Html {
         .wlan
         .as_ref()
         .map(|wlan| {
-            let band = wlan.band.as_ref().map(band).unwrap_or_default();
+            let band = wlan.band.as_ref().map(wlan_band::band).unwrap_or_default();
             t::wlan_connection(&wlan.access_point, &band, wlan.signal)
         })
         .unwrap_or_default();
@@ -35,25 +35,4 @@ pub fn network_device_item(props: &NetworkDeviceProps) -> Html {
             {" "}<small>{wlan}</small>
         </li>
     }
-}
-
-/// „5 GHz (ax)“; empty for a band of a newer server.
-fn band(band: &WlanBand) -> String {
-    let ghz = match band.frequency {
-        WlanFrequency::Ghz2 => "2,4",
-        WlanFrequency::Ghz5 => "5",
-        WlanFrequency::Ghz6 => "6",
-        WlanFrequency::Other => return String::new(),
-    };
-    let standard = band.standard.and_then(|standard| match standard {
-        WlanStandard::A => Some("a"),
-        WlanStandard::B => Some("b"),
-        WlanStandard::G => Some("g"),
-        WlanStandard::N => Some("n"),
-        WlanStandard::Ac => Some("ac"),
-        WlanStandard::Ax => Some("ax"),
-        WlanStandard::Be => Some("be"),
-        WlanStandard::Other => None,
-    });
-    t::wlan_band(ghz, standard)
 }

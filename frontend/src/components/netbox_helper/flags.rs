@@ -9,7 +9,6 @@ use crate::{
     graphql::{
         authenticated::{
             findings::{Finding, Findings, FindingsVariables},
-            helper::InterfaceTag,
             helper_options::{self, FlagInterfaces},
             types::DeviceVariables,
         },
@@ -76,7 +75,7 @@ impl NetboxHelper {
             }) => {
                 let has = self
                     .flag_interface(interface)
-                    .is_some_and(|i| i.tags.iter().any(|tag| tag_slug(tag) == flag.slug()));
+                    .is_some_and(|i| i.tags.iter().any(|tag| tag.slug() == flag.slug()));
                 if has == set {
                     self.flags.remove(&(interface, flag));
                 } else {
@@ -129,59 +128,58 @@ impl NetboxHelper {
             Some(Err(error)) => return error.to_html(),
             Some(Ok(interfaces)) => interfaces,
         };
-        let rows =
-            interfaces
-                .iter()
-                .filter(|interface| self.flags_of.is_none_or(|id| interface.id as u32 == id))
-                .map(|interface| {
-                    let id = interface.id as u32;
-                    let name = match &interface.label {
-                        Some(label) => format!("{} ({label})", interface.name),
-                        None => interface.name.clone(),
-                    };
-                    let mut about: Vec<String> = interface.addresses.clone();
-                    about.extend(
-                        interface
-                            .connected
-                            .iter()
-                            .map(|far| t::cabled_to(&far.device.name, &far.name)),
-                    );
-                    if let Some(bridge) = &interface.bridge {
-                        about.push(t::bridge_port(bridge));
+        let rows = interfaces
+            .iter()
+            .filter(|interface| self.flags_of.is_none_or(|id| interface.id as u32 == id))
+            .map(|interface| {
+                let id = interface.id as u32;
+                let name = match &interface.label {
+                    Some(label) => format!("{} ({label})", interface.name),
+                    None => interface.name.clone(),
+                };
+                let mut about: Vec<String> = interface.addresses.clone();
+                about.extend(
+                    interface
+                        .connected
+                        .iter()
+                        .map(|far| t::cabled_to(&far.device.name, &far.name)),
+                );
+                if let Some(bridge) = &interface.bridge {
+                    about.push(t::bridge_port(bridge));
+                }
+                let switches = FLAGS.iter().map(|&flag| {
+                    let has = interface.tags.iter().any(|tag| tag.slug() == flag.slug());
+                    let set = self.flags.get(&(id, flag)).copied().unwrap_or(has);
+                    let class = (set != has).then_some("flag-changed");
+                    let onchange = ctx.link().callback(move |_| {
+                        FlagsMsg::Toggle(FlagChange {
+                            interface: id,
+                            flag,
+                            set: !set,
+                        })
+                    });
+                    html! {
+                        <td class={classes!("pf-v6-c-table__td", class)} data-label={flag.slug()}>
+                            <input
+                                type="checkbox"
+                                checked={set}
+                                aria-label={format!("{} {}", interface.name, flag.slug())}
+                                disabled={self.job_running}
+                                {onchange}
+                            />
+                        </td>
                     }
-                    let switches = FLAGS.iter().map(|&flag| {
-                let has = interface.tags.iter().any(|tag| tag_slug(tag) == flag.slug());
-                let set = self.flags.get(&(id, flag)).copied().unwrap_or(has);
-                let class = (set != has).then_some("flag-changed");
-                let onchange = ctx.link().callback(move |_| {
-                    FlagsMsg::Toggle(FlagChange {
-                        interface: id,
-                        flag,
-                        set: !set,
-                    })
                 });
                 html! {
-                    <td class={classes!("pf-v6-c-table__td", class)} data-label={flag.slug()}>
-                        <input
-                            type="checkbox"
-                            checked={set}
-                            aria-label={format!("{} {}", interface.name, flag.slug())}
-                            disabled={self.job_running}
-                            {onchange}
-                        />
-                    </td>
+                    <tr class="pf-v6-c-table__tr" key={id}>
+                        <td class="pf-v6-c-table__td" data-label={t::INTERFACE}>
+                            <div>{name}</div>
+                            <small>{about.join(", ")}</small>
+                        </td>
+                        { for switches }
+                    </tr>
                 }
             });
-                    html! {
-                        <tr class="pf-v6-c-table__tr" key={id}>
-                            <td class="pf-v6-c-table__td" data-label={t::INTERFACE}>
-                                <div>{name}</div>
-                                <small>{about.join(", ")}</small>
-                            </td>
-                            { for switches }
-                        </tr>
-                    }
-                });
         let findings = match &self.flag_findings {
             None => html!(<Spinner size={SpinnerSize::Md}/>),
             Some(FlagFindings {
@@ -266,16 +264,4 @@ pub struct FlagFindings {
 pub struct NetboxFindings {
     netbox: Box<str>,
     findings: Box<[Finding]>,
-}
-
-/// A tag as NetBox names it.
-pub(super) fn tag_slug(tag: &InterfaceTag) -> &str {
-    match tag {
-        InterfaceTag::Ospf => "ospf",
-        InterfaceTag::Dhcp => "dhcp",
-        InterfaceTag::DhcpClient => "dhcp-client",
-        InterfaceTag::Nat => "nat",
-        InterfaceTag::Internet => "internet",
-        InterfaceTag::Other(other) => other,
-    }
 }

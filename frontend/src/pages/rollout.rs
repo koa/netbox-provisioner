@@ -9,7 +9,7 @@
 use crate::{
     components::{
         device_link::DeviceLink,
-        job::{JobView, reboots, update_phase},
+        job::{JobView, reboots},
         widgets::popup::Select,
     },
     error::{FrontendError, ServerProblem},
@@ -21,16 +21,16 @@ use crate::{
             rollout::{
                 ContinueRollout, ContinueRolloutVariables, PlannedDevice, RolloutDevice,
                 RolloutDeviceState as State, RolloutDone, RolloutEvent, RolloutEvents,
-                RolloutEventsVariables, RolloutFallback, RolloutJob, RolloutPause, RolloutPaused,
-                RolloutPlan, RolloutPlanQuery, RolloutPlanVariables, RolloutSkip, RolloutStatus,
-                SkipRolloutDevice, SkipRolloutDeviceVariables, StartRollout, StartRolloutVariables,
+                RolloutEventsVariables, RolloutJob, RolloutPause, RolloutPaused, RolloutPlan,
+                RolloutPlanQuery, RolloutPlanVariables, RolloutStatus, SkipRolloutDevice,
+                SkipRolloutDeviceVariables, StartRollout, StartRolloutVariables,
             },
             types::{Channel, ErrorInfo, JobState},
         },
         live::{Subscription, watch_data},
         request,
     },
-    i18n::rollout as t,
+    i18n::{job_phase, rollout as t, rollout_plan},
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{
@@ -564,19 +564,14 @@ fn table(plan: &RolloutPlan, last: &str, cell: impl Fn(&PlannedDevice) -> Html) 
 fn row(index: usize, device: &PlannedDevice, target: &str, last: Html) -> Html {
     let position = match &device.skip {
         None => t::position(index + 1, device.pilot, device.depth),
-        Some(skip) => skip_text(skip).into(),
+        Some(skip) => rollout_plan::skip(skip).into(),
     };
     let version = match (&device.version, &device.skip) {
         (Some(version), None) => t::version_change(version, target),
         (Some(version), Some(_)) => version.clone(),
         (None, _) => String::new(),
     };
-    let fallback = match device.fallback {
-        RolloutFallback::Partition => t::FALLBACK_PARTITION,
-        RolloutFallback::Neighbor => t::FALLBACK_NEIGHBOR,
-        RolloutFallback::None => t::FALLBACK_NONE,
-        RolloutFallback::Other(_) => "",
-    };
+    let fallback = rollout_plan::fallback(&device.fallback);
     let packages = if device.files.is_empty() {
         String::new()
     } else {
@@ -652,7 +647,7 @@ fn device_state(
         };
     }
     let text = match (told.map(|told| told.state), phase) {
-        (Some(State::Started), Some(phase)) => update_phase(phase),
+        (Some(State::Started), Some(phase)) => job_phase::update_phase(phase),
         (None, _) => t::STATE_PENDING.into(),
         (Some(State::Waiting), _) => t::STATE_WAITING.into(),
         (Some(State::Started), None) => t::STATE_STARTED.into(),
@@ -703,17 +698,6 @@ fn device_state(
                 </Button>
             }
         </>
-    }
-}
-
-fn skip_text(skip: &RolloutSkip) -> &'static str {
-    match skip {
-        RolloutSkip::UpToDate => t::SKIP_UP_TO_DATE,
-        RolloutSkip::Unreachable => t::SKIP_UNREACHABLE,
-        RolloutSkip::Leftovers => t::SKIP_LEFTOVERS,
-        RolloutSkip::NoFallback => t::SKIP_NO_FALLBACK,
-        RolloutSkip::NoSpace => t::SKIP_NO_SPACE,
-        RolloutSkip::Other(_) => "",
     }
 }
 

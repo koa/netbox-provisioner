@@ -1,7 +1,10 @@
 //! Scope: The views of a diff wherever one is shown (device page, batch apply, helper preview,
 //! site check): its summary by table, the changed fields, the script and the script back; not
 //! what is shown around it.
-use crate::graphql::authenticated::types::{CfgDiff, EntryChange, EntryChangeKind, TableChanges};
+use crate::{
+    graphql::authenticated::types::{CfgDiff, EntryChange, TableChanges},
+    i18n::diff,
+};
 use i18n::diff_view as t;
 use patternfly_yew::prelude::{CodeBlock, CodeBlockCode, Tab, Tabs};
 use yew::{Html, Properties, function_component, html, html_nested, use_state};
@@ -99,15 +102,6 @@ fn closer_look(tables: &[TableChanges]) -> Vec<String> {
     closer_look
 }
 
-/// Each table's count.
-fn table_list(tables: &[TableChanges]) -> String {
-    tables
-        .iter()
-        .map(|m| t::table(&m.table, m.added.into(), m.changed.into(), m.removed.into()))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 /// The changes counted, what needs a closer look and each table's count.
 fn summary(tables: &[TableChanges]) -> Html {
     let closer_look = closer_look(tables);
@@ -115,7 +109,7 @@ fn summary(tables: &[TableChanges]) -> Html {
         <div class="diff-summary">
             <strong>{t::changes(total(tables))}</strong>
             { for closer_look.into_iter().map(|text| html!(<>{", "}<strong>{text}</strong></>)) }
-            <div>{table_list(tables)}</div>
+            <div>{diff::table_list(tables)}</div>
         </div>
     }
 }
@@ -124,7 +118,7 @@ fn summary(tables: &[TableChanges]) -> Html {
 /// fit ends in „…“ and is in the tooltip.
 pub fn summary_line(tables: &[TableChanges]) -> Html {
     let closer_look = closer_look(tables);
-    let list = table_list(tables);
+    let list = diff::table_list(tables);
     let mut whole = t::changes(total(tables));
     for text in &closer_look {
         whole.push_str(", ");
@@ -139,16 +133,6 @@ pub fn summary_line(tables: &[TableChanges]) -> Html {
             {": "}{list}
         </span>
     }
-}
-
-fn kind(kind: &EntryChangeKind) -> String {
-    t::kind(match kind {
-        EntryChangeKind::Add => t::Kind::Add,
-        EntryChangeKind::Set => t::Kind::Set,
-        EntryChangeKind::Remove => t::Kind::Remove,
-        EntryChangeKind::Move => t::Kind::Move,
-        EntryChangeKind::Other(other) => t::Kind::Other(other),
-    })
 }
 
 fn value(value: &Option<String>) -> Html {
@@ -184,7 +168,7 @@ fn entry_rows(entry: &EntryChange) -> Html {
                 <th class="pf-v6-c-table__th" colspan="3">
                     <strong>{format!("/{}", entry.table)}</strong>
                     {" "}
-                    {kind(&entry.kind)}
+                    {diff::kind(&entry.kind)}
                     if let Some(key) = &entry.entry {
                         {" "}<code>{key.clone()}</code>
                     }

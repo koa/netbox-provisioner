@@ -7,10 +7,13 @@
 //! else „nicht ausgerollt“ where one failed, else „wartet“; all rolled out, the live state
 //! decides. A text stands only where something isn't ok.
 use super::port_name::place;
-use crate::graphql::resident::{
-    changes::{ChangeDevice, ChangeState, HoldReason, RolloutState},
-    live::{LiveState, PortLive},
-    residents::{PortKind, ResidentDevice, ResidentNetwork, ResidentPort},
+use crate::{
+    graphql::resident::{
+        changes::{ChangeDevice, ChangeState, RolloutState},
+        live::{LiveState, PortLive},
+        residents::{PortKind, ResidentDevice, ResidentNetwork, ResidentPort},
+    },
+    i18n::change_rollout,
 };
 use i18n::{
     auto_rollout as rollout,
@@ -160,24 +163,10 @@ fn reasons(devices: &[&ChangeDevice]) -> String {
     let mut reasons = devices
         .iter()
         .flat_map(|device| &device.reasons)
-        .map(hold_reason)
+        .map(change_rollout::resident_hold_reason)
         .collect::<Vec<_>>();
     reasons.dedup();
     reasons.join("; ")
-}
-
-/// Why a device holds a change back, as the resident reads it: a radio link as a complex
-/// change for support (Z58), the others as the site page says them.
-pub fn hold_reason(reason: &HoldReason) -> String {
-    rollout::hold_reason(match reason {
-        HoldReason::RadioLink => return t::RADIO_LINK_HOLD.to_string(),
-        HoldReason::PoeCut => rollout::HoldReason::PoeCut,
-        HoldReason::CapOff => rollout::HoldReason::CapOff,
-        HoldReason::ApiClientsOutside => rollout::HoldReason::ApiClientsOutside,
-        HoldReason::Rewire => rollout::HoldReason::Rewire,
-        HoldReason::Outward => rollout::HoldReason::Outward,
-        HoldReason::Other(other) => rollout::HoldReason::Other(other),
-    })
 }
 
 fn same_kind(a: &PortKind, b: &PortKind) -> bool {

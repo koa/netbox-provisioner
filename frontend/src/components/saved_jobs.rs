@@ -6,16 +6,13 @@
 use crate::{
     error::FrontendError,
     graphql::{
-        authenticated::{
-            saved_jobs::{
-                DiscardSavedJob, DiscardSavedJobVariables, HeldBack, SavedJobKind,
-                SavedJobs as SavedJobsQuery, Waiting as Saved,
-            },
-            types::{ApplyState as A, JobPhase as Phase, UpdateState as U},
+        authenticated::saved_jobs::{
+            DiscardSavedJob, DiscardSavedJobVariables, HeldBack, SavedJobKind,
+            SavedJobs as SavedJobsQuery, Waiting as Saved,
         },
         request,
     },
-    i18n::{job::phase as p, saved_jobs as t},
+    i18n::{job_phase, saved_jobs as t},
 };
 use cynic::{MutationBuilder, QueryBuilder};
 use patternfly_yew::prelude::{Alert, AlertType, Button, ButtonVariant};
@@ -95,7 +92,11 @@ impl Component for SavedJobs {
                         Some(SavedJobKind::Apply) => t::APPLY,
                         _ => t::UPDATE,
                     },
-                    &saved.phase.as_ref().map(phase).unwrap_or_default(),
+                    &saved
+                        .phase
+                        .as_ref()
+                        .and_then(job_phase::phase)
+                        .unwrap_or_default(),
                     saved.age.unwrap_or_default() / 1_000_000_000,
                 ),
             };
@@ -122,23 +123,4 @@ impl Component for SavedJobs {
         });
         html! {<>{error}{for saved}</>}
     }
-}
-
-/// The state it was saved in; only those that go on after a restart are ever saved.
-fn phase(phase: &Phase) -> String {
-    let state = match phase {
-        Phase::ApplyPhase(phase) => match &phase.apply {
-            A::ScriptRunning => p::SCRIPT_RUNNING,
-            A::StoppingFallback => p::STOPPING_FALLBACK,
-            other => return format!("{other:?}"),
-        },
-        Phase::UpdatePhase(phase) => match &phase.update {
-            U::Rebooting => p::REBOOTING,
-            U::NotUpdated => p::NOT_UPDATED,
-            U::StoppingFallback => p::STOPPING_FALLBACK,
-            other => return format!("{other:?}"),
-        },
-        other => return format!("{other:?}"),
-    };
-    state.to_string()
 }

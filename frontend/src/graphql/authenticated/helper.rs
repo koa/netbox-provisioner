@@ -188,3 +188,17 @@ pub enum InterfaceTag {
     #[cynic(fallback)]
     Other(String),
 }
+
+impl InterfaceTag {
+    /// The tag as NetBox names it.
+    pub fn slug(&self) -> &str {
+        match self {
+            InterfaceTag::Ospf => "ospf",
+            InterfaceTag::Dhcp => "dhcp",
+            InterfaceTag::DhcpClient => "dhcp-client",
+            InterfaceTag::Nat => "nat",
+            InterfaceTag::Internet => "internet",
+            InterfaceTag::Other(other) => other,
+        }
+    }
+}

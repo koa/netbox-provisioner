@@ -10,16 +10,16 @@ use crate::{
     graphql::{
         authenticated::{
             auto_rollout::{
-                AcceptAutoRolloutDiff, ChangeDevice, ChangeState, ClearAutoRolloutError,
-                HoldReason, Lack, LastRound, ReleaseAutoRollout, ReleaseVariables, RolloutState,
-                RoundDevice, RoundOutcome, SiteAutoRollout, SiteAutoRolloutQuery, SiteError,
-                SiteVariables,
+                AcceptAutoRolloutDiff, ChangeState, ClearAutoRolloutError, LastRound,
+                ReleaseAutoRollout, ReleaseVariables, RolloutState, RoundDevice, RoundOutcome,
+                SiteAutoRollout, SiteAutoRolloutQuery, SiteError, SiteVariables,
             },
             device::AllowApply,
         },
         live::{Subscription, watch_data},
         request,
     },
+    i18n::change_rollout,
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
 use i18n::auto_rollout as t;
@@ -178,7 +178,7 @@ impl Component for AutoRollout {
                         { for state.unmet.iter().map(|unmet| html! {
                             <>
                                 <dt>{unmet.device.name.clone()}</dt>
-                                <dd>{joined(&unmet.lacks, lack, ", ")}</dd>
+                                <dd>{joined(&unmet.lacks, change_rollout::lack, ", ")}</dd>
                             </>
                         }) }
                     </dl>
@@ -211,7 +211,7 @@ impl Component for AutoRollout {
                             <>
                                 <dt>{t::change_head(&t::ago(change.age.into()), &change.by,
                                     change.for_resident.as_deref())}</dt>
-                                <dd>{joined(&change.devices, change_device, "; ")}</dd>
+                                <dd>{joined(&change.devices, change_rollout::site_device, "; ")}</dd>
                             </>
                         }) }
                     </dl>
@@ -306,7 +306,7 @@ impl AutoRollout {
                             <>
                                 <dt>{held.device.name.clone()}</dt>
                                 <dd>
-                                    <p>{joined(&held.reasons, hold_reason, "; ")}</p>
+                                    <p>{joined(&held.reasons, change_rollout::site_hold_reason, "; ")}</p>
                                     {self.release_only(ctx, &held.device, state)}
                                 </dd>
                             </>
@@ -377,45 +377,9 @@ impl AutoRollout {
     }
 }
 
-/// A device of a change: its name and how far the change is there.
-fn change_device(device: &ChangeDevice) -> String {
-    let state = match &device.state {
-        RolloutState::Pending => t::RolloutState::Pending,
-        RolloutState::RolledOut => t::RolloutState::RolledOut,
-        RolloutState::Waiting if !device.reasons.is_empty() => t::RolloutState::WaitingForAdmin,
-        RolloutState::Waiting => t::RolloutState::Waiting,
-        RolloutState::Deferred => t::RolloutState::Deferred,
-        RolloutState::Failed => t::RolloutState::Failed,
-        RolloutState::Manual | RolloutState::Other(_) => t::RolloutState::Manual,
-    };
-    format!("{}: {}", device.device.name, t::rollout_state(state))
-}
-
 /// `items` worded by `word`, separated by `separator`.
 fn joined<T>(items: &[T], word: impl Fn(&T) -> String, separator: &str) -> String {
     items.iter().map(word).collect::<Vec<_>>().join(separator)
-}
-
-fn hold_reason(reason: &HoldReason) -> String {
-    t::hold_reason(match reason {
-        HoldReason::PoeCut => t::HoldReason::PoeCut,
-        HoldReason::CapOff => t::HoldReason::CapOff,
-        HoldReason::ApiClientsOutside => t::HoldReason::ApiClientsOutside,
-        HoldReason::RadioLink => t::HoldReason::RadioLink,
-        HoldReason::Rewire => t::HoldReason::Rewire,
-        HoldReason::Outward => t::HoldReason::Outward,
-        HoldReason::Other(other) => t::HoldReason::Other(other),
-    })
-}
-
-fn lack(lack: &Lack) -> String {
-    t::lack(match lack {
-        Lack::LoopbackIpv4 => t::Lack::LoopbackIpv4,
-        Lack::LoopbackIpv6 => t::Lack::LoopbackIpv6,
-        Lack::Connection => t::Lack::Connection,
-        Lack::Scheduler => t::Lack::Scheduler,
-        Lack::Other(other) => t::Lack::Other(other),
-    })
 }
 
 fn names(devices: &[RoundDevice]) -> Vec<String> {

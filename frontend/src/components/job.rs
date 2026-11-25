@@ -11,12 +11,12 @@ use crate::{
                 CancelJob, CancelJobVariables, DeviceWait, Event, FallbackLeftReason, Job,
                 JobEvents, JobEventsVariables, Logged, RebootReason, ScriptProgress,
             },
-            types::{ErrorInfo, JobKind, JobPhase as Phase, JobState, LeftoverAction, UpdateState},
+            types::{ErrorInfo, JobKind, JobState, LeftoverAction, UpdateState},
         },
         live::{Subscription, watch_data},
         request,
     },
-    i18n::{common::CANCEL, device, device_mode, job as t},
+    i18n::{common::CANCEL, device, device_mode, job as t, job_phase},
 };
 use cynic::{MutationBuilder, SubscriptionBuilder};
 use patternfly_yew::prelude::{
@@ -260,33 +260,6 @@ fn title(job: &Job) -> Title {
     }
 }
 
-/// The state the job is in while it runs, or ended in when it didn't get through; nothing
-/// once done (its last state says nothing then).
-/// The name of an update's state (`Job.phase`, a rollout's `RolloutDevice.phase`).
-pub fn update_phase(state: &UpdateState) -> String {
-    use UpdateState as U;
-    use t::phase as p;
-    match state {
-        U::Reading => p::READING.into(),
-        U::SuspendingWatchdogs => p::SUSPENDING_WATCHDOGS.into(),
-        U::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
-        U::RememberingNeighbors => p::REMEMBERING_NEIGHBORS.into(),
-        U::ArmingFallback => p::ARMING_FALLBACK.into(),
-        U::Downloading => p::DOWNLOADING.into(),
-        U::Uploading => p::UPLOADING.into(),
-        U::WaitingToReboot => p::WAITING_TO_REBOOT.into(),
-        U::Rebooting => p::REBOOTING.into(),
-        U::NotUpdated => p::NOT_UPDATED.into(),
-        U::StoppingFallback => p::STOPPING_FALLBACK.into(),
-        U::WaitingForNeighbors => p::WAITING_FOR_NEIGHBORS.into(),
-        U::Firmware => p::FIRMWARE.into(),
-        U::WaitingToRebootFirmware => p::WAITING_TO_REBOOT_FIRMWARE.into(),
-        U::RebootingFirmware => p::REBOOTING_FIRMWARE.into(),
-        U::RestoringWatchdogs => p::RESTORING_WATCHDOGS.into(),
-        U::Other(other) => other.clone(),
-    }
-}
-
 /// Whether a device whose update is in `state` is offline: it reboots.
 pub fn reboots(state: &UpdateState) -> bool {
     matches!(
@@ -295,78 +268,14 @@ pub fn reboots(state: &UpdateState) -> bool {
     )
 }
 
+/// The state the job is in while it runs, or ended in when it didn't get through; nothing
+/// once done (its last state says nothing then).
 fn phase_line(job: &Job, running: bool) -> Option<String> {
-    use crate::graphql::authenticated::types::{
-        ApplyState as A, BootstrapState as B, CleanupState as C, DeviceModeState as D,
-        NetboxState as N, PowerCycleState as P, RebootState as R,
-    };
     use t::phase as p;
     if job.state == JobState::Done {
         return None;
     }
-    let other = |other: &str| other.to_string();
-    let state = match job.phase.as_ref()? {
-        Phase::ApplyPhase(phase) => match &phase.apply {
-            A::Planning => p::PLANNING.into(),
-            A::InstallingCertificate => p::INSTALLING_CERTIFICATE.into(),
-            A::CheckingInternet => p::CHECKING_INTERNET.into(),
-            A::SuspendingWatchdogs => p::SUSPENDING_WATCHDOGS.into(),
-            A::ArmingFallback => p::ARMING_FALLBACK.into(),
-            A::WritingScript => p::WRITING_SCRIPT.into(),
-            A::StartingScript => p::STARTING_SCRIPT.into(),
-            A::ScriptRunning => p::SCRIPT_RUNNING.into(),
-            A::TakingBack => p::TAKING_BACK.into(),
-            A::StoppingFallback => p::STOPPING_FALLBACK.into(),
-            A::NotReached => p::NOT_REACHED.into(),
-            A::Checking => p::CHECKING.into(),
-            A::Finishing => p::FINISHING.into(),
-            A::Other(o) => other(o),
-        },
-        Phase::UpdatePhase(phase) => update_phase(&phase.update),
-        Phase::RebootPhase(phase) => match &phase.reboot {
-            R::Reading => p::READING.into(),
-            R::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
-            R::Rebooting => p::REBOOTING.into(),
-            R::Other(o) => other(o),
-        },
-        Phase::PowerCyclePhase(phase) => match &phase.power_cycle {
-            P::Reading => p::READING.into(),
-            P::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
-            P::Cutting => p::CUTTING.into(),
-            P::WaitingForDevice => p::WAITING_FOR_DEVICE.into(),
-            P::Other(o) => other(o),
-        },
-        Phase::DeviceModePhase(phase) => match &phase.device_mode {
-            D::Reading => p::READING.into(),
-            D::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
-            D::Requesting => p::REQUESTING.into(),
-            D::WaitingForConfirmation => p::WAITING_FOR_CONFIRMATION.into(),
-            D::Rebooting => p::REBOOTING.into(),
-            D::Other(o) => other(o),
-        },
-        Phase::BootstrapPhase(phase) => match &phase.bootstrap {
-            B::SuspendingWatchdogs => p::SUSPENDING_WATCHDOGS.into(),
-            B::CheckingNeighbor => p::CHECKING_NEIGHBOR.into(),
-            B::Console => p::CONSOLE.into(),
-            B::WaitingForApi => p::WAITING_FOR_API.into(),
-            B::RestoringWatchdogs => p::RESTORING_WATCHDOGS.into(),
-            B::Other(o) => other(o),
-        },
-        Phase::CleanupPhase(phase) => match &phase.cleanup {
-            C::Clearing => p::CLEARING.into(),
-            C::WaitingForChain => p::WAITING_FOR_CHAIN.into(),
-            C::Rebooting => p::REBOOTING.into(),
-            C::Other(o) => other(o),
-        },
-        Phase::NetboxPhase(phase) => match &phase.netbox {
-            N::Planning => p::PLANNING.into(),
-            N::Writing => p::WRITING.into(),
-            N::Undoing => p::UNDOING.into(),
-            N::Refetching => p::REFETCHING.into(),
-            N::Other(o) => other(o),
-        },
-        Phase::Unknown => return None,
-    };
+    let state = job_phase::phase(job.phase.as_ref()?)?;
     Some(if running {
         p::running(&state)
     } else {

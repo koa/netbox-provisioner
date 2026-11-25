@@ -31,5 +31,24 @@ pub mod apply_warning;
 /// `components::job`).
 pub mod device_mode;
 
+/// A job's state by its kind (`components::job`, the saved jobs, a rollout's devices).
+pub mod job_phase;
+
+/// A step of a NetBox plan (`components::netbox_helper`).
+pub mod plan_step;
+
+/// How far a saved change has reached its devices (`components::site::auto_rollout`,
+/// `components::resident`).
+pub mod change_rollout;
+
+/// A diff's tables and entries (`components::diff_view`).
+pub mod diff;
+
+/// A rollout's plan per device (`pages::rollout`).
+pub mod rollout_plan;
+
+/// A WLAN client's band (`components::resident`).
+pub mod wlan_band;
+
 /// A port's PoE state (the network map, the interfaces' live rows).
 pub mod poe;

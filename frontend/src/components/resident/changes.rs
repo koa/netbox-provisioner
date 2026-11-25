@@ -9,6 +9,7 @@ use crate::{
             ChangeDevice, ChangeState, RolloutState, UndoChangeQuery, UndoChangeVariables, UndoStep,
         },
     },
+    i18n::change_rollout,
 };
 use cynic::QueryBuilder;
 use i18n::{auto_rollout as rollout, resident as t};
@@ -153,23 +154,20 @@ fn change(ctx: &Context<ChangesTab>, change: &ChangeState) -> Html {
 
 /// A device of a change with its state, and why it waits for an admin.
 fn device(device: &ChangeDevice) -> Html {
-    let (state, color) = match &device.state {
-        RolloutState::RolledOut => (rollout::RolloutState::RolledOut, Color::Green),
-        RolloutState::Pending => (rollout::RolloutState::Pending, Color::Blue),
-        RolloutState::Waiting if !device.reasons.is_empty() => {
-            (rollout::RolloutState::WaitingForAdmin, Color::Orange)
-        }
-        RolloutState::Waiting => (rollout::RolloutState::Waiting, Color::Orange),
-        RolloutState::Deferred => (rollout::RolloutState::Deferred, Color::Orange),
-        RolloutState::Failed => (rollout::RolloutState::Failed, Color::Red),
-        RolloutState::Manual | RolloutState::Other(_) => {
-            (rollout::RolloutState::Manual, Color::Grey)
-        }
+    let state = change_rollout::resident_state(device);
+    let color = match &state {
+        rollout::RolloutState::RolledOut => Color::Green,
+        rollout::RolloutState::Pending => Color::Blue,
+        rollout::RolloutState::Waiting
+        | rollout::RolloutState::WaitingForAdmin
+        | rollout::RolloutState::Deferred => Color::Orange,
+        rollout::RolloutState::Failed => Color::Red,
+        rollout::RolloutState::Manual => Color::Grey,
     };
     let reasons = device
         .reasons
         .iter()
-        .map(super::status::hold_reason)
+        .map(change_rollout::resident_hold_reason)
         .collect::<Vec<_>>()
         .join("; ");
     html! {
