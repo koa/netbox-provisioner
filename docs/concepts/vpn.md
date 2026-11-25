@@ -35,8 +35,10 @@ und sie, wo möglich, auf ein schlankeres VPN wie WireGuard umstellen.
   | 2 | öffentlich, dynamisch | keins |
   | 3 | Mobilfunk hinter CGNAT | keins |
 
-  Router und Anschlüsse unterscheiden sich stark: von einem CCR2004 an 10 Gbit/s symmetrisch bis
-  zu einem Chateau an 50 Mbit/s LTE.
+  Router und Anschlüsse: Die beiden Standorte mit IPv6 haben 10 Gbit/s symmetrisch, an einem
+  CCR2004 und einem RB5009. Die beiden übrigen mit öffentlicher IPv4 haben 1 Gbit/s, an einem
+  RB1100AHx4 und einem RB760iGS (hEX S); die drei Mobilfunk-Standorte einen Chateau an LTE (bis
+  etwa 50 Mbit/s).
 
 - **NetBox-Termination** (Lab, geprüft): `outside_ip` ist ein Verweis auf eine IP-Adresse in
   NetBox, `role` `peer`, `hub` oder `spoke`; für einen Hostnamen gibt es kein Feld.
@@ -60,10 +62,11 @@ und sie, wo möglich, auf ein schlankeres VPN wie WireGuard umstellen.
   die Routen der Spokes weiter). Ein Server ausserhalb (VPS) ist damit nicht nötig.
 - **Leistung zählt beim Hub:** Ein Hub trägt den Verkehr zwischen den Spokes doppelt (hinein und
   hinaus), dazu die Verschlüsselung aller Tunnel. Hubs gehören also an die stärksten Anschlüsse
-  mit den stärksten Routern. Sind das nicht die beiden IPv6-Standorte, ändert sich die Wahl: ein
-  starker IPv4-Standort kann Hub sein (über DDNS erreichbar wie die anderen), und ein schwacher
-  IPv6-Standort ist dann nur Spoke. Was ein Router an WireGuard schafft, ist nicht geprüft
-  (MikroTiks Testergebnisse pro Modell, oder ein Messen im Lab).
+  mit den stärksten Routern. Das sind die beiden IPv6-Standorte (CCR2004, RB5009, 10 Gbit/s):
+  Leistung und feste Adressen fallen zusammen. Was ein Router an WireGuard schafft, ist nicht
+  geprüft. Am ehesten bremst der RB760iGS (MIPS, zwei Kerne): An seinem 1-Gbit/s-Anschluss
+  begrenzt wohl die CPU den WireGuard-Tunnel, nicht der Anschluss (nicht gemessen; der lab-hex,
+  ein RB750Gr3, hat nach meinem Wissen dieselbe CPU).
 - **Bevorzugter Weg nach Leistung:** Bei zwei Hubs soll der Verkehr über den stärkeren laufen und
   den schwächeren nur bei Ausfall nehmen; mit BGP über Local Preference oder AS-Path pro Tunnel,
   mit OSPF über die Kosten. Wo zwei starke Spokes viel miteinander austauschen und einer
@@ -106,7 +109,8 @@ Nicht gemessen (kein Lab-Gerät dafür); aus dem Wissen über RouterOS, im Einze
 
 IPsec passt also dort, wo **beide Enden feste Adressen** haben und viel Verkehr fliesst: zwischen
 den beiden Hubs über ihr statisches IPv6, GRE über IPv6 mit IPsec (in RouterOS `ipsec-secret`
-am GRE-Interface), ohne NAT und ohne Skript, wenn beide Router IPsec in Hardware können. Für die
+am GRE-Interface), ohne NAT und ohne Skript. CCR2004 und RB5009 können IPsec nach meinem Wissen
+in Hardware (nicht geprüft); 10 Gbit/s schafft wohl keiner der beiden verschlüsselt. Für die
 Spokes (dynamische IPv4, CGNAT) bleibt WireGuard: Ihre Anschlüsse sind langsamer als die
 Verschlüsselung, und sie brauchen kein Nachführen.
 

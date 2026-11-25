@@ -45,7 +45,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z60 | Gegenstelle in einem Netz ausserhalb NetBox (C22): ein Gerät dafür in NetBox (eigene Site „extern“, nur Tunnel-Interface und äussere IP), oder der Tunnel mit einer Termination und die Gegenstelle in der Beschreibung? | **offen** | C22 |
 | Z61 | BGP mit den VPNs in NetBox (C22)? Am 2026-10-02 entschieden: bleibt von Hand, ohne NetBox-Modell; mit den VPNs neu zu entscheiden | **offen** | C22 |
 | Z62 | Erzeugt der Provisioner die WireGuard-Tunnel aus NetBox (Schlüssel abgeleitet wie `ospf_auth`) oder dokumentiert NetBox sie nur und der Provisioner vergleicht? | **offen** | C22 |
-| Z63 | Hubs der VPNs (C22): die beiden Standorte mit öffentlicher IPv4 und statischem IPv6-/48 als zwei Hubs (untereinander über IPv6, für die anderen fünf über ihre dynamische IPv4 per DDNS; die drei Mobilfunk-Standorte hinter CGNAT bauen nur selbst auf), oder ein Server mit fester Adresse ausserhalb (VPS)? Vorschlag: die beiden Standorte, wenn sie zu den stärksten gehören (Router und Anschluss reichen vom CCR2004 an 10 Gbit/s bis zum Chateau an 50 Mbit/s LTE); sonst ein starker IPv4-Standort über DDNS als Hub | **offen** | C22 |
+| Z63 | Hubs der VPNs (C22): die beiden Standorte mit öffentlicher IPv4, statischem IPv6-/48 und 10 Gbit/s (CCR2004, RB5009) als zwei Hubs, untereinander über IPv6 (GRE mit IPsec oder WireGuard), für die anderen fünf (RB1100AHx4 und RB760iGS an 1 Gbit/s, drei Chateau an LTE hinter CGNAT) über ihre dynamische IPv4 per DDNS; oder ein Server mit fester Adresse ausserhalb (VPS)? Vorschlag: die beiden Standorte | **offen** | C22 |
 
 ## A. Sicherheit
 
