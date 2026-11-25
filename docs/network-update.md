@@ -4,7 +4,7 @@ Ein Knopf für eine Auswahl von Sites (eine, mehrere, alle): „Alle Geräte auf
 bringen“. Der Provisioner plant die Reihenfolge, zeigt den Plan, führt ihn nach Bestätigung aus
 und hält beim ersten Problem an. Pro Gerät läuft ein gewöhnlicher Update-Job; der Rollout
 regelt, was *zwischen* den Geräten passiert. Die Seite ist `/rollout` „Netz aktualisieren“ (im
-Site-Menü der Breadcrumb). Offen ist der CHR-Test der Kette (C10 in [todo.md](todo.md)).
+Site-Menü der Breadcrumb).
 
 ## Wer schneidet wen ab
 
@@ -137,9 +137,12 @@ aktuell, ein Rollout hätte nichts zu tun).
 ## Tests
 
 - Unit-Tests der Regel in `dependency.rs`: Kette, zwei Wege, Gerät abseits der Wege, PoE.
-- Offen (C10): CHR-Test mit der 3-Knoten-Kette `entry -- a -- target` aus `ospf_chain.rs`. Ein
-  Rollout muss `target` vor `a` neu starten, und `a` muss warten, solange `target` sein Update
-  macht.
+- CHR-Test `rollout_chain.rs` mit der Kette `entry -- a -- target` (`a` und `target` aus dem
+  älteren Release, über mac-telnet eingerichtet; `target` nur durch einen Tunnel über `a`
+  erreicht): Beide machen ein echtes Update zugleich, `a` zuerst gestartet. `a` wartet mit
+  `BehindUpdating` auf `target`, `target` startet vor `a` neu, `a` erst nach dem Ende von
+  `target`s Update; danach laufen beide auf dem aktuellen Release. Die Wege sind dort von Hand
+  gegeben (`Paths::rooted`, `PowerChain::on_paths`), nicht aus der LSDB.
 - Lab: ein Rollout auf eine Version, die die Geräte schon haben, nur mit Paketabgleich. Ein
   echter Versionswechsel erst, wenn ein neues `long-term` erscheint.
 

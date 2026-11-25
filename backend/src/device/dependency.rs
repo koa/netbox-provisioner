@@ -125,7 +125,15 @@ impl Paths {
         }
         paths
     }
-    fn link(&mut self, a: &str, b: &str) {
+    /// Ways from `roots` only, the links added with [`Self::link`] (a test's network).
+    pub fn rooted(roots: &[&str]) -> Paths {
+        Paths {
+            roots: roots.iter().map(|&root| root.into()).collect(),
+            links: HashMap::new(),
+        }
+    }
+    /// A link between `a` and `b`, both ways.
+    pub fn link(&mut self, a: &str, b: &str) {
         if a != b {
             self.links.entry(a.into()).or_default().insert(b.into());
             self.links.entry(b.into()).or_default().insert(a.into());
@@ -133,10 +141,7 @@ impl Paths {
     }
     #[cfg(test)]
     fn new(roots: &[&str], links: &[(&str, &str)]) -> Paths {
-        let mut paths = Paths {
-            roots: roots.iter().map(|&root| root.into()).collect(),
-            links: HashMap::new(),
-        };
+        let mut paths = Paths::rooted(roots);
         for (a, b) in links {
             paths.link(a, b);
         }
@@ -233,8 +238,8 @@ impl PowerChain {
             paths: Default::default(),
         }
     }
-    #[cfg(test)]
-    fn on_paths(device: &str, paths: &Arc<Paths>) -> PowerChain {
+    /// A device without PoE relations on `paths` (a test's network).
+    pub fn on_paths(device: &str, paths: &Arc<Paths>) -> PowerChain {
         PowerChain {
             device: device.into(),
             paths: paths.clone(),

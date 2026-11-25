@@ -26,7 +26,8 @@ use mikrotik_model::resource::collect_resource;
 use std::net::IpAddr;
 use tokio::net::TcpStream;
 
-const PASSWORD: &str = "Updated-1";
+/// The password a node set up over mac-telnet gets.
+pub const PASSWORD: &str = "Updated-1";
 
 /// A job's log as the mutation hands it on: past `Reading` (`device_state::UpdateState`).
 fn reading() -> Log {
@@ -72,9 +73,9 @@ impl DeviceLink for DirectLink {
 }
 
 /// Through a tunnel to the entry: the node at its new address, which it has no route back from.
-struct TunnelLink {
-    tunnel: Tunnel,
-    address: IpAddr,
+pub struct TunnelLink {
+    pub tunnel: Tunnel,
+    pub address: IpAddr,
 }
 
 impl DeviceLink for TunnelLink {
