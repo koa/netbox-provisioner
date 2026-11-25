@@ -7,8 +7,9 @@ benannt, dass eine zusätzliche Typ-Referenz hier nur veralten würde.
 
 Wie Router und Switches in NetBox gepflegt werden müssen, damit die Generierung funktioniert,
 steht in [netbox-modeling.md](netbox-modeling.md); die dafür nötigen Custom Fields in
-[custom-fields.md](custom-fields.md). Wie der Login (OIDC, z.B. Pocket-ID) in `config.yaml`
-eingerichtet wird, steht in [login.md](login.md).
+[custom-fields.md](custom-fields.md). Wie Geräte heissen sollen, schlägt der
+[Namens-Leitfaden](naming-guide.md) vor (nicht vom Provisioner geprüft). Wie der Login (OIDC,
+z.B. Pocket-ID) in `config.yaml` eingerichtet wird, steht in [login.md](login.md).
 
 Was der Provisioner ausser der Generierung tut, steht in eigenen Dateien:
 
