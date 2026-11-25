@@ -642,6 +642,17 @@ updates its state (`device::rollout::status::nodes`, from the newest rollout's e
 last `RolloutDevice` per device, offline as the rollout page has it), drawn as a ring around
 the node, so the fill stays reachability (Z16).
 
+The admins' page „Zustand“ (`/condition`, `pages::condition`, C8) is
+`Query.topology.networkCondition(siteId)` (`network_state::condition`): the map's candidates,
+read in turn (one device's reads stay sequential) as the LSDB, `device_data::read_all` and, at a
+router with an `internet` port, `device::uplink::ping` (the next hop of its active default
+route). `build` turns that into `ConditionFinding`s ordered by `ConditionKind`: a router that
+didn't answer (its links down for want of it say nothing more and are left out), a link
+`Down`, a link `V3Down`, an uplink without a default route or losing pings, a boot in the last
+24 h, a PoE port `NoLoad`; health and resources beside as the map's `MapNodeDetails`, not judged
+(Z16). No LSDB: `lsdbError`, the links unknown rather than down. Read on opening and on „Neu
+lesen“, no poll: it reads every router.
+
 ## Device access, setup and updates
 
 What is asked of devices and MikroTik goes through `facts` (`docs/device-state.md`):

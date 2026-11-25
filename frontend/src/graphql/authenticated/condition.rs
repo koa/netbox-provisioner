@@ -1,0 +1,67 @@
+//! Scope: The query of the page „Zustand“; nothing else.
+//!
+//! The findings of every site's routers, most urgent first, and their health
+//! (`networkCondition`, `docs/concepts/monitoring.md`).
+use super::{
+    network_map::{MapEdgeKind, MapNodeDetails},
+    types::{DeviceRef, ErrorInfo, InterfaceRef},
+};
+use crate::graphql::schema::schema;
+
+#[derive(cynic::QueryFragment, Debug)]
+#[cynic(graphql_type = "Query")]
+pub struct Condition {
+    pub topology: ConditionTopology,
+}
+
+#[derive(cynic::QueryFragment, Debug)]
+#[cynic(graphql_type = "TopologyHolder")]
+pub struct ConditionTopology {
+    pub network_condition: NetworkCondition,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+pub struct NetworkCondition {
+    pub findings: Vec<ConditionFinding>,
+    pub devices: Vec<MapNodeDetails>,
+    pub lsdb_error: Option<ErrorInfo>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+pub struct ConditionFinding {
+    pub kind: ConditionKind,
+    pub device: DeviceRef,
+    pub link: Option<ConditionLink>,
+    pub port: Option<InterfaceRef>,
+    /// nanoseconds
+    pub uptime: Option<u64>,
+    pub uplink: Option<ConditionUplink>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+pub struct ConditionLink {
+    pub kind: MapEdgeKind,
+    pub a: InterfaceRef,
+    pub b: InterfaceRef,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+pub struct ConditionUplink {
+    pub gateway: String,
+    pub loss: f64,
+    pub rtt_ms: Option<f64>,
+}
+
+#[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConditionKind {
+    Unreachable,
+    LinkDown,
+    #[cynic(rename = "LINK_IPV6_DOWN")]
+    LinkIpv6Down,
+    NoDefaultRoute,
+    UplinkLoss,
+    Rebooted,
+    PoeNoLoad,
+    #[cynic(fallback)]
+    Other,
+}

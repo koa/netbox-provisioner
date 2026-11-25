@@ -81,6 +81,9 @@ pub struct NavigationProps {
     /// the page is a network map: of every site without `site`, else of the site
     #[prop_or_default]
     pub map: bool,
+    /// the page is the network's condition
+    #[prop_or_default]
+    pub condition: bool,
     /// the page is the rollout over several sites
     #[prop_or_default]
     pub rollout: bool,
@@ -162,6 +165,11 @@ impl Navigation {
             text: i18n::menu::ALL_SITES_MAP.into(),
             target: AppRoute::NetworkMap,
         };
+        let condition = MenuEntry {
+            selected: props.condition,
+            text: i18n::menu::CONDITION.into(),
+            target: AppRoute::Condition,
+        };
         let rollout = MenuEntry {
             selected: props.rollout,
             text: i18n::menu::ROLLOUT.into(),
@@ -172,7 +180,7 @@ impl Navigation {
             text: i18n::menu::RESIDENTS.into(),
             target: AppRoute::Residents,
         };
-        let site_entries = [overview, all_map, rollout, residents]
+        let site_entries = [overview, all_map, condition, rollout, residents]
             .into_iter()
             .chain(sites.iter().map(|entry| MenuEntry {
                 selected: site.is_some_and(|site| site.id == entry.id),
@@ -185,6 +193,8 @@ impl Navigation {
             .collect::<Box<[_]>>();
         let site_title = if all_sites_map {
             i18n::menu::ALL_SITES_MAP.to_string()
+        } else if props.condition {
+            i18n::menu::CONDITION.to_string()
         } else if props.rollout {
             i18n::menu::ROLLOUT.to_string()
         } else if props.residents {

@@ -243,7 +243,7 @@ fn router_id(device: &DeviceAccess) -> Option<Ipv4Addr> {
 /// Whether `device` takes part in OSPF itself (it is the LSDB's reader, or it has RouterOS, a
 /// primary IPv4 and an `ospf` interface). A device that doesn't is off the map entirely unless
 /// it relays between two that do (`on_map_devices`).
-fn supports_ospf(device: &DeviceAccess, readers: &[DeviceAccess]) -> bool {
+pub(super) fn supports_ospf(device: &DeviceAccess, readers: &[DeviceAccess]) -> bool {
     readers.iter().any(|r| r.id() == device.id())
         || (device.has_routeros()
             && router_id(device).is_some()
@@ -520,6 +520,19 @@ fn build_details(
     candidates: &[DeviceAccess],
     device_data: &BTreeMap<DeviceId, DeviceMapData>,
 ) -> NetworkStateDetails {
+    let poe_edges = poe_edges(candidates, device_data);
+    NetworkStateDetails {
+        nodes: details_nodes(candidates, device_data).into(),
+        poe_edges: poe_edges.into(),
+    }
+}
+
+/// The health, resources and PoE load of the candidates that answered, by name; also the page
+/// „Zustand“'s (`condition`).
+pub(super) fn details_nodes(
+    candidates: &[DeviceAccess],
+    device_data: &BTreeMap<DeviceId, DeviceMapData>,
+) -> Vec<MapNodeDetails> {
     let mut nodes = candidates
         .iter()
         .filter_map(|device| {
@@ -534,11 +547,7 @@ fn build_details(
         })
         .collect::<Vec<_>>();
     nodes.sort_by(|a, b| a.device.name.cmp(&b.device.name));
-    let poe_edges = poe_edges(candidates, device_data);
-    NetworkStateDetails {
-        nodes: nodes.into(),
-        poe_edges: poe_edges.into(),
-    }
+    nodes
 }
 
 #[cfg(test)]

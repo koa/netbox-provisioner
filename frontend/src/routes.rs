@@ -4,7 +4,8 @@
 //! page).
 use yew_nested_router::Target;
 
-/// `/sites`, `/network-map` (every site), `/rollout` (updates across sites), `/residents` (the
+/// `/sites`, `/network-map` (every site), `/condition` (what to check or maintain), `/rollout`
+/// (updates across sites), `/residents` (the
 /// admins' support view of a resident), `/site/<site>`
 /// (its devices), `/site/<site>/map`, `/site/<site>/device/<device>/show`
 #[derive(Debug, Clone, Default, PartialEq, Eq, Target)]
@@ -14,6 +15,7 @@ pub enum AppRoute {
     Sites,
     #[target(rename = "network-map")]
     NetworkMap,
+    Condition,
     Rollout,
     Residents,
     Site {

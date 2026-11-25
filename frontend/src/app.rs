@@ -15,6 +15,7 @@ use crate::{
     },
     i18n,
     pages::{
+        condition::ConditionPage,
         network_map::AllSitesMap,
         residents::ResidentsPage,
         rollout::Rollout,
@@ -204,6 +205,7 @@ fn content(route: AppRoute) -> Html {
         AppRoute::Site { id, .. } => (Some(*id), None),
         AppRoute::Sites
         | AppRoute::NetworkMap
+        | AppRoute::Condition
         | AppRoute::Rollout
         | AppRoute::Residents
         | AppRoute::NotFound => (None, None),
@@ -216,11 +218,13 @@ fn content(route: AppRoute) -> Html {
                 ..
             }
     );
+    let condition = route == AppRoute::Condition;
     let rollout = route == AppRoute::Rollout;
     let residents = route == AppRoute::Residents;
     let content = match route {
         AppRoute::Sites => html! {<Sites/>},
         AppRoute::NetworkMap => html! {<AllSitesMap/>},
+        AppRoute::Condition => html! {<ConditionPage/>},
         AppRoute::Rollout => html! {<Rollout/>},
         AppRoute::Residents => html! {<ResidentsPage support=true/>},
         AppRoute::Site { id, view } => site_content(view, id),
@@ -232,7 +236,7 @@ fn content(route: AppRoute) -> Html {
                 <main class="pf-v6-c-page__main" id="main-content" tabindex="-1">
                     <PageSection r#type={PageSectionType::Breadcrumbs}>
                         <div class="breadcrumb-bar">
-                            <Navigation {site} {device} {map} {rollout} {residents}/>
+                            <Navigation {site} {device} {map} {condition} {rollout} {residents}/>
                         </div>
                     </PageSection>
                     <PageSection>{content}</PageSection>

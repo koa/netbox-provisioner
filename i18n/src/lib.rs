@@ -45,6 +45,9 @@ pub mod resident;
 /// The site's devices and edges as OSPF sees them (`components::network_map`).
 pub mod network_map;
 
+/// The admins' page „Zustand“ (`pages::condition`).
+pub mod condition;
+
 /// The device page (`pages::site::device::show`).
 pub mod device;
 

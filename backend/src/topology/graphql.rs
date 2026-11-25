@@ -120,6 +120,15 @@ impl TopologyHolder {
     ) -> crate::network_state::graphql::NetworkStateDetails {
         crate::network_state::graphql::network_state_details(self.map_devices(site_id).await).await
     }
+    /// The page „Zustand“: what to check or maintain at the routers of the site `site_id`, or
+    /// without it of every site, most urgent first, and their health (shown, not judged). Reads
+    /// the LSDB, every router and the uplinks' pings anew: a second or more.
+    async fn network_condition(
+        &self,
+        site_id: Option<u32>,
+    ) -> crate::network_state::condition::NetworkCondition {
+        crate::network_state::condition::network_condition(self.map_devices(site_id).await).await
+    }
 }
 
 impl TopologyHolder {

@@ -2,7 +2,9 @@
 
 Status: Konzept, zum Teil umgesetzt: Health, PoE, WLAN-Clients, System, Interfaces, Leases, die
 Strecken aus der LSDB und den Uplink-Ping liefert der Provisioner an `/metrics`
-([Gerätemetriken](../device-metrics.md), C14, C8). Der Rest ist
+([Gerätemetriken](../device-metrics.md), C14, C8); die Seite „Zustand“ für Admins gibt es
+(`/condition`, siehe unten). Offen sind die Anwohner-Ansicht, die Radios von `/interface/wifi`
+und die 60-GHz-Strecken. Der Rest ist
 Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](../network-map.md) auf.
 
 ## Ziel
@@ -55,6 +57,17 @@ Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
   PoE-Port ohne Last. Health (Spannung, Temperatur) wird angezeigt, aber nicht beurteilt; wer
   Grenzwerte will, setzt sie als Alarm in Prometheus. Jeder Eintrag verlinkt das Gerät. Die Karte zeigt
   dasselbe räumlich.
+
+  **Umgesetzt (2026-11-25):** `/condition` „Zustand“ im Site-Menü der Breadcrumb, für alle Sites.
+  Befunde in dieser Reihenfolge: Router, den der Provisioner nicht erreicht (seine Strecken, die
+  nur seinetwegen unten sind, nicht noch einmal); Strecke unten in OSPFv2; Strecke nur in OSPFv2
+  oben (OSPFv3 fehlt, IPv6 aus?); Router mit `internet`-Port ohne aktive Default-Route; Uplink mit
+  Verlust zum Gateway (oder ohne Antwort); Neustart in den letzten 24 h; PoE-Port mit `pse` in
+  NetBox, an dem nichts Strom zieht. Darunter alle Router, die geantwortet haben, mit Ressourcen
+  und Health wie in der Karte. Gelesen beim Öffnen und mit „Neu lesen“, nicht laufend: Die Seite
+  liest jeden Router (im Lab mit 7 Routern 2,5 s). Ein schlechtes Funksignal ist noch kein
+  Befund: Dafür bräuchte es eine Grenze, die nicht entschieden ist (Z64); das Signal steht in
+  `mikrotik_wlan_*`.
 - **UI, Anwohner:** eine Zeile pro eigenem Netz: „Internet: gut (12 ms, 0 % Verlust)“, und der
   Weg dorthin als Kette der Strecken mit ihrem Zustand. Gerechnet über den Baum aus
   `topology::management`: der Weg vom Router des Netzes zum NAT-Router.
@@ -72,7 +85,7 @@ Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
 
 1. Sammler mit LSDB und Prometheus-Metriken (Grundlage der Netz-Karte).
 2. Seite „Zustand“ für Admins.
-3. Funk, Health, Uplink-Ping.
+3. Funk, Health, Uplink-Ping (Uplink-Ping erledigt; Health nur gezeigt, Z16).
 4. Anwohner-Ansicht im [Anwohner-UI](../self-service.md#anwohner-ui).
 
 ## Historie über Syslog

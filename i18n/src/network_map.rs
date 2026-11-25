@@ -55,19 +55,23 @@ pub fn resources(
     version: &str,
 ) -> String {
     let mib = |bytes: u64| bytes / (1024 * 1024);
-    let minutes = uptime_seconds / 60;
-    let hours = minutes / 60;
-    let uptime = match hours {
-        0 => format!("{minutes} min"),
-        1..24 => format!("{hours} h {} min", minutes % 60),
-        _ => format!("{} T {} h", hours / 24, hours % 24),
-    };
+    let uptime = uptime(uptime_seconds);
     format!(
         "{version}, seit {uptime}, CPU {cpu_load} %, RAM {} von {} MiB frei, Disk {} MiB frei",
         mib(free_memory),
         mib(total_memory),
         mib(free_hdd_space)
     )
+}
+/// The time since a boot, as minutes, hours or days.
+pub fn uptime(seconds: u64) -> String {
+    let minutes = seconds / 60;
+    let hours = minutes / 60;
+    match hours {
+        0 => format!("{minutes} min"),
+        1..24 => format!("{hours} h {} min", minutes % 60),
+        _ => format!("{} T {} h", hours / 24, hours % 24),
+    }
 }
 pub fn health_row(name: &str, value: &str, unit: Option<&str>) -> String {
     match unit {

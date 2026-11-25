@@ -4,6 +4,7 @@
 //! link-state database read from one router (`lsa`) and the state of NetBox's edges from it
 //! (`edges`).
 
+pub mod condition;
 pub mod device_data;
 pub mod edges;
 pub mod graphql;

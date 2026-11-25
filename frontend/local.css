@@ -877,7 +877,7 @@ dl.site-diff > dd > .pf-v6-c-button {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
     gap: var(--pf-t--global--spacer--md);
-    margin-top: var(--pf-t--global--spacer--md);
+      margin-top: var(--pf-t--global--spacer--md);
 }
 .resident-facts {
     list-style: none;
@@ -932,4 +932,13 @@ dl.site-diff > dd > .pf-v6-c-button {
 .resident-summary ul {
     margin: 0;
     padding-left: var(--pf-t--global--spacer--lg);
+}
+
+/* Zustand (`pages::condition`) */
+.condition-page > * + * {
+    margin-top: var(--pf-t--global--spacer--md);
+}
+.condition-page td:first-child {
+    white-space: nowrap;
+    width: 1%;
 }

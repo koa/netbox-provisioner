@@ -4,6 +4,7 @@
 pub mod adjust_target;
 pub mod auto_rollout;
 pub mod batch_apply;
+pub mod condition;
 pub mod device;
 pub mod findings;
 pub mod helper;
