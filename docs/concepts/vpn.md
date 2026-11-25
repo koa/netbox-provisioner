@@ -5,6 +5,15 @@ verbunden (OpenVPN, IPsec), das Routing zwischen ihnen läuft über BGP. Mindest
 Verbindung führt in ein Netz, das nicht in NetBox steht. Ziel: die VPNs in NetBox dokumentieren
 und sie, wo möglich, auf ein schlankeres VPN wie WireGuard umstellen.
 
+## Entschieden
+
+- **Zwei Arten von Verbindungen** (2026-11-25): zwischen den Hubs IPv6 / IPsec / GRE, von jedem
+  Spoke zu jedem Hub IPv4 / WireGuard.
+- **Hubs** (Z63, 2026-11-25): die beiden Standorte mit statischem IPv6-/48 und 10 Gbit/s
+  (CCR2004, RB5009).
+- **NetBox** (Z59, 2026-11-25): das eigene VPN-Modell, ein Tunnel pro Paar von Enden, wie unter
+  „In NetBox dokumentieren“.
+
 ## Was bekannt ist
 
 - **router-faesigrund-keller** (Export in `examples/02-edge-router-bgp-vpn`, Stand des Exports):
@@ -108,9 +117,9 @@ Nicht gemessen (kein Lab-Gerät dafür); aus dem Wissen über RouterOS, im Einze
   der Gegenseite aus den Paketen.
 
 IPsec passt also dort, wo **beide Enden feste Adressen** haben und viel Verkehr fliesst: zwischen
-den beiden Hubs über ihr statisches IPv6, GRE über IPv6 mit IPsec (in RouterOS `ipsec-secret`
-am GRE-Interface; für IPv6 `/interface gre6`), ohne NAT und ohne Skript. CCR2004 und RB5009 können IPsec nach meinem Wissen
-in Hardware (nicht geprüft); 10 Gbit/s schafft wohl keiner der beiden verschlüsselt. Für die
+den beiden Hubs über ihr statisches IPv6, GRE über IPv6 mit IPsec (`/interface gre6`), ohne
+NAT und ohne Skript. CCR2004 und RB5009 können IPsec nach meinem Wissen in Hardware (nicht
+geprüft); 10 Gbit/s schafft wohl keiner der beiden verschlüsselt. Für die
 Spokes (dynamische IPv4, CGNAT) bleibt WireGuard: Ihre Anschlüsse sind langsamer als die
 Verschlüsselung, und sie brauchen kein Nachführen.
 
@@ -206,8 +215,9 @@ Clients, die kein WireGuard können.
 
 ## Offen
 
-- Z59 bis Z63 in [todo.md](../todo.md#entscheidungen).
+- Z60 bis Z62 in [todo.md](../todo.md#entscheidungen).
 - Welche Gegenstellen RouterOS sind, die der Provisioner erreicht, und welche nicht (Server,
   fremde Router).
 - Ob RouterOS den DDNS-Namen eines WireGuard-Peers neu auflöst (CHR-Test, siehe oben).
-- Welche Standorte die starken sind (Router, Anschluss), insbesondere die beiden mit IPv6.
+- Ob NetBox `gre` mit einem IPsec-Profil annimmt, ob `gre6` `ipsec-secret` kann, und welche
+  Proposals CCR2004 und RB5009 in Hardware rechnen.

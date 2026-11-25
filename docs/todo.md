@@ -41,11 +41,11 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z50 | Anschluss (Uplink-Port) eines Geräts automatisch erkennen? | ja, über die Nachbarn; übernommen wird mit einem Klick, nicht von selbst (2026-11-17) | C21 |
 | Z51 | Rückgängig nach gescheitertem Ausrollen? | nein, es bleibt als Abweichung sichtbar; eine ausgerollte Änderung lässt sich als neue Änderung zurücknehmen (2026-11-17) | C20, C21 |
 | Z52 | Darf ein Admin das UI eines Anwohners sehen und dort ändern? | ja, Support-Ansicht mit Auswahl des Anwohners; der Verlauf nennt beide; später vielleicht Stufen (nur sehen) (2026-11-17) | C21 |
-| Z59 | VPNs in NetBox (C22): das eigene VPN-Modell (Tunnel, Tunnelgruppe pro angebundenes Netz, Terminations an den Tunnel-Interfaces) oder etwas anderes? | **offen** | C22 |
+| Z59 | VPNs in NetBox (C22): das eigene VPN-Modell oder etwas anderes? | das eigene VPN-Modell, ein Tunnel pro Paar von Enden, Terminations an virtuellen Interfaces, Custom Field `endpoint` (DDNS-Name) an der Termination; IPv6/IPsec/GRE zwischen den Hubs (`gre` mit IPsec-Profil), IPv4/WireGuard vom Spoke zum Hub (2026-11-25) | C22 |
 | Z60 | Gegenstelle in einem Netz ausserhalb NetBox (C22): ein Gerät dafür in NetBox (eigene Site „extern“, nur Tunnel-Interface und äussere IP), oder der Tunnel mit einer Termination und die Gegenstelle in der Beschreibung? | **offen** | C22 |
 | Z61 | BGP mit den VPNs in NetBox (C22)? Am 2026-10-02 entschieden: bleibt von Hand, ohne NetBox-Modell; mit den VPNs neu zu entscheiden | **offen** | C22 |
 | Z62 | Erzeugt der Provisioner die WireGuard-Tunnel aus NetBox (Schlüssel abgeleitet wie `ospf_auth`) oder dokumentiert NetBox sie nur und der Provisioner vergleicht? | **offen** | C22 |
-| Z63 | Hubs der VPNs (C22): die beiden Standorte mit öffentlicher IPv4, statischem IPv6-/48 und 10 Gbit/s (CCR2004, RB5009) als zwei Hubs, untereinander über IPv6 (GRE mit IPsec oder WireGuard), für die anderen fünf (RB1100AHx4 und RB760iGS an 1 Gbit/s, drei Chateau an LTE hinter CGNAT) über ihre dynamische IPv4 per DDNS; oder ein Server mit fester Adresse ausserhalb (VPS)? Vorschlag: die beiden Standorte | **offen** | C22 |
+| Z63 | Hubs der VPNs (C22)? | die beiden Standorte mit statischem IPv6-/48 und 10 Gbit/s (CCR2004, RB5009), untereinander über IPv6 mit IPsec/GRE; die übrigen fünf (RB1100AHx4, RB760iGS, drei Chateau an LTE hinter CGNAT) über IPv4 mit WireGuard zu beiden (2026-11-25) | C22 |
 
 ## A. Sicherheit
 
