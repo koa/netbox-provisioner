@@ -101,12 +101,12 @@ Live-Zustand. Ein Text steht nur, wenn etwas nicht Ok ist.
   seiner Access Points, „gestört“ auf keinem, „aus“ ausgeschaltet.
 - **Oben** fasst eine Meldung zusammen: jede Änderung, die noch nicht durch ist, mit dem Text
   ihres Elements, jedes nicht erreichte Gerät, jeder Port ohne Link, an dem NetBox ein Kabel
-  hat, jedes WLAN auf einem Teil seiner Access Points;
+  hat, jedes Gerät, dessen Kabel ein Router an einem anderen Port sieht als am Anschluss
+  (`seenUplinks`), jedes WLAN auf einem Teil seiner Access Points;
   sonst „Alles ok“. Änderungen und Live-Zustand liest die Ansicht alle 15 s neu.
 
-Nicht gebaut: seit wann ein Link fehlt (der Entwurf sagt „seit 09:15“, E35), die Clients eines
-WLANs, die mit einem Access Point verschwinden (E36), und ein falsch gestecktes Kabel als Meldung
-oben (der Anschluss zeigt es am Gerät, `seenUplinks`, E37).
+Nicht gebaut: seit wann ein Link fehlt (der Entwurf sagt „seit 09:15“, E35) und die Clients
+eines WLANs, die mit einem Access Point verschwinden (E36).
 
 ## Leases
 

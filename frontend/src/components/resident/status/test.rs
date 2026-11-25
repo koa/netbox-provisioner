@@ -4,9 +4,10 @@ use crate::graphql::resident::{
     changes::{
         ChangeDevice, ChangeState, HoldReason, RolloutState, RoundDevice, Touched, TouchedPort,
     },
-    live::{DeviceLive, LiveState, PortLive, WlanLive},
+    live::{DeviceLive, LiveState, PortLive, SeenUplink, WlanLive},
     residents::{
-        FarEnd, Named, PortKind, ResidentDevice, ResidentNetwork, ResidentPort, ResidentWlan,
+        FarEnd, Named, PortKind, Resident, ResidentDevice, ResidentNetwork, ResidentPort,
+        ResidentWlan,
     },
 };
 use i18n::resident::StatusLabel;
@@ -26,6 +27,17 @@ fn device(id: i32, name: &str) -> ResidentDevice {
         uplink: Some("ether1".into()),
         ports: Vec::new(),
         location: None,
+    }
+}
+
+fn resident(ports: Vec<ResidentPort>, devices: Vec<ResidentDevice>) -> Resident {
+    Resident {
+        id: 1,
+        name: "Familie Meier".into(),
+        ports,
+        networks: Vec::new(),
+        devices,
+        locations: Vec::new(),
     }
 }
 
@@ -276,7 +288,7 @@ fn a_cabled_port_without_link() {
         Some("Nicht erreichbar: Wohnzimmer hat keinen Link.")
     );
     let issues = state
-        .issues(&[], std::slice::from_ref(&port))
+        .issues(&resident(vec![port.clone()], vec![wap.clone()]), &[])
         .into_iter()
         .map(|issue| issue.text)
         .collect::<Vec<_>>();
@@ -399,5 +411,27 @@ fn a_radio_link_needs_support() {
              Richtfunk-Verbindung, die nicht automatisch ausgerollt werden kann; der Support \
              übernimmt sie."
         )
+    );
+}
+
+#[test]
+fn a_cable_seen_elsewhere_is_in_the_summary() {
+    let wap = device(7, "lab-wap");
+    let state = State {
+        changes: &[],
+        live: None,
+    };
+    let seen = [SeenUplink {
+        device: 7,
+        port: named(3, "ether2"),
+    }];
+    let issues = state
+        .issues(&resident(Vec::new(), vec![wap]), &seen)
+        .into_iter()
+        .map(|issue| issue.text)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        issues,
+        ["Das Kabel von lab-wap steckt an ether2, nicht an ether1."]
     );
 }

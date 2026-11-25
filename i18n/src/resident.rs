@@ -512,6 +512,10 @@ pub fn summary_unreachable(device: &str) -> String {
 pub fn summary_no_link(port: &str) -> String {
     format!("{port} hat keinen Link: steckt das Kabel?")
 }
+/// the summary on top: a device's cable seen at another port than its Anschluss
+pub fn summary_misplugged(device: &str, seen: &str, uplink: &str) -> String {
+    format!("Das Kabel von {device} steckt an {seen}, nicht an {uplink}.")
+}
 /// the summary on top: a WLAN on some access points only
 pub fn summary_wlan(ssid: &str, on: usize, of: usize) -> String {
     match on {

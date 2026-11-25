@@ -10,8 +10,8 @@ use super::port_name::place;
 use crate::{
     graphql::resident::{
         changes::{ChangeDevice, ChangeState, RolloutState},
-        live::{LiveState, PortLive},
-        residents::{PortKind, ResidentDevice, ResidentNetwork, ResidentPort},
+        live::{LiveState, PortLive, SeenUplink},
+        residents::{PortKind, Resident, ResidentDevice, ResidentNetwork, ResidentPort},
     },
     i18n::change_rollout,
 };
@@ -356,8 +356,8 @@ impl State<'_> {
 
     /// The summary on top: its issues, the worst first; „Alles ok“ where none, once the live
     /// state is known.
-    pub fn summary(&self, networks: &[ResidentNetwork], ports: &[ResidentPort]) -> Html {
-        let mut issues = self.issues(networks, ports);
+    pub fn summary(&self, resident: &Resident, seen: &[SeenUplink]) -> Html {
+        let mut issues = self.issues(resident, seen);
         if issues.is_empty() {
             return match self.live.filter(|live| live.known) {
                 Some(_) => html! {
@@ -386,8 +386,9 @@ impl State<'_> {
     }
 
     /// The lines of the summary: each change not through yet, each device not reached, each
-    /// port without link where NetBox has a cable, each WLAN on part of its access points.
-    fn issues(&self, networks: &[ResidentNetwork], ports: &[ResidentPort]) -> Vec<Issue> {
+    /// port without link where NetBox has a cable, each device whose cable a router sees at
+    /// another port than its Anschluss (`seen`), each WLAN on part of its access points.
+    fn issues(&self, resident: &Resident, seen: &[SeenUplink]) -> Vec<Issue> {
         let mut issues = Vec::new();
         for change in self.changes {
             let Some(status) = change_rollout(change) else {
@@ -414,7 +415,8 @@ impl State<'_> {
                 text: t::summary_unreachable(&device.device.name),
             });
         }
-        for port in ports
+        for port in resident
+            .ports
             .iter()
             .filter(|port| self.port_live(port).and_then(|live| live.link) == Some(false))
         {
@@ -423,7 +425,20 @@ impl State<'_> {
                 text: t::summary_no_link(&place(port)),
             });
         }
-        for wlan in networks.iter().flat_map(|network| &network.wlans) {
+        for seen in seen {
+            let Some(device) = resident.devices.iter().find(|d| d.id == seen.device) else {
+                continue;
+            };
+            issues.push(Issue {
+                kind: AlertType::Warning,
+                text: t::summary_misplugged(
+                    &device.name,
+                    &seen.port.name,
+                    device.uplink.as_deref().unwrap_or_default(),
+                ),
+            });
+        }
+        for wlan in resident.networks.iter().flat_map(|network| &network.wlans) {
             let Some(at) = live
                 .iter()
                 .flat_map(|live| &live.wlans)
