@@ -131,12 +131,59 @@ noch nicht.
 
 ### 2. In NetBox dokumentieren
 
-- Ein `Tunnel` pro VPN-Verbindung, mit Encapsulation und Status; eine Tunnelgruppe pro Netz, das
-  angebunden ist (z.B. „colab“, „Familie“).
-- Je Ende eine Termination am Tunnel-Interface des Geräts (ein virtuelles Interface, Name wie auf
-  dem Gerät), mit Rolle (Hub, Spoke) und, wo fest, der äusseren IP, sonst dem Custom Field
-  `endpoint` (siehe oben); das Netz im Tunnel als Prefix mit den Adressen der Enden.
-- Die Gegenstelle in einem Netz ausserhalb NetBox: siehe Z60.
+Zwei Arten von Verbindungen, beide mit NetBox' eigenem VPN-Modell (Z59). Geprüft in der
+Lab-NetBox (4.7.3): die Felder und Auswahlwerte unten, Custom Fields an Tunnel-Terminations;
+Interfaces haben nur den Typ `virtual` für Tunnel. Nicht geprüft: ob NetBox `gre` zusammen mit
+einem IPsec-Profil annimmt.
+
+Für beide gilt:
+
+- **Ein `Tunnel` pro Paar von Enden**, mit zwei Terminations. Ein Hub mit allen Spokes in einem
+  Tunnel ginge in NetBox, aber WireGuard ordnet Pakete nach `allowed-address` den Peers zu: An
+  einem gemeinsamen Interface müsste der Hub die Netze jedes Spokes als Liste kennen, die BGP
+  gerade erst lernt. Ein Interface pro Paar nimmt `0.0.0.0/0` und `::/0`, das Routing entscheidet.
+- **Termination** am Tunnel-Interface jedes Endes: ein NetBox-Interface vom Typ `virtual`, mit dem
+  Namen, den es auf dem Gerät bekommen soll, der MTU (`mtu`) und den inneren Adressen.
+- **Innere Adressen:** pro Tunnel ein `/31` aus dem Transfer-Pool und, wo IPv6 gebraucht wird, ein
+  `/127` oder nur Link-Local, wie bei „Verbindung“.
+- **Schlüssel nicht in NetBox:** IPsec-PSK und WireGuard-Schlüssel leitet der Provisioner aus
+  einem Geheimnis der Konfiguration und dem Tunnel ab, wie bei `ospf_auth`. Das Feld
+  `preshared_key` der IKE-Policy bleibt leer.
+- **Tunnelgruppe** nach Zweck, etwa „Hubs“ und „Spokes“, oder pro angebundenem Netz.
+
+**IPv6 / IPsec / GRE (zwischen den Hubs):**
+
+| NetBox | Wert |
+|---|---|
+| Tunnel `encapsulation` | `gre` |
+| Tunnel `ipsec_profile` | ein Profil „hub-gre“: `mode` `esp`, IKE-Policy (`version` 2, Proposal z.B. `aes-256-gcm`, `preshared-keys`, Gruppe 19 oder 20), IPsec-Policy (Proposal `aes-256-gcm`, PFS-Gruppe) |
+| Termination `role` | `peer` an beiden Enden |
+| Termination `outside_ip` | die statische IPv6-Adresse des Hubs, in NetBox an seinem Uplink oder Loopback |
+
+Auf dem Gerät: `/interface gre` mit lokaler und entfernter IPv6 aus den beiden `outside_ip`.
+IPsec dazu entweder mit `ipsec-secret` am GRE-Interface (RouterOS legt Peer und Policy selbst
+an, das NetBox-Profil wäre dann nur Beschreibung) oder ausdrücklich als Peer, Identity, Profil,
+Proposal und Policy im Transport-Modus aus dem NetBox-Profil. Vorschlag: ausdrücklich, damit das
+Profil in NetBox gilt; welche Proposals die Hubs in Hardware rechnen, ist zu prüfen.
+
+**IPv4 / WireGuard (Spoke zu Hub):**
+
+| NetBox | Wert |
+|---|---|
+| Tunnel `encapsulation` | `wireguard` |
+| Tunnel `ipsec_profile` | leer |
+| Tunnel `tunnel_id` | der Listen-Port am Hub (jedes Interface braucht einen eigenen) |
+| Termination `role` | `hub` am Hub, `spoke` am Spoke |
+| Termination `outside_ip` | leer: die IPv4 ist dynamisch |
+| Termination Custom Field `endpoint` | am Hub sein DDNS-Name; am Spoke leer (baut selbst auf) oder sein DDNS-Name, wo er erreichbar ist |
+
+Auf dem Gerät: `/interface wireguard` mit `listen-port`, ein Peer mit dem öffentlichen
+Schlüssel der Gegenseite, `allowed-address=0.0.0.0/0,::/0`, am Spoke `endpoint-address` und
+`endpoint-port` aus der Termination des Hubs und `persistent-keepalive` (die Rolle `spoke` sagt,
+wer aufbaut und das NAT offen hält).
+
+Neue Custom Fields damit nur eins: `endpoint` (Text) an der Tunnel-Termination. Die Gegenstelle
+in einem Netz ausserhalb NetBox: Z60.
 
 ### 3. WireGuard erzeugen
 
