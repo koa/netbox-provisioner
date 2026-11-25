@@ -56,13 +56,14 @@ pub async fn scrape(
         let budget = device_budget(scrape_timeout);
         let devices = topology.devices().await;
         let deadline = since + budget;
-        let (round, links) = tokio::join!(
-            round(&devices, since, deadline),
-            tokio::time::timeout_at(deadline, links(&devices))
-        );
+        // the LSDB first: its router is read in the round too, one device's reads stay
+        // sequential
+        let links = tokio::time::timeout_at(deadline, links(&devices))
+            .await
+            .unwrap_or_default();
         families.extend(render::families(&Snapshot {
-            links: links.unwrap_or_default(),
-            ..round
+            links,
+            ..round(&devices, since, deadline).await
         }));
     }
     let mut text = Vec::new();
@@ -104,15 +105,13 @@ async fn links(devices: &[DeviceAccess]) -> Box<[LinkSample]> {
     edges::edges(devices, &read.lsdb)
         .into_iter()
         .filter_map(|edge| {
-            let (up, ipv6_up) = match edge.state {
-                EdgeState::Up => (true, true),
-                EdgeState::V3Down => (true, false),
-                EdgeState::Down(_) => (false, false),
-                EdgeState::NotOspf => return None,
-            };
+            if edge.state == EdgeState::NotOspf {
+                return None;
+            }
             let a = topology.get_interface_by_id(edge.a)?;
             let b = topology.get_interface_by_id(edge.b)?;
-            let (device, peer) = (a.device()?, b.device()?);
+            let device = a.device()?;
+            let peer = b.device()?;
             Some(LinkSample {
                 site: device
                     .site()
@@ -126,8 +125,8 @@ async fn links(devices: &[DeviceAccess]) -> Box<[LinkSample]> {
                     EdgeKind::Cable => "cable",
                     EdgeKind::Radio => "radio",
                 },
-                up,
-                ipv6_up,
+                up: matches!(edge.state, EdgeState::Up | EdgeState::V3Down),
+                ipv6_up: edge.state == EdgeState::Up,
             })
         })
         .collect()
