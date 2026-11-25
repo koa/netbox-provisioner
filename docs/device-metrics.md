@@ -87,7 +87,8 @@ die des einen Endes, `peer_*` das andere. Eine Strecke, deren eines Ende kein OS
 Adresse dort ist (ein Switch auf L2, ein Kunden-Port), fehlt; antwortet kein Router, fehlen
 alle.
 
-**Uplink** (`mikrotik_uplink_ping_*`): Ein Router mit einem Interface mit Tag `internet` pingt
+**Uplink** (`mikrotik_uplink_ping_*`): Ein Router mit Uplink (ein Interface mit Tag `internet`,
+oder er verteilt die Default-Route, `propagate_default_route`, auch ohne den Tag) pingt
 pro Scrape 5-mal im Abstand von 200 ms den nächsten Hop seiner aktiven IPv4-Default-Route der
 Tabelle `main` (`immediate-gw`; `device::uplink`), nach seinen übrigen Lesungen. Gemessen wird
 der Uplink, nicht das Internet dahinter (Z14). Ohne aktive Default-Route fehlen beide.

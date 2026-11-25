@@ -143,9 +143,12 @@ async fn sample(device: &DeviceAccess, since: Instant) -> DeviceSample {
     let freshness = Freshness::Since(since);
     let metrics = accessible.metrics(freshness).await.ok();
     let map = device_data::read_accessible(&accessible, freshness).await;
-    // a router with an uplink in NetBox; after the readings, one device's reads stay sequential
-    let uplink = match device.interfaces().iter().any(|i| i.is_internet()) && metrics.is_some() {
-        true => uplink::ping(accessible.reader()).await.ok().flatten(),
+    // a router with an uplink; after the readings, one device's reads stay sequential
+    let uplink = match uplink::has_uplink(device) && metrics.is_some() {
+        true => uplink::ping(&accessible.reader().at(freshness))
+            .await
+            .ok()
+            .flatten(),
         false => None,
     };
     DeviceSample {

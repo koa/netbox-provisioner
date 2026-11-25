@@ -645,7 +645,8 @@ the node, so the fill stays reachability (Z16).
 The admins' page „Zustand“ (`/condition`, `pages::condition`, C8) is
 `Query.topology.networkCondition(siteId)` (`network_state::condition`): the map's candidates,
 read in turn (one device's reads stay sequential) as the LSDB, `device_data::read_all` and, at a
-router with an `internet` port, `device::uplink::ping` (the next hop of its active default
+router with an uplink (`device::uplink::has_uplink`: a port tagged `internet`, or it announces
+the default route, which one router of the stored export does untagged), `device::uplink::ping` (the next hop of its active default
 route). `build` turns that into `ConditionFinding`s ordered by `ConditionKind`: a router that
 didn't answer (its links down for want of it say nothing more and are left out), a link
 `Down`, a link `V3Down`, an uplink without a default route or losing pings, a boot in the last

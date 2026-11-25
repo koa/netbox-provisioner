@@ -35,7 +35,7 @@ pub struct ConditionFinding {
     pub port: Option<InterfaceRef>,
     /// nanoseconds
     pub uptime: Option<u64>,
-    pub uplink: Option<ConditionUplink>,
+    pub uplink: Option<UplinkQuality>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -46,7 +46,7 @@ pub struct ConditionLink {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-pub struct ConditionUplink {
+pub struct UplinkQuality {
     pub gateway: String,
     pub loss: f64,
     pub rtt_ms: Option<f64>,

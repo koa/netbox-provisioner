@@ -1,16 +1,24 @@
 //! Scope: The quality of a router's uplink, by `/ping` from it to its default gateway
-//! (`docs/concepts/monitoring.md`, Z14); not where it shows (`crate::metrics`).
+//! (`docs/concepts/monitoring.md`, Z14); not where it shows (`crate::metrics`,
+//! `network_state::condition`, `graphql::resident::live`).
 //!
 //! The gateway is the next hop of the active IPv4 default route of the main table
 //! (`immediate-gw`, which a recursive route resolves): no configured target, so the uplink is
 //! measured, not the internet behind it.
 use super::access::{Row, field, observe};
-use crate::Error;
+use crate::{Error, topology::access::device::DeviceAccess};
+use async_graphql::SimpleObject;
 use ipnet::IpNet;
 use mikrotik_model::{
     action::Ping, command::Reads, model::IpRoute, resource::collect_resource, value::IpOrInterface,
 };
 use std::{net::IpAddr, time::Duration};
+
+/// Whether `device` has an uplink: a port tagged `internet`, or it announces the default route
+/// (`propagate_default_route`), which it has from an uplink NetBox doesn't tag.
+pub fn has_uplink(device: &DeviceAccess) -> bool {
+    device.propagates_default_route() || device.interfaces().iter().any(|i| i.is_internet())
+}
 
 /// Pings of one measurement: a second together.
 const COUNT: u8 = 5;
@@ -24,6 +32,26 @@ pub struct UplinkPing {
     pub received: u32,
     /// the average round trip of the answered ones; none without an answer
     pub rtt: Option<Duration>,
+}
+
+/// [`UplinkPing`] as the pages show it.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct UplinkQuality {
+    pub gateway: Box<str>,
+    /// the share lost, 0 to 1
+    pub loss: f64,
+    /// the average round trip of the answered ones, milliseconds
+    pub rtt_ms: Option<f64>,
+}
+
+impl From<&UplinkPing> for UplinkQuality {
+    fn from(ping: &UplinkPing) -> Self {
+        UplinkQuality {
+            gateway: ping.gateway.to_string().into(),
+            loss: ping.loss(),
+            rtt_ms: ping.rtt.map(|rtt| rtt.as_secs_f64() * 1000.0),
+        }
+    }
 }
 
 impl UplinkPing {

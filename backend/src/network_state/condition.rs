@@ -10,7 +10,7 @@
 //! device's reads stay sequential.
 
 use super::{
-    device_data::{self, DeviceMapData},
+    device_data::{self, DEVICE_DATA_AGE, DeviceMapData},
     edges::{DownReason, Edge, EdgeKind, EdgeState, edges},
     graphql::{MapEdgeKind, MapNodeDetails, details_nodes, supports_ospf},
     read::{read, readers},
@@ -18,9 +18,10 @@ use super::{
 use crate::{
     device::{
         poe::{self, PoeProblem},
-        uplink::{self, UplinkPing},
+        uplink::{self, UplinkPing, UplinkQuality},
     },
     error_info::ErrorInfo,
+    facts::Freshness,
     graphql::scalars::ScalarDuration,
     topology::{
         DeviceId,
@@ -58,7 +59,7 @@ pub enum ConditionKind {
     /// the link is up in OSPFv2 only: the two are no neighbors in OSPFv3
     #[graphql(name = "LINK_IPV6_DOWN")]
     LinkIpv6Down,
-    /// a router with an `internet` port has no active default route
+    /// a router with an uplink (`uplink::has_uplink`) has no active default route
     NoDefaultRoute,
     /// pings to the uplink's gateway got lost
     UplinkLoss,
@@ -78,7 +79,7 @@ pub struct ConditionFinding {
     pub port: Option<InterfaceRef>,
     /// since the reboot
     pub uptime: Option<ScalarDuration>,
-    pub uplink: Option<ConditionUplink>,
+    pub uplink: Option<UplinkQuality>,
 }
 
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -86,26 +87,6 @@ pub struct ConditionLink {
     pub kind: MapEdgeKind,
     pub a: InterfaceRef,
     pub b: InterfaceRef,
-}
-
-/// The pings to an uplink's gateway.
-#[derive(Debug, Clone, PartialEq, SimpleObject)]
-pub struct ConditionUplink {
-    pub gateway: Box<str>,
-    /// the share lost, 0 to 1
-    pub loss: f64,
-    /// the average round trip of the answered ones, milliseconds
-    pub rtt_ms: Option<f64>,
-}
-
-impl From<&UplinkPing> for ConditionUplink {
-    fn from(ping: &UplinkPing) -> Self {
-        ConditionUplink {
-            gateway: ping.gateway.to_string().into(),
-            loss: ping.loss(),
-            rtt_ms: ping.rtt.map(|rtt| rtt.as_secs_f64() * 1000.0),
-        }
-    }
 }
 
 /// What an uplink router's pings got: none without an active default route.
@@ -127,7 +108,7 @@ pub async fn network_condition(devices: Vec<DeviceAccess>) -> NetworkCondition {
     let uplinks = join_all(
         candidates
             .iter()
-            .filter(|device| device_data.contains_key(&device.id()) && has_uplink(device))
+            .filter(|device| device_data.contains_key(&device.id()) && uplink::has_uplink(device))
             .map(|device| async move { (device.id(), ping(device).await) }),
     )
     .await
@@ -145,15 +126,12 @@ pub async fn network_condition(devices: Vec<DeviceAccess>) -> NetworkCondition {
     }
 }
 
-fn has_uplink(device: &DeviceAccess) -> bool {
-    device.interfaces().iter().any(|i| i.is_internet())
-}
-
 /// The pings to `device`'s uplink: none where it isn't reached or didn't answer, `Some(None)`
 /// without a default route.
 async fn ping(device: &DeviceAccess) -> Option<Option<UplinkPing>> {
     let accessible = device.connect(DeviceTarget::default()).await.ok()??;
-    uplink::ping(accessible.reader()).await.ok()
+    let reader = accessible.reader().at(Freshness::MaxAge(DEVICE_DATA_AGE));
+    uplink::ping(&reader).await.ok()
 }
 
 /// The synchronous part of [`network_condition`]: testable without a device to read from.

@@ -214,7 +214,7 @@ fn the_findings_most_urgent_first() {
     assert_eq!([&*link.a.device.name, &*link.b.device.name], ["core", "b"]);
     assert_eq!(
         finding(ConditionKind::UplinkLoss).uplink,
-        Some(ConditionUplink {
+        Some(UplinkQuality {
             gateway: "100.64.0.1".into(),
             loss: 0.2,
             rtt_ms: Some(12.0),

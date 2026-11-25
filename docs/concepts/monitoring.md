@@ -61,7 +61,7 @@ Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
   **Umgesetzt (2026-11-25):** `/condition` „Zustand“ im Site-Menü der Breadcrumb, für alle Sites.
   Befunde in dieser Reihenfolge: Router, den der Provisioner nicht erreicht (seine Strecken, die
   nur seinetwegen unten sind, nicht noch einmal); Strecke unten in OSPFv2; Strecke nur in OSPFv2
-  oben (OSPFv3 fehlt, IPv6 aus?); Router mit `internet`-Port ohne aktive Default-Route; Uplink mit
+  oben (OSPFv3 fehlt, IPv6 aus?); Router mit Uplink (Port mit Tag `internet`, oder er verteilt die Default-Route) ohne aktive Default-Route; Uplink mit
   Verlust zum Gateway (oder ohne Antwort); Neustart in den letzten 24 h; PoE-Port mit `pse` in
   NetBox, an dem nichts Strom zieht. Darunter alle Router, die geantwortet haben, mit Ressourcen
   und Health wie in der Karte. Gelesen beim Öffnen und mit „Neu lesen“, nicht laufend: Die Seite

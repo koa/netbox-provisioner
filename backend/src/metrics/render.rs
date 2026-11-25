@@ -58,7 +58,7 @@ pub(crate) struct DeviceSample {
     /// health, resources and PoE (the network map's reading)
     pub map: Option<DeviceMapData>,
     pub metrics: Option<DeviceMetrics>,
-    /// the pings to its uplink's gateway, at a router with an `internet` interface
+    /// the pings to its uplink's gateway, at a router with an uplink (`uplink::has_uplink`)
     pub uplink: Option<UplinkPing>,
     /// the Wireless LAN Groups the device is the controller or an AP of
     pub wlan_groups: Box<[WlanGroupSample]>,
