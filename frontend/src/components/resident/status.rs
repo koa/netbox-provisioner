@@ -166,12 +166,14 @@ fn reasons(devices: &[&ChangeDevice]) -> String {
     reasons.join("; ")
 }
 
+/// Why a device holds a change back, as the resident reads it: a radio link as a complex
+/// change for support (Z58), the others as the site page says them.
 pub fn hold_reason(reason: &HoldReason) -> String {
     rollout::hold_reason(match reason {
+        HoldReason::RadioLink => return t::RADIO_LINK_HOLD.to_string(),
         HoldReason::PoeCut => rollout::HoldReason::PoeCut,
         HoldReason::CapOff => rollout::HoldReason::CapOff,
         HoldReason::ApiClientsOutside => rollout::HoldReason::ApiClientsOutside,
-        HoldReason::RadioLink => rollout::HoldReason::RadioLink,
         HoldReason::Rewire => rollout::HoldReason::Rewire,
         HoldReason::Outward => rollout::HoldReason::Outward,
         HoldReason::Other(other) => rollout::HoldReason::Other(other),

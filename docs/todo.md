@@ -41,7 +41,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 | Z50 | Anschluss (Uplink-Port) eines Geräts automatisch erkennen? | ja, über die Nachbarn; übernommen wird mit einem Klick, nicht von selbst (2026-11-17) | C21 |
 | Z51 | Rückgängig nach gescheitertem Ausrollen? | nein, es bleibt als Abweichung sichtbar; eine ausgerollte Änderung lässt sich als neue Änderung zurücknehmen (2026-11-17) | C20, C21 |
 | Z52 | Darf ein Admin das UI eines Anwohners sehen und dort ändern? | ja, Support-Ansicht mit Auswahl des Anwohners; der Verlauf nennt beide; später vielleicht Stufen (nur sehen) (2026-11-17) | C21 |
-| Z58 | Wann rollt die Automatik aus, wann hält sie an? Der Weg des Provisioners lässt sich aus Diff und Topologie nur ungenau vorhersagen | nicht vorhersagen, sondern nach dem Skript prüfen; anhalten beim Umstecken, bei Ankündigungen nach aussen, bei Warnungen des Anwendens und bei Richtfunk; statt einer Mengenbremse eine Vorbedingung (Loopback IPv4 und IPv6, IP-Verbindung zu allen automatischen Geräten, Funkbrücken ohne RouterOS wie Kabel; auf dem Gerät ein Device-Mode mit `scheduler`, ohne den der Fallback fehlt), verletzt setzt die Automatik aus, bis sie wieder erfüllt ist; nach dem Skript antwortet jedes Gerät der automatischen Sites (2026-11-23); freigegebene Bereiche sind die Aggregates von NetBox (2026-11-24); offen: Wartungsfenster für Richtfunk, was der Anwohner sieht | C20 |
 
 ## A. Sicherheit
 

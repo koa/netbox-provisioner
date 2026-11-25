@@ -265,7 +265,8 @@ Badge. Eine Auswahl, die dem gespeicherten Stand entspricht, ist kein Entwurf.
 
 - **Änderungen** (`changes`): jede gespeicherte Änderung, die neueste zuerst, mit wann und
   von wem, „n von m Geräten haben sie“ und pro Gerät ein Label („ausgerollt“, „wird
-  ausgerollt“, „wartet“, „wartet auf einen Admin“ mit dem Grund, „wartet, Gerät nicht
+  ausgerollt“, „wartet“, „wartet auf einen Admin“ mit dem Grund (bei Richtfunk: eine komplexe Anpassung, die
+  nicht automatisch ausgerollt werden kann und die der Support übernimmt, Z58), „wartet, Gerät nicht
   erreichbar“, „nicht ausgerollt“, „wird von einem Admin angewendet“), alle 15 s neu gelesen;
   aus dem [Stand pro Änderung](auto-rollout.md#stand-pro-änderung).
 

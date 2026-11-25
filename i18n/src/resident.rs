@@ -437,6 +437,12 @@ pub fn waiting_for_admin(devices: &str, reasons: &str) -> String {
     }
 }
 
+/// why a change waits at a device that changes a radio of a radio link (`RadioLink`): a
+/// resident's changes are not meant to touch one, so the resident learns it needs support
+pub const RADIO_LINK_HOLD: &str = "eine komplexe Anpassung an einer Richtfunk-Verbindung, die \
+                                   nicht automatisch ausgerollt werden kann; der Support \
+                                   übernimmt sie";
+
 /// an element whose change waits for the rollout's next round (another device holds it back,
 /// or the rollout pauses)
 pub const WAITING_FOR_ROUND: &str = "Wartet auf die nächste Runde des Ausrollens.";

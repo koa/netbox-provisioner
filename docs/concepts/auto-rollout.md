@@ -63,7 +63,10 @@ erreichbar, und es lässt sich in NetBox wiederherstellen.
 2. **Nach aussen:** umgesetzt, die freigegebenen Bereiche sind die Aggregates von NetBox
    ([Automatisches Rollout](../auto-rollout.md#runden)).
 3. **Warnungen des Anwendens:** umgesetzt ([Automatisches Rollout](../auto-rollout.md#runden)).
-4. **Richtfunk:** umgesetzt, vorerst immer (ohne Wartungsfenster).
+4. **Richtfunk:** umgesetzt, immer, ohne Wartungsfenster (Z58, 2026-11-25). Der Anwohner liest
+   dazu, seine Anpassung sei komplex, nicht automatisch ausrollbar und gehe an den Support.
+   Seine Änderungen sollen Richtfunk normalerweise gar nicht betreffen: Das verhindern die
+   Rechte, die ihm zugewiesen sind.
 
 **Prüfen nach dem Skript:** umgesetzt ([Gemeinsam anwenden](../jobs.md#gemeinsam-anwenden),
 Geräte ausserhalb). Offen nur: wie lange die Anmeldungen bei grossen Sites in das Fenster des
@@ -81,10 +84,6 @@ sicher, aber das ganze Netz kurz weg; wer das nicht will, nimmt dieses Gerät au
 
 **Offen:**
 
-- Woher die freigegebenen Bereiche für 3 kommen. Vorschlag: die Prefixe mit Pool-Tag und die
-  mit dem Scope einer Site in NetBox; alles andere hält an.
-- Richtfunk (5) immer anhalten oder in einem Wartungsfenster erlauben (Z19: vorerst keins).
-- Was ein Anwohner sieht, wenn seine Änderung anhält: nur den Grund oder auch, wen er fragt.
 - Wie lange die Prüfung nach dem Skript braucht: ein Login an jedes Gerät der automatischen Sites muss in
   das Fenster des Fallbacks (90 s) passen, auch bei grossen Sites.
 

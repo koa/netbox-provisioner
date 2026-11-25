@@ -91,7 +91,8 @@ Entschieden wird ohne Gerät (`auto_rollout::decide`, getestet in `decide/test.r
     `/interface/wifi` oder `/interface/w60g` (`GeneratedCfg::changes_radio`) eines Geräts mit
     einer Funkstrecke (`batch::wireless_partners`): Strecke und alles dahinter können bis zu
     24 min weg sein (DFS). Im Zweifel hält es an, auch wenn das geänderte Radio ein WLAN-Radio
-    desselben Geräts ist.
+    desselben Geräts ist. Ein Wartungsfenster dafür gibt es nicht (Z58); der Anwohner liest
+    statt des Grunds, seine Anpassung sei komplex und gehe an den Support.
   - **Umstecken** (`Rewire`, `hold::rewired`): Die Nachbar-Prüfung des Geräts
     (`neighbors::read`, nur bei einem Gerät mit Änderungen) sagt, dass ein Kabel woanders
     steckt, als NetBox es hat: Am Port des NetBox-Kabels sieht es ein anderes Gerät oder einen

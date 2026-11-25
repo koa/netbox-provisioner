@@ -384,3 +384,33 @@ fn a_change_waiting_for_an_admin_says_so_first() {
         Some("Wartet bei lab-np2 auf einen Admin.")
     );
 }
+
+/// A change held at a radio link tells the resident it is complex and needs support (Z58).
+#[test]
+fn a_radio_link_needs_support() {
+    let sxt = device(9, "lab-sxt-a");
+    let mut held = at(9, "lab-sxt-a", RolloutState::Waiting);
+    held.reasons = vec![HoldReason::RadioLink];
+    let changes = [change(
+        vec![held],
+        Touched {
+            ports: Vec::new(),
+            wlans: Vec::new(),
+            devices: vec![9],
+        },
+    )];
+    let state = State {
+        changes: &changes,
+        live: None,
+    };
+    let status = state.device(&sxt, None, None).expect("a label");
+    assert_eq!(status.label, StatusLabel::Waiting);
+    assert_eq!(
+        status.text.as_deref(),
+        Some(
+            "Wartet bei lab-sxt-a auf einen Admin: eine komplexe Anpassung an einer \
+             Richtfunk-Verbindung, die nicht automatisch ausgerollt werden kann; der Support \
+             übernimmt sie."
+        )
+    );
+}

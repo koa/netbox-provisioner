@@ -86,7 +86,8 @@ Live-Zustand. Ein Text steht nur, wenn etwas nicht Ok ist.
   Änderung, aus dem, was sie zurücknimmt; ein Gerät auch, wenn es eines ihrer Geräte ist, dann
   mit seinem eigenen Stand). „wird ausgerollt“, solange ein Gerät aussteht, sonst „nicht
   ausgerollt“, wo eines scheiterte, sonst „wartet“: zuerst auf einen Admin (ein manuelles
-  Gerät, ein Halt mit Grund), dann auf ein nicht erreichtes Gerät, sonst auf die nächste Runde.
+  Gerät, ein Halt mit Grund; ein Halt an Richtfunk heisst für ihn „eine komplexe Anpassung …,
+  die nicht automatisch ausgerollt werden kann; der Support übernimmt sie“, Z58), dann auf ein nicht erreichtes Gerät, sonst auf die nächste Runde.
 - **Live** (`liveState`, eine Lesung der LSDB wie die Netzkarte): ob die OSPF-Router die
   eigenen Geräte, den Switch jedes Ports (bei einer Dose den hinter ihrem Rear-Port) und die
   Access Points jedes WLANs erreichen; dazu an jedem Port, an dem NetBox ein Kabel hat (an einer
