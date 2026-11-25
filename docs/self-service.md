@@ -188,7 +188,8 @@ Kabel blieb an ether1. Die Seite zeigte „Das Kabel von lab-wap steckt an ether
 übernehmen“ wurde gespeichert. Der Batch
 (neue `/31`, neue OSPF-Schlüssel beider Enden) lief mit leerem Diff danach durch. Dabei
 verliert ein Port, der eine Zeit lang Anschluss war, sein Label: Die Verbindung benennt ihn nach
-dem Gerät am anderen Ende, das Abräumen leert es.
+dem Gerät am anderen Ende, das Abräumen leert es. So gewollt (E31, 2026-11-25): Ein Label, das
+nicht zum Kabel passt, wiegt schwerer als ein verlorenes.
 Beim ersten Durchgang: NetBox
 bekam den neuen Link (`/31`, Kabel, `ospf`, Labels), der alte ging weg; der Batch beider Geräte
 lief mit leerem Diff danach durch, die OSPF-Authentisierung blieb. Gefunden und behoben wurden
