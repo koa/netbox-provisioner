@@ -4,17 +4,19 @@ use crate::{
     components::{
         device::{
             adjust_target::AdjustTarget,
-            batch_apply::BatchJob,
+            batch_apply::{BatchJob, BatchJobs},
             changes::{Changes, GeneratedCfg},
             device_mode::DeviceMode,
+            head::{Board, DeviceHead},
             history::History,
             interfaces::Interfaces,
             leftovers::{Leftover, Leftovers},
+            log::DeviceLog,
             partitions::Partitions,
             routeros::{Routeros, UpdateRequest},
             setup::Setup,
+            state_card::StateCard,
         },
-        device_link::DeviceLink,
         job::JobView,
     },
     error::{FrontendError, ServerProblem},
@@ -35,14 +37,11 @@ use crate::{
         live::{Subscription, watch},
         path_segment, request,
     },
-    i18n::{device as t, target},
+    i18n::device as t,
     reading_time::{read_at, same_reading},
 };
 use cynic::{MutationBuilder, QueryBuilder, SubscriptionBuilder};
-use patternfly_yew::prelude::{
-    Alert, AlertType, Button, ButtonVariant, Card, CardBody, CardHeader, CardTitle, CodeBlock,
-    CodeBlockCode, Spinner, SpinnerSize,
-};
+use patternfly_yew::prelude::{Alert, AlertType, Spinner, SpinnerSize};
 use yew::{Component, Context, Html, Properties, html, html::Scope, platform::spawn_local};
 
 pub struct ShowDevice {
@@ -63,9 +62,6 @@ pub struct ShowDevice {
     candidates: Option<Result<Vec<Discovered>, String>>,
     /// the supplier's job switching the power off and on, next to this device's own
     power_job: Option<i32>,
-    /// the form for another address or other credentials is open (in the head; on an
-    /// unreachable device it is always shown, in the warning)
-    show_target: bool,
     /// counts the jobs over (NetBox written, the device changed): the interfaces are read again
     jobs_finished: u32,
     /// the job running is an apply (alone or in a batch)
@@ -80,11 +76,7 @@ pub struct ShowDevice {
 /// What a device that answered reports.
 #[derive(Debug)]
 struct Reached {
-    /// its board, as `/system/routerboard` reports it
-    board: Box<str>,
-    /// the `model` of its NetBox device type
-    netbox_device_type: Box<str>,
-    board_matches: bool,
+    board: Board,
     /// its planned changes (`None`: the generator failed)
     cfg: Option<GeneratedCfg>,
 }
@@ -152,8 +144,6 @@ pub enum ShowDeviceMessage {
     ChangeDeviceMode,
     Repartition,
     BootPartition(String),
-    /// open or close the form for another address or other credentials
-    ShowTarget(bool),
     JobStarted(Result<i32, FrontendError>),
     /// a job of another device running through this one (its id and that device)
     JobThrough(i32, String),
@@ -184,7 +174,6 @@ impl Component for ShowDevice {
             batch_finished: 0,
             candidates: None,
             power_job: None,
-            show_target: false,
             jobs_finished: 0,
             applying: false,
             applied: 0,
@@ -283,10 +272,6 @@ impl Component for ShowDevice {
                     partition,
                     &self.alternate_target,
                 );
-                true
-            }
-            ShowDeviceMessage::ShowTarget(show) => {
-                self.show_target = show;
                 true
             }
             ShowDeviceMessage::JobThrough(id, device) => {
@@ -453,20 +438,10 @@ impl ShowDevice {
             </>});
         }
         Some(html! {
-            <div class="batch-jobs">
-                { for self.batch_jobs.iter().map(|job| html! {
-                    <div class="batch-job" key={job.job}>
-                        <h3>
-                            <DeviceLink
-                                site={job.site.map(|site| site as u32)}
-                                id={job.device as u32}
-                                name={job.name.to_string()}
-                            />
-                        </h3>
-                        <JobView id={job.job} on_finished={ctx.link().callback(|_| ShowDeviceMessage::BatchJobFinished)}/>
-                    </div>
-                })}
-            </div>
+            <BatchJobs
+                jobs={self.batch_jobs.clone()}
+                on_finished={ctx.link().callback(|()| ShowDeviceMessage::BatchJobFinished)}
+            />
         })
     }
     /// The page once the overview is there, `job` below the head.
@@ -518,24 +493,15 @@ impl ShowDevice {
                 />
             }
         });
-        let device =
-            (routeros.is_some() || device_mode.is_some() || partitions.is_some()).then(|| {
-                html! {
-                    <Card class="device-state">
-                        <CardHeader><CardTitle>{t::DEVICE}</CardTitle></CardHeader>
-                        <CardBody>
-                            <dl class="device-overview">
-                                {routeros}
-                                {device_mode}
-                                {partitions}
-                            </dl>
-                        </CardBody>
-                    </Card>
-                }
-            });
         html! {<>
             {locked}
-            {self.head_view(ctx, data)}
+            <DeviceHead
+                name={data.configured_name.to_string()}
+                board={data.access.as_ref().map(|reached| reached.board.clone())}
+                connected={data.connected.clone()}
+                target={self.alternate_target.clone()}
+                on_target={ctx.link().callback(ShowDeviceMessage::AdjustTarget)}
+            />
             if let Some(left) = &data.leftovers {
                 <Leftovers
                     left={left.clone()}
@@ -553,7 +519,7 @@ impl ShowDevice {
                 on_apply={ctx.link().callback(|()| ShowDeviceMessage::ShowChanges)}
             />
             <div class="device-columns">
-                {device}
+                <StateCard {routeros} {device_mode} {partitions}/>
                 <Changes
                     id={self.id}
                     reachable={data.access.is_some()}
@@ -577,7 +543,7 @@ impl ShowDevice {
                     {self.target_form(ctx)}
                 </Changes>
             </div>
-            {log_view(&data.log)}
+            <DeviceLog log={data.log.clone()}/>
             <History id={self.id} refresh={self.jobs_finished}/>
         </>}
     }
@@ -585,54 +551,6 @@ impl ShowDevice {
     fn target_form(&self, ctx: &Context<Self>) -> Html {
         html! {
             <AdjustTarget onchange={ctx.link().callback(ShowDeviceMessage::AdjustTarget)} value={self.alternate_target.clone()} />
-        }
-    }
-    /// The head: name, board, the device the connection reached and how it is reached.
-    fn head_view(&self, ctx: &Context<Self>, data: &ShowDeviceData) -> Html {
-        let reachable = data.access.is_some();
-        html! {
-            <Card class="device-head">
-                <CardHeader><CardTitle>{ data.configured_name.as_ref() }</CardTitle></CardHeader>
-                <CardBody>
-                    <dl class="device-overview">
-                        if let Some(reached) = &data.access {
-                            <dt>{t::BOARD}</dt><dd>
-                                { reached.board.as_ref() }
-                                if !reached.board_matches {
-                                    <Alert inline=true r#type={AlertType::Warning}
-                                        title={t::other_device_type(&reached.netbox_device_type)}/>
-                                }
-                            </dd>
-                        }
-                        if let Some(connected) = &data.connected {
-                            <dt>{t::CONNECTED}</dt><dd>
-                                { t::connected(&connected.address, connected.neighbor.as_deref(), &connected.identity) }
-                                if !connected.same_name {
-                                    <Alert inline=true r#type={AlertType::Warning}
-                                        title={t::other_identity(&connected.identity, &data.configured_name)}/>
-                                }
-                            </dd>
-                        }
-                        <dt>{target::ACCESS}</dt><dd>
-                            { target::describe(&self.alternate_target) }
-                            if reachable {
-                                {" "}
-                                <Button
-                                    variant={ButtonVariant::Link}
-                                    label={if self.show_target { target::HIDE } else { target::SHOW }}
-                                    onclick={ctx.link().callback({
-                                        let show = !self.show_target;
-                                        move |_| ShowDeviceMessage::ShowTarget(show)
-                                    })}
-                                />
-                            }
-                        </dd>
-                    </dl>
-                    if reachable && self.show_target {
-                        {self.target_form(ctx)}
-                    }
-                </CardBody>
-            </Card>
         }
     }
     /// Subscribes to the overview with the target chosen, ending the subscription before.
@@ -661,28 +579,6 @@ fn no_way_back(data: &ShowDeviceData) -> bool {
         .unwrap_or_default();
     let two = matches!(partitions, [a, b] if (a.running && a.active) || (b.running && b.active));
     !two && data.update_neighbors.is_empty()
-}
-
-/// The newest entries of the device's log, folded.
-fn log_view(log: &[LogEntry]) -> Html {
-    if log.is_empty() {
-        return Html::default();
-    }
-    html! {
-        <Card class="device-log">
-            <CardHeader><CardTitle>{t::LOG}</CardTitle></CardHeader>
-            <CardBody>
-                <details>
-                    <summary>{t::log_entries(log.len())}</summary>
-                    <CodeBlock>
-                        <CodeBlockCode>
-                            { for log.iter().map(|entry| format!("{} {} {}\n", entry.time, entry.topics, entry.message)) }
-                        </CodeBlockCode>
-                    </CodeBlock>
-                </details>
-            </CardBody>
-        </Card>
-    }
 }
 
 /// The variables of an operation on device `id` reached through `target`.
@@ -752,9 +648,11 @@ fn overview_message(id: u32, response: Response<DeviceOverview>) -> ShowDeviceMe
                 device_mode: d.access.as_mut().and_then(|a| a.device_mode.take()),
                 partitions: d.access.as_mut().and_then(|a| a.partitions.take()),
                 access: d.access.map(|a| Reached {
-                    board: a.device_stats.routerboard.device_type.into_boxed_str(),
-                    netbox_device_type: a.device_stats.netbox_device_type.into_boxed_str(),
-                    board_matches: a.device_stats.board_matches,
+                    board: Board {
+                        board: a.device_stats.routerboard.device_type.into_boxed_str(),
+                        netbox_device_type: a.device_stats.netbox_device_type.into_boxed_str(),
+                        matches: a.device_stats.board_matches,
+                    },
                     cfg: a.generate_cfg.map(|cfg| GeneratedCfg {
                         diff: cfg.diff,
                         warnings: cfg.warnings.into(),

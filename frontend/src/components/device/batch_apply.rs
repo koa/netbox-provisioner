@@ -1,12 +1,11 @@
-//! Scope: Applying a device together with others; nothing else.
+//! Scope: Applying a device together with others, and its jobs side by side; nothing else.
 //!
 //! Applying the config to a device together with others (`applyBatch`): the other ends of its
 //! wireless links are picked, more devices of the sites can be added, and each device of the
 //! batch, this one first, shows its changes as the batch would plan them (with the others:
 //! OSPF segments with every end in it move) before anything is applied.
 use crate::{
-    components::device_link::DeviceLink,
-    components::diff_view::DiffView,
+    components::{device_link::DeviceLink, diff_view::DiffView, job::JobView},
     error::{FrontendError, ServerProblem},
     graphql::authenticated::types::CfgDiff,
     graphql::{
@@ -25,7 +24,8 @@ use patternfly_yew::prelude::{
 };
 use std::collections::{BTreeSet, HashMap};
 use yew::{
-    Callback, Component, Context, Html, Properties, html, html::Scope, platform::spawn_local,
+    Callback, Component, Context, Html, Properties, function_component, html, html::Scope,
+    platform::spawn_local,
 };
 
 /// A job of a started batch, as the device page shows it next to the others.
@@ -380,4 +380,35 @@ fn start(scope: Scope<BatchApply>, ids: Vec<i32>) {
         });
         scope.send_message(BatchMessage::Started(result));
     });
+}
+
+#[derive(Debug, Clone, PartialEq, Properties)]
+pub struct BatchJobsProps {
+    pub jobs: Box<[BatchJob]>,
+    /// one job of them is over
+    pub on_finished: Callback<()>,
+}
+
+/// The jobs of a started batch side by side, each under its device's name.
+#[function_component(BatchJobs)]
+pub fn batch_jobs(props: &BatchJobsProps) -> Html {
+    html! {
+        <div class="batch-jobs">
+            { for props.jobs.iter().map(|job| {
+                let on_finished = props.on_finished.reform(|_| ());
+                html! {
+                    <div class="batch-job" key={job.job}>
+                        <h3>
+                            <DeviceLink
+                                site={job.site.map(|site| site as u32)}
+                                id={job.device as u32}
+                                name={job.name.to_string()}
+                            />
+                        </h3>
+                        <JobView id={job.job} {on_finished}/>
+                    </div>
+                }
+            })}
+        </div>
+    }
 }
