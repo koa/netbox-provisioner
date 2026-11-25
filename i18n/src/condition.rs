@@ -2,7 +2,7 @@
 use crate::network_map::uptime;
 
 pub const TITLE: &str = "Zustand";
-pub const INTRO: &str = "Was im Netz zu kontrollieren oder zu warten ist, das Dringendste zuerst: Router, die der Provisioner nicht erreicht, Strecken unten, Uplinks mit Verlust, Neustarts der letzten 24 h, PoE-Ports ohne Last. Liest beim Öffnen die OSPF-Datenbank, jeden Router und den Ping zum Gateway des Uplinks. Health wird gezeigt, nicht beurteilt; Alarme gehören in Prometheus.";
+pub const INTRO: &str = "Was im Netz zu kontrollieren oder zu warten ist, das Dringendste zuerst: Router, die der Provisioner nicht erreicht, Strecken unten, Uplinks mit Verlust, Neustarts der letzten 24 h, PoE-Ports ohne Last. Liest beim Öffnen und mit „Neu lesen“ die OSPF-Datenbank, jeden Router und den Ping zum Gateway des Uplinks; was die Netz-Karte vor höchstens 30 s gelesen hat, nimmt die Seite von dort. Health wird gezeigt, nicht beurteilt; Alarme gehören in Prometheus.";
 pub const RELOAD: &str = "Neu lesen";
 pub const LOADING: &str = "Liest die Router";
 pub const NOTHING: &str = "Nichts zu tun: alle Router erreichbar, alle Strecken oben.";

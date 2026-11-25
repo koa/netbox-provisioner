@@ -122,7 +122,9 @@ impl TopologyHolder {
     }
     /// The page „Zustand“: what to check or maintain at the routers of the site `site_id`, or
     /// without it of every site, most urgent first, and their health (shown, not judged). Reads
-    /// the LSDB, every router and the uplinks' pings anew: a second or more.
+    /// the LSDB (at most `network_state::read::LSDB_AGE` old), every router and the uplinks'
+    /// pings (at most `network_state::device_data::DEVICE_DATA_AGE`, shared with the network
+    /// map): a second or more.
     async fn network_condition(
         &self,
         site_id: Option<u32>,

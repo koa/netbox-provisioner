@@ -3,7 +3,7 @@
 //! What to check or maintain in the network, most urgent first, each finding linking its
 //! device; below, the routers' health and resources, shown, not judged
 //! (`networkCondition`, `docs/concepts/monitoring.md`). Read once on opening and on „Neu lesen“:
-//! it reads every router.
+//! it reads every router, up to 30 s old where the network map read it just before.
 use crate::{
     components::device_link::DeviceLink,
     error::{FrontendError, ServerProblem},

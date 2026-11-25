@@ -661,7 +661,8 @@ didn't answer (its links down for want of it say nothing more and are left out),
 `Down`, a link `V3Down`, an uplink without a default route or losing pings, a boot in the last
 24 h, a PoE port `NoLoad`; health and resources beside as the map's `MapNodeDetails`, not judged
 (Z16). No LSDB: `lsdbError`, the links unknown rather than down. Read on opening and on „Neu
-lesen“, no poll: it reads every router.
+lesen“, no poll: it reads every router, taking what the network map read up to 30 s before
+(`DEVICE_DATA_AGE`; the LSDB up to 5 s).
 
 ## Device access, setup and updates
 

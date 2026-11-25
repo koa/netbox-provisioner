@@ -6,8 +6,9 @@
 //! (the network map's candidates), in the order of the concept: a router the provisioner
 //! doesn't reach, a dead link, a link up only in OSPFv2, an uplink losing pings or without a
 //! default route, a reboot in the last 24 h, a PoE port without load. Health and resources are
-//! shown, not judged (Z16). Reads the LSDB, then each router, then the uplinks' pings: one
-//! device's reads stay sequential.
+//! shown, not judged (Z16). Reads the LSDB (at most 5 s old), then each router, then the
+//! uplinks' pings (at most 30 s old, as the network map's details): one device's reads stay
+//! sequential.
 
 use super::{
     device_data::{self, DEVICE_DATA_AGE, DeviceMapData},

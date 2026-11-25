@@ -65,7 +65,8 @@ Das liest nur. Es fasst keine Konfiguration an und läuft nicht als Job.
   Verlust zum Gateway (oder ohne Antwort); Neustart in den letzten 24 h; PoE-Port mit `pse` in
   NetBox, an dem nichts Strom zieht. Darunter alle Router, die geantwortet haben, mit Ressourcen
   und Health wie in der Karte. Gelesen beim Öffnen und mit „Neu lesen“, nicht laufend: Die Seite
-  liest jeden Router (im Lab mit 7 Routern 2,5 s). Ein schlechtes Funksignal ist noch kein
+  liest jeden Router (im Lab mit 7 Routern 2,5 s); was die Netz-Karte vor höchstens 30 s gelesen
+  hat, nimmt sie von dort (die OSPF-Datenbank höchstens 5 s alt). Ein schlechtes Funksignal ist noch kein
   Befund: Dafür bräuchte es eine Grenze, die nicht entschieden ist (Z64); das Signal steht in
   `mikrotik_wlan_*`.
 - **UI, Anwohner:** eine Zeile pro eigenem Netz: „Internet: gut (12 ms, 0 % Verlust)“, und der
