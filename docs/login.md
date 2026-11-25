@@ -12,7 +12,10 @@ der Gruppe `admin` im Claim `groups`, Anwohner die Mitglieder eines NetBox-Owner
 `exp`) lässt es 60 s Abweichung zu: ohne lehnte ein Server, dessen Uhr eine Sekunde hinter
 Pocket-ID ging, jedes frische Token ab. Lehnt es ein Token mit gültiger Signatur ab (`403`
 „Token does not have sufficient rights“), steht der Grund im Log (`token refused: …`, mit den
-Claims und der Uhrzeit des Servers). `exp`, `iss`, `aud` und `sub` muss das Token haben: die
+Claims und der Uhrzeit des Servers). Ein Token, das sich nicht lesen lässt oder dessen Signatur
+nicht stimmt, bekommt `401` („token refused“, im Log `token refused, unreadable: …`); ohne das
+antwortete der Validator `500`, und das UI zeigte „Server antwortet 500“ statt „Anmeldung
+abgelaufen“. `exp`, `iss`, `aud` und `sub` muss das Token haben: die
 Prüfung (biscuit) schaut einen Claim sonst nur an, wo er steht, ein Token ohne `exp` liefe nie ab.
 Die WebSocket-Verbindung der Live-Ansichten bekommt das Token nur beim Aufbau
 (`connection_init`); jede Operation darauf, auch eine Query oder Mutation, endet beim Ablauf des

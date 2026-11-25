@@ -707,7 +707,8 @@ The UI logs in over OIDC (`yew-oauth2` in the frontend, structure taken from the
 the backend checks the JWT against `auth_issuer` (`binary`, `graphql_with_token`: a request
 without a token gets no role, `graphql_without_token`) and finds the role (`role::of`: admin
 by `auth_users` or the group `admin` in the claim `groups`); each root field's guard decides
-(`graphql::guard`, `docs/graphql.md#rechte`; a refused token gets `403`, and the server
+(`graphql::guard`, `docs/graphql.md#rechte`; a refused token gets `403`, one that can't be
+read or verified `401` instead of the validator's `500` (`unreadable_token`), and the server
 log says why; the frontend words the status, `i18n::error::refused`; without a refresh token
 `yew-oauth2` keeps an expired token as authenticated, so every page shows „Anmeldung
 abgelaufen“ with a login button on top (`components::frame::login_expired`, `auth::start_login`, no

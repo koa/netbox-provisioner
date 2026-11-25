@@ -56,7 +56,6 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
-| B41 | Ein Token mit falscher Signatur oder kaputtem Base64 bekommt `500` („Crypto handling error: …“ von `OidcBiscuitValidator`) statt `401`/`403`: Das UI zeigt dann „Server antwortet 500“ statt „Anmeldung abgelaufen“. Live gesehen am 2026-11-25 nach B40; der Weg durch den Validator ist von B40 unverändert, vorher nicht geprüft. Die Antwort des Validators auf `401` abbilden (Middleware um ihn) | S | offen |
 
 ## C. Konzepte zum Umsetzen
 

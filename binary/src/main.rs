@@ -1,7 +1,7 @@
 //! Scope: The server process: HTTP routes, the login check, the embedded frontend, start and
 //! shutdown; not the GraphQL schema (`backend::graphql`).
 use actix_4_jwt_auth::{
-    DecodedInfo, Oidc, OidcBiscuitValidator,
+    DecodedInfo, OIDCValidationError, Oidc, OidcBiscuitValidator,
     biscuit::{ClaimPresenceOptions, Presence, TemporalOptions, Validation, ValidationOptions},
 };
 use actix_web::{
@@ -371,7 +371,8 @@ async fn main() -> Result<(), BackendError> {
 
 /// `/graphql` with a token: a valid one (`biscuit_validator`, against the issuer's keys of the
 /// moment, `with_issuer_keys`; why one is refused is logged by `log_refused_token`), otherwise
-/// `403`, and the user's role (`with_role`).
+/// `403`, or `401` for one that can't be read (`unreadable_token`), and the user's role
+/// (`with_role`).
 fn graphql_with_token(
     path: &'static str,
     biscuit_validator: OidcBiscuitValidator,
@@ -385,6 +386,7 @@ fn graphql_with_token(
         }))
         .wrap(from_fn(with_role))
         .wrap(biscuit_validator)
+        .wrap(from_fn(unreadable_token))
         .wrap(from_fn(log_refused_token))
         .wrap(from_fn(with_issuer_keys))
         .to(graphql)
@@ -453,6 +455,38 @@ fn validation_options_for(issuer: &str, audience: &str) -> ValidationOptions {
     }
 }
 
+/// Answers a token `OidcBiscuitValidator` can't read or whose signature is wrong with `401`
+/// instead of its `500` (it gives the decoding's `CryptoError` on as an error): the token is
+/// refused, the server is fine, and the UI asks to log in again. Its other errors (the keys not
+/// loaded) stay.
+async fn unreadable_token(
+    req: ServiceRequest,
+    next: Next<impl MessageBody + 'static>,
+) -> Result<ServiceResponse<BoxBody>, actix_web::Error> {
+    let request = req.request().clone();
+    match next.call(req).await {
+        Ok(response) => Ok(response.map_into_boxed_body()),
+        Err(error) => match unreadable(&error) {
+            Some(reason) => {
+                warn!("token refused, unreadable: {reason}");
+                Ok(ServiceResponse::new(
+                    request,
+                    HttpResponse::Unauthorized().body("token refused"),
+                ))
+            }
+            None => Err(error),
+        },
+    }
+}
+
+/// Why `error` is a token that can't be read or verified, if it is one.
+fn unreadable(error: &actix_web::Error) -> Option<String> {
+    match error.as_error::<OIDCValidationError>()? {
+        OIDCValidationError::CryptoError(error) => Some(format!("{error:?}")),
+        _ => None,
+    }
+}
+
 /// Logs why `OidcBiscuitValidator` refused a token with a valid signature, which it answers
 /// only with `403` "Token does not have sufficient rights": the claims and the failed check
 /// (`biscuit::ValidationError`, e.g. a token not yet valid by this server's clock).
@@ -489,6 +523,21 @@ async fn log_refused_token(
 #[cfg(test)]
 mod test {
     use super::*;
+
+    /// A token with a wrong signature or broken Base64 is refused as one, keys not loaded aren't.
+    #[test]
+    fn an_unreadable_token_is_refused_not_a_server_error() {
+        use actix_4_jwt_auth::biscuit::errors::{Error as Biscuit, ValidationError};
+        let error = |error: OIDCValidationError| actix_web::Error::from(error);
+        assert!(
+            unreadable(&error(OIDCValidationError::CryptoError(
+                Biscuit::ValidationError(ValidationError::InvalidSignature)
+            )))
+            .is_some()
+        );
+        assert!(unreadable(&error(OIDCValidationError::InvalidAccess)).is_none());
+        assert!(unreadable(&actix_web::error::ErrorInternalServerError("keys")).is_none());
+    }
     use actix_4_jwt_auth::biscuit::{RegisteredClaims, SingleOrMultiple, Timestamp};
     use chrono::Utc;
 
