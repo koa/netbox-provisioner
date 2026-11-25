@@ -14,12 +14,16 @@ mod render;
 #[cfg(test)]
 mod test;
 
-pub(crate) use render::{DeviceSample, Snapshot};
+pub(crate) use render::{DeviceSample, LinkSample, Snapshot};
 
 use crate::{
     config::CONFIG,
     facts::Freshness,
-    network_state::device_data,
+    network_state::{
+        device_data,
+        edges::{self, EdgeKind, EdgeState},
+        read,
+    },
     topology::{
         TopologyHolder,
         access::{DeviceTarget, device::DeviceAccess},
@@ -50,9 +54,15 @@ pub async fn scrape(
     if CONFIG.device_metrics() {
         let budget = device_budget(scrape_timeout);
         let devices = topology.devices().await;
-        families.extend(render::families(
-            &round(&devices, since, since + budget).await,
-        ));
+        let deadline = since + budget;
+        let (round, links) = tokio::join!(
+            round(&devices, since, deadline),
+            tokio::time::timeout_at(deadline, links(&devices))
+        );
+        families.extend(render::families(&Snapshot {
+            links: links.unwrap_or_default(),
+            ..round
+        }));
     }
     let mut text = Vec::new();
     TextEncoder::new().encode(&families, &mut text)?;
@@ -79,7 +89,47 @@ async fn round(devices: &[DeviceAccess], since: Instant, deadline: Instant) -> S
         });
     Snapshot {
         devices: join_all(reads).await.into(),
+        links: Box::default(),
     }
+}
+
+/// NetBox's cables and wireless links between OSPF routers with their state in the link-state
+/// database of the first router that answers (as the network map reads it); none if none does.
+async fn links(devices: &[DeviceAccess]) -> Box<[LinkSample]> {
+    let Ok(Some(read)) = read::read(&read::readers(devices)).await else {
+        return Box::default();
+    };
+    let topology = read.device.topology().clone();
+    edges::edges(devices, &read.lsdb)
+        .into_iter()
+        .filter_map(|edge| {
+            let (up, ipv6_up) = match edge.state {
+                EdgeState::Up => (true, true),
+                EdgeState::V3Down => (true, false),
+                EdgeState::Down(_) => (false, false),
+                EdgeState::NotOspf => return None,
+            };
+            let a = topology.get_interface_by_id(edge.a)?;
+            let b = topology.get_interface_by_id(edge.b)?;
+            let (device, peer) = (a.device()?, b.device()?);
+            Some(LinkSample {
+                site: device
+                    .site()
+                    .map(|site| site.name().into())
+                    .unwrap_or_default(),
+                device: device.name().into(),
+                interface: a.name().into(),
+                peer_device: peer.name().into(),
+                peer_interface: b.name().into(),
+                kind: match edge.kind {
+                    EdgeKind::Cable => "cable",
+                    EdgeKind::Radio => "radio",
+                },
+                up,
+                ipv6_up,
+            })
+        })
+        .collect()
 }
 
 /// What `device` answers, over one login; down where it can't be reached or doesn't answer

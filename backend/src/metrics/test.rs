@@ -1,6 +1,6 @@
 //! Scope: Tests of the rendering of `/metrics`; nothing else.
 
-use super::render::{DeviceSample, Snapshot, WlanGroupSample, families, wlan_group_of};
+use super::render::{DeviceSample, LinkSample, Snapshot, WlanGroupSample, families, wlan_group_of};
 use super::{DEVICE_TIMEOUT, device_budget};
 use crate::{
     device::metrics::{
@@ -183,6 +183,28 @@ fn snapshot() -> Snapshot {
     };
     Snapshot {
         devices: Box::new([router, ap, down]),
+        links: Box::new([
+            LinkSample {
+                device: "router".into(),
+                site: "berg".into(),
+                interface: "e02-ap".into(),
+                peer_device: "ap".into(),
+                peer_interface: "e01-router".into(),
+                kind: "cable",
+                up: true,
+                ipv6_up: false,
+            },
+            LinkSample {
+                device: "router".into(),
+                site: "berg".into(),
+                interface: "wlan1".into(),
+                peer_device: "station".into(),
+                peer_interface: "wlan1".into(),
+                kind: "radio",
+                up: false,
+                ipv6_up: false,
+            },
+        ]),
     }
 }
 
@@ -481,4 +503,34 @@ fn an_ethernet_port_s_drops_and_errors() {
         [(port, 5.0)]
     );
     assert!(samples(&families, "mikrotik_ethernet_rx_overflows_total").is_empty());
+}
+
+/// A link between two OSPF routers: up in OSPFv2 and v3 apart, by both ends and its kind.
+#[test]
+fn a_link_is_up_in_ospfv2_and_v3_apart() {
+    let families = families(&snapshot());
+    let link = |interface: &str, peer: &str, peer_interface: &str, kind: &str| {
+        labels(&[
+            "device=router",
+            &format!("interface={interface}"),
+            &format!("kind={kind}"),
+            &format!("peer_device={peer}"),
+            &format!("peer_interface={peer_interface}"),
+            "site=berg",
+        ])
+    };
+    assert_eq!(
+        samples(&families, "mikrotik_link_up"),
+        vec![
+            (link("e02-ap", "ap", "e01-router", "cable"), 1.0),
+            (link("wlan1", "station", "wlan1", "radio"), 0.0),
+        ]
+    );
+    assert_eq!(
+        samples(&families, "mikrotik_link_ipv6_up"),
+        vec![
+            (link("e02-ap", "ap", "e01-router", "cable"), 0.0),
+            (link("wlan1", "station", "wlan1", "radio"), 0.0),
+        ]
+    );
 }

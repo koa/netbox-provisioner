@@ -23,6 +23,26 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Snapshot {
     pub devices: Box<[DeviceSample]>,
+    /// NetBox's cables and wireless links between OSPF routers, from the link-state database;
+    /// none where no router answered
+    pub links: Box<[LinkSample]>,
+}
+
+/// A cable or wireless link between two OSPF routers and its state in the link-state database
+/// (`network_state::edges`).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LinkSample {
+    pub device: Box<str>,
+    pub site: Box<str>,
+    pub interface: Box<str>,
+    pub peer_device: Box<str>,
+    pub peer_interface: Box<str>,
+    /// `cable` or `radio`
+    pub kind: &'static str,
+    /// both routers on the segment in OSPFv2
+    pub up: bool,
+    /// in OSPFv3 as well
+    pub ipv6_up: bool,
 }
 
 /// What one device answered in a round.
@@ -166,6 +186,14 @@ fn labels<const N: usize>(values: [&str; N]) -> Box<[Box<str>]> {
 }
 
 const DEVICE: &[&str] = &["device", "site"];
+const LINK: &[&str] = &[
+    "device",
+    "site",
+    "interface",
+    "peer_device",
+    "peer_interface",
+    "kind",
+];
 const WITH_INTERFACE: &[&str] = &["device", "site", "interface"];
 const WITH_HEALTH: &[&str] = &["device", "site", "name"];
 const WLAN_CLIENT: &[&str] = &[
@@ -195,6 +223,9 @@ pub(crate) fn families(snapshot: &Snapshot) -> Vec<MetricFamily> {
     for device in &snapshot.devices {
         out.device(device, &leases);
     }
+    for link in &snapshot.links {
+        out.link(link);
+    }
     // a family no device has a value of (no fan anywhere) is refused by the text encoder
     out.render()
         .into_iter()
@@ -213,6 +244,12 @@ struct Families {
     radio: RadioFamilies,
     wlan: WlanFamilies,
     lease: Family,
+    link: LinkFamilies,
+}
+
+struct LinkFamilies {
+    up: Family,
+    ipv6_up: Family,
 }
 
 struct SystemFamilies {
@@ -467,11 +504,42 @@ impl Default for Families {
                     "hostname",
                 ],
             ),
+            link: LinkFamilies {
+                up: Family::new(
+                    Gauge,
+                    "mikrotik_link_up",
+                    "1 if both routers of a cable or wireless link are on its segment in \
+                     OSPFv2, 0 if not",
+                    LINK,
+                ),
+                ipv6_up: Family::new(
+                    Gauge,
+                    "mikrotik_link_ipv6_up",
+                    "1 if both routers of a cable or wireless link are neighbors in OSPFv3 too, \
+                     0 if not",
+                    LINK,
+                ),
+            },
         }
     }
 }
 
 impl Families {
+    fn link(&mut self, link: &LinkSample) {
+        let labels = || {
+            labels([
+                &link.device,
+                &link.site,
+                &link.interface,
+                &link.peer_device,
+                &link.peer_interface,
+                link.kind,
+            ])
+        };
+        let value = |up: bool| if up { 1.0 } else { 0.0 };
+        self.link.up.push(labels(), value(link.up));
+        self.link.ipv6_up.push(labels(), value(link.ipv6_up));
+    }
     fn device(&mut self, sample: &DeviceSample, leases: &HashMap<MacAddress, &Lease>) {
         let (device, site) = (&*sample.device, &*sample.site);
         self.up
@@ -534,6 +602,7 @@ impl Families {
             radio,
             wlan,
             lease,
+            link,
         } = self;
         [
             up,
@@ -581,6 +650,8 @@ impl Families {
             wlan.signal_to_noise,
             wlan.uptime,
             lease,
+            link.up,
+            link.ipv6_up,
         ]
         .into_iter()
         .flat_map(Family::render)

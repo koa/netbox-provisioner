@@ -6,9 +6,9 @@ bisher der [mikrotik-metrik-exporter](https://github.com/koa/mikrotik-metrik-exp
 zweiter MikroTik-Exporter (Metriken `mikrotik_system_*`, `mikrotik_monitor_*` mit Label `name`)
 und SNMP (`mtxrWl*`) lieferten (C14); sie und der eigene `prometheus`-Benutzer auf den Geräten
 sind danach nicht mehr nötig. Der Provisioner liest mit seinen eigenen Zugangsdaten
-(`mikrotik_credentials`). Der Rest der
-Überwachung (Zustandsseite, Funk-Strecken, Uplink-Ping) ist weiter ein
-[Konzept](concepts/monitoring.md) (C8).
+(`mikrotik_credentials`). Dazu die Strecken
+zwischen den OSPF-Routern aus der LSDB. Der Rest der Überwachung (Zustandsseite, Uplink-Ping) ist
+weiter ein [Konzept](concepts/monitoring.md) (C8).
 
 ## Sammeln
 
@@ -76,6 +76,14 @@ Prometheus-Konventionen: Einheit im Namen, `_total` für einen Zähler des Gerä
 | `mikrotik_wlan_client_signal_to_noise_db` | Gauge | siehe unten | nur `/interface/wireless` |
 | `mikrotik_wlan_client_uptime_seconds` | Gauge | siehe unten | |
 | `mikrotik_dhcp_lease` | Gauge (1) | `server`, `address`, `mac_address`, `hostname` | gebundene Leases |
+| `mikrotik_link_up` | Gauge | `interface`, `peer_device`, `peer_interface`, `kind` | 1, wenn beide Router eines NetBox-Kabels oder einer Funkstrecke (`kind` `cable`, `radio`) in OSPFv2 auf dem Segment sind; aus der LSDB |
+| `mikrotik_link_ipv6_up` | Gauge | wie `mikrotik_link_up` | 1, wenn sie auch in OSPFv3 Nachbarn sind |
+
+**Strecken** (`mikrotik_link_*`) liest der Scrape einmal aus der LSDB des ersten Routers, der
+antwortet, wie die [Netz-Karte](network-map.md) (`network_state::edges`); `device` und `site` sind
+die des einen Endes, `peer_*` das andere. Eine Strecke, deren eines Ende kein OSPF-Router mit
+Adresse dort ist (ein Switch auf L2, ein Kunden-Port), fehlt; antwortet kein Router, fehlen
+alle.
 
 **WLAN-Clients** stehen beim Gerät, dessen Registrierungstabelle sie hat: beim Controller für
 seine CAPs, beim AP für seine eigenen Radios, bei einer Funkstrecke beim AP-Ende. Labels:

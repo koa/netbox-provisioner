@@ -1,7 +1,8 @@
 # Konzept: Überwachung
 
-Status: Konzept, zum Teil umgesetzt: Health, PoE, WLAN-Clients, System, Interfaces und Leases
-liefert der Provisioner an `/metrics` ([Gerätemetriken](../device-metrics.md), C14). Der Rest ist
+Status: Konzept, zum Teil umgesetzt: Health, PoE, WLAN-Clients, System, Interfaces, Leases und
+die Strecken aus der LSDB liefert der Provisioner an `/metrics` ([Gerätemetriken](../device-metrics.md),
+C14, C8). Der Rest ist
 Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](../network-map.md) auf.
 
 ## Ziel
@@ -29,8 +30,9 @@ Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](../network-map.md
 
 **Ein Sammler im Backend**, der periodisch liest und den letzten Zustand hält. Health, Uptime,
 die WLAN-Clients und das Signal der 5-GHz-Funkstrecken (beim AP-Ende) liefert `/metrics` schon,
-pro Scrape gelesen statt vom Sammler. Offen sind die Strecken aus der LSDB als Metriken, die
-60-GHz-Strecken (`w60g` monitor), die Radios von `/interface/wifi` in
+pro Scrape gelesen statt vom Sammler; ebenso die Strecken aus der LSDB (`mikrotik_link_up`,
+`mikrotik_link_ipv6_up`, 2026-11-25): Ein eigener Sammler ist damit nicht nötig, Prometheus fragt
+regelmässig. Offen sind die 60-GHz-Strecken (`w60g` monitor), die Radios von `/interface/wifi` in
 `mikrotik_wireless_radio_*` und der Uplink-Ping:
 
 | Was | woher | wie oft |
