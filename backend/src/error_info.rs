@@ -60,6 +60,7 @@ impl From<&Error> for ErrorInfo {
                 ],
             ),
             Error::ApplyNotAllowed => ("APPLY_NOT_ALLOWED", vec![]),
+            Error::NotAllowed => ("NOT_ALLOWED", vec![]),
             Error::UnknownDevice(id) => ("UNKNOWN_DEVICE", vec![("id", id.to_string())]),
             Error::UnknownDeviceName(name) => {
                 ("UNKNOWN_DEVICE_NAME", vec![("device", name.to_string())])

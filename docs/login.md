@@ -5,9 +5,10 @@ Secret) und schickt das ID-Token als `Bearer` an `/graphql`: Nur darin steht bei
 Name des Benutzers, das Access-Token trägt nur `sub`, `client_id` und `scope`. Liefert ein Refresh
 kein neues ID-Token, geht das Access-Token mit (der Name fehlt dann, in den Metriken steht `sub`).
 Das Backend prüft das Token gegen
-den Issuer und lässt nur Admins herein: die Benutzer aus `auth_users` und die mit der Gruppe
-`admin` im Claim `groups`. Die Anwohner fragen `/graphql/resident`
-([self-service.md](self-service.md#rollen)). Bei den Zeiten (`iat`, `nbf`,
+den Issuer und bestimmt daraus die Rolle: Admins sind die Benutzer aus `auth_users` und die mit
+der Gruppe `admin` im Claim `groups`, Anwohner die Mitglieder eines NetBox-Owners
+([self-service.md](self-service.md#rollen)). Welches Feld welche Rolle braucht, sagt
+[GraphQL](graphql.md#rechte). Bei den Zeiten (`iat`, `nbf`,
 `exp`) lässt es 60 s Abweichung zu: ohne lehnte ein Server, dessen Uhr eine Sekunde hinter
 Pocket-ID ging, jedes frische Token ab. Lehnt es ein Token mit gültiger Signatur ab (`403`
 „Token does not have sufficient rights“), steht der Grund im Log (`token refused: …`, mit den
@@ -48,9 +49,10 @@ settings:
   ausstellt, nicht durch.
 - **`auth_users`**: die Admins, verglichen wird `sub`, nicht der Benutzername. Statt der Liste
   macht auch die Gruppe `admin` im Claim `groups` zum Admin; die Liste bleibt als Notschalter.
-  Wer angemeldet, aber kein Admin ist, bekommt an `/graphql` `403`, und das Serverlog nennt das
-  `sub` (`user refused, no admin`). Das UI fragt ihn gar nicht dort: Er sieht die Ansicht des
-  Anwohners oder den Hinweis, dass ihn ein Admin eintragen muss ([Rollen](self-service.md#rollen)).
+  Wer angemeldet, aber kein Admin ist, bekommt an den Feldern der Admins `NOT_ALLOWED`; ist er
+  weder Admin noch Anwohner, nennt das Serverlog das `sub` (`user neither admin nor resident`).
+  Das UI fragt ihn gar nicht dort: Er sieht die Ansicht des Anwohners oder den Hinweis, dass ihn
+  ein Admin eintragen muss ([Rollen](self-service.md#rollen)).
 - **`auth_scopes`**: `offline_access` (Refresh-Token) kennt nicht jeder Provider; dann die Scopes
   ohne ihn angeben. Ohne Refresh-Token erneuert das UI das Token nicht: Ist es abgelaufen,
   antwortet der Server `403` (und schliesst den WebSocket bei `connection_init`), bis man sich

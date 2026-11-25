@@ -5,7 +5,7 @@ use super::drafts::{Drafts, LinkDraft, PortKey};
 use crate::{
     error::{FrontendError, ServerProblem},
     graphql::{
-        request_resident,
+        request,
         resident::{
             change::{
                 ChangePlanQuery, ChangePlanVariables, InterfaceRef, ResidentPlan, SaveChange,
@@ -60,7 +60,7 @@ impl Component for SaveDialog {
             changes: ctx.props().drafts.changes(),
         };
         spawn_local(async move {
-            let plan = request_resident(scope.clone(), ChangePlanQuery::build(variables))
+            let plan = request(scope.clone(), ChangePlanQuery::build(variables))
                 .await
                 .map(|data| data.change_plan);
             scope.send_message(SaveDialogMsg::Plan(plan));
@@ -146,7 +146,7 @@ fn save(ctx: &Context<SaveDialog>, fingerprint: String) {
         fingerprint,
     };
     spawn_local(async move {
-        let mut saved = request_resident(scope.clone(), SaveChange::build(variables))
+        let mut saved = request(scope.clone(), SaveChange::build(variables))
             .await
             .map(|data| data.save_change);
         while let Ok(change) = &saved
@@ -155,7 +155,7 @@ fn save(ctx: &Context<SaveDialog>, fingerprint: String) {
             scope.send_message(SaveDialogMsg::Saved(Ok(change.clone())));
             TimeoutFuture::new(1_000).await;
             let job = change.job;
-            saved = request_resident(
+            saved = request(
                 scope.clone(),
                 SavedChangeQuery::build(SavedChangeVariables { job }),
             )

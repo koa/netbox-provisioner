@@ -1,6 +1,7 @@
 //! Scope: The query of a resident's saved changes and how far each has reached its devices;
 //! not saving them (`change`).
-use super::{change::PortKindInput, residents::PortKind, schema::schema};
+use super::{change::PortKindInput, residents::PortKind};
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct ChangesVariables {
@@ -9,18 +10,13 @@ pub struct ChangesVariables {
 
 /// The resident's saved changes, the newest first.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "resident",
-    graphql_type = "QueryResident",
-    variables = "ChangesVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "ChangesVariables")]
 pub struct ChangesQuery {
     #[arguments(resident: $resident)]
     pub changes: Vec<ChangeState>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ChangeState {
     pub id: i32,
     pub by: String,
@@ -32,7 +28,6 @@ pub struct ChangeState {
 
 /// The elements a change touched: ports, WLANs, devices linked elsewhere or moved.
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct Touched {
     pub ports: Vec<TouchedPort>,
     pub wlans: Vec<i32>,
@@ -40,14 +35,12 @@ pub struct Touched {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct TouchedPort {
     pub kind: PortKind,
     pub id: i32,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ChangeDevice {
     pub device: RoundDevice,
     pub state: RolloutState,
@@ -55,14 +48,12 @@ pub struct ChangeDevice {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct RoundDevice {
     pub id: i32,
     pub name: String,
 }
 
 #[derive(cynic::Enum, Debug, Clone, PartialEq, Eq)]
-#[cynic(schema = "resident")]
 pub enum RolloutState {
     Pending,
     RolledOut,
@@ -75,7 +66,6 @@ pub enum RolloutState {
 }
 
 #[derive(cynic::Enum, Debug, Clone, PartialEq, Eq)]
-#[cynic(schema = "resident")]
 pub enum HoldReason {
     PoeCut,
     CapOff,
@@ -95,11 +85,7 @@ pub struct UndoChangeVariables {
 
 /// What takes a saved change back, as the parts of a new change.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "resident",
-    graphql_type = "QueryResident",
-    variables = "UndoChangeVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "UndoChangeVariables")]
 pub struct UndoChangeQuery {
     #[arguments(resident: $resident, change: $change)]
     pub undo_change: Vec<UndoStep>,
@@ -107,7 +93,6 @@ pub struct UndoChangeQuery {
 
 /// One this frontend doesn't know yet is `Unknown`.
 #[derive(cynic::InlineFragments, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub enum UndoStep {
     WlanUndo(WlanUndo),
     PortVlanUndo(PortVlanUndo),
@@ -119,7 +104,6 @@ pub enum UndoStep {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct WlanUndo {
     pub wlan: i32,
     pub ssid: Option<String>,
@@ -128,7 +112,6 @@ pub struct WlanUndo {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct PortVlanUndo {
     pub port: i32,
     pub kind: PortKindInput,
@@ -136,7 +119,6 @@ pub struct PortVlanUndo {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ConnectDeviceUndo {
     pub device: i32,
     pub port: i32,
@@ -145,13 +127,11 @@ pub struct ConnectDeviceUndo {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct DisconnectDeviceUndo {
     pub device: i32,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct DeviceRoomUndo {
     pub device: i32,
     pub location: i32,

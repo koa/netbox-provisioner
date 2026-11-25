@@ -1,13 +1,13 @@
 //! Scope: Keeping a subscription live: its rounds, what they read and when to answer again; not the
 //! fields it serves (`graphql`).
 //!
-//! Subscriptions (`docs/device-state.md`): `SubscriptionAuthenticated` has the fields
+//! Subscriptions (`docs/device-state.md`): `SubscriptionAdmin` has the fields
 //! of the query with the same types, each a stream of [`rounds`]. It gives the object, the
 //! selection under it is resolved by the same resolvers as in the query, and it gives it again
 //! whenever what they read changed: a job on a device shown ended or logged, facts read were
 //! dropped, the topology changed in NetBox, or the youngest age a fact was taken at ran out.
 //! What they read is noted while the subscription's stream is polled ([`LiveExtension`]).
-use super::AuthenticatedGraphqlSchema;
+use super::GraphqlSchema;
 use crate::{
     facts::{self, Change, Reading},
     lock::LockAnyway,
@@ -70,7 +70,7 @@ impl Drop for Open {
 /// Answers `request` once, as over HTTP: a subscription with its first answer, so that a view
 /// asking once shares the subscription's document (and the types generated from it) with the
 /// views keeping it live.
-pub async fn execute_once(schema: &AuthenticatedGraphqlSchema, mut request: Request) -> Response {
+pub async fn execute_once(schema: &GraphqlSchema, mut request: Request) -> Response {
     if is_subscription(&mut request) {
         schema
             .execute_stream(request)

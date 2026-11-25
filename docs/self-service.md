@@ -18,8 +18,8 @@ Die Konfiguration der Geräte hängt nicht davon ab.
 
 Der Provisioner entscheidet bei jeder Abfrage, wer der angemeldete Benutzer ist (`role`):
 
-- **Admin:** `sub` in `auth_users` oder die Gruppe `admin` im Claim `groups`. Nur Admins kommen
-  an `/graphql` und den WebSocket `/graphql/ws`, sonst `403` (`user refused, no admin`).
+- **Admin:** `sub` in `auth_users` oder die Gruppe `admin` im Claim `groups`. Nur Admins
+  dürfen die Wurzelfelder der Admins aufrufen, sonst `NOT_ALLOWED` ([Rechte](graphql.md#rechte)).
 - **Anwohner:** sonst ein Benutzer, den NetBox als Mitglied eines Owners kennt. Gesucht wird
   mit `owner_list(filters: {users: {username: …}})` und dem Claim `preferred_username`, für
   30 s gemerkt. So wirkt eine Änderung der Mitglieder in NetBox spätestens nach 30 s.
@@ -28,10 +28,10 @@ Der Provisioner entscheidet bei jeder Abfrage, wer der angemeldete Benutzer ist 
 
 ## Schnittstelle der Anwohner
 
-`/graphql/resident` ist ein eigenes, schmales Schema (`graphql::resident`). Die Objekte und
-Mutationen der Admins sind darüber nicht erreichbar. Der Endpunkt prüft das Token wie
-`/graphql`. „Niemand“ bekommt seine Rolle und sonst nichts, damit das UI sagen kann, woran es
-liegt.
+Die Anwohner fragen dasselbe Schema wie die Admins (`/graphql`), aber nur seine Wurzelfelder
+der Anwohner (`graphql::resident`, Guard `ResidentOrAdmin`). Die zeigen schlichte Objekte, nie
+die Zugriffstypen der Admins. „Niemand“ bekommt nur seine Rolle (`me`, für jeden offen), damit
+das UI sagen kann, woran es liegt.
 
 - `me { role }`: `ADMIN`, `RESIDENT` oder `NOBODY`.
 - `residents`: ein Anwohner bekommt sich selbst, ein Admin jeden Owner, den NetBox an einem

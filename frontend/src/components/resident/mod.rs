@@ -4,7 +4,7 @@
 use crate::{
     error::FrontendError,
     graphql::{
-        request_resident,
+        request,
         resident::{
             changes::{ChangeState, ChangesQuery, ChangesVariables, UndoStep},
             live::{
@@ -428,7 +428,7 @@ fn read_seen(ctx: &Context<ResidentView>) {
     let scope = ctx.link().clone();
     spawn_local(async move {
         let variables = SeenUplinksVariables { resident };
-        let seen = request_resident(scope.clone(), SeenUplinksQuery::build(variables))
+        let seen = request(scope.clone(), SeenUplinksQuery::build(variables))
             .await
             .map(|data| data.seen_uplinks.devices)
             .unwrap_or_default();
@@ -437,7 +437,7 @@ fn read_seen(ctx: &Context<ResidentView>) {
     let scope = ctx.link().clone();
     spawn_local(async move {
         let variables = PortDevicesVariables { resident };
-        let behind = request_resident(scope.clone(), PortDevicesQuery::build(variables))
+        let behind = request(scope.clone(), PortDevicesQuery::build(variables))
             .await
             .map(|data| data.port_devices.ports)
             .unwrap_or_default();
@@ -451,7 +451,7 @@ fn read_state(ctx: &Context<ResidentView>) {
     let scope = ctx.link().clone();
     spawn_local(async move {
         let variables = ChangesVariables { resident };
-        let changes = request_resident(scope.clone(), ChangesQuery::build(variables))
+        let changes = request(scope.clone(), ChangesQuery::build(variables))
             .await
             .map(|data| data.changes);
         scope.send_message(ResidentViewMsg::Changes(changes));
@@ -459,7 +459,7 @@ fn read_state(ctx: &Context<ResidentView>) {
     let scope = ctx.link().clone();
     spawn_local(async move {
         let variables = LiveStateVariables { resident };
-        let live = request_resident(scope.clone(), LiveStateQuery::build(variables))
+        let live = request(scope.clone(), LiveStateQuery::build(variables))
             .await
             .map(|data| data.live_state)
             .ok();

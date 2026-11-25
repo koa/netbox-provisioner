@@ -3,7 +3,8 @@
 //! Applying the config to a device together with others (`components::device::batch_apply`): the
 //! devices to pick (`batchCandidates`), the plan of each as the batch would plan it
 //! (`generateCfg(together:)`), the batch started (`applyBatch`).
-use super::{schema::schema, types::ApplyWarning};
+use super::types::ApplyWarning;
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct DeviceVariables {
@@ -11,41 +12,32 @@ pub struct DeviceVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "DeviceVariables")]
 pub struct BatchCandidates {
     pub topology: CandidatesTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "TopologyHolder",
-    variables = "DeviceVariables"
-)]
+#[cynic(graphql_type = "TopologyHolder", variables = "DeviceVariables")]
 pub struct CandidatesTopology {
     #[arguments(id: $id)]
     pub device_by_id: Option<CandidatesDevice>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "DeviceAccess")]
+#[cynic(graphql_type = "DeviceAccess")]
 pub struct CandidatesDevice {
     pub batch_candidates: Vec<BatchCandidate>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct BatchCandidate {
     pub partner: bool,
     pub device: CandidateDevice,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated", graphql_type = "DeviceAccess")]
+#[cynic(graphql_type = "DeviceAccess")]
 pub struct CandidateDevice {
     pub id: i32,
     pub name: String,
@@ -53,7 +45,7 @@ pub struct CandidateDevice {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated", graphql_type = "SiteAccess")]
+#[cynic(graphql_type = "SiteAccess")]
 pub struct CandidateSite {
     pub id: i32,
     pub name: String,
@@ -67,42 +59,26 @@ pub struct PlanVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "QueryAuthenticated",
-    variables = "PlanVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "PlanVariables")]
 pub struct BatchDevice {
     pub topology: PlanTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "TopologyHolder",
-    variables = "PlanVariables"
-)]
+#[cynic(graphql_type = "TopologyHolder", variables = "PlanVariables")]
 pub struct PlanTopology {
     #[arguments(id: $id)]
     pub device_by_id: Option<PlanDevice>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "DeviceAccess",
-    variables = "PlanVariables"
-)]
+#[cynic(graphql_type = "DeviceAccess", variables = "PlanVariables")]
 pub struct PlanDevice {
     pub access: Option<PlanAccess>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "AccessibleDevice",
-    variables = "PlanVariables"
-)]
+#[cynic(graphql_type = "AccessibleDevice", variables = "PlanVariables")]
 pub struct PlanAccess {
     pub connected: Connected,
     #[arguments(together: $together)]
@@ -110,7 +86,6 @@ pub struct PlanAccess {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated")]
 pub struct Connected {
     pub address: String,
     pub neighbor: Option<String>,
@@ -118,7 +93,7 @@ pub struct Connected {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "GeneratedCfg")]
+#[cynic(graphql_type = "GeneratedCfg")]
 pub struct PlannedCfg {
     pub diff: super::types::CfgDiff,
     pub warnings: Vec<ApplyWarning>,
@@ -130,18 +105,14 @@ pub struct ApplyBatchVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "ApplyBatchVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "ApplyBatchVariables")]
 pub struct ApplyBatch {
     #[arguments(ids: $ids)]
     pub apply_batch: Vec<BatchJob>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "Job")]
+#[cynic(graphql_type = "Job")]
 pub struct BatchJob {
     pub id: i32,
     pub device_id: Option<i32>,

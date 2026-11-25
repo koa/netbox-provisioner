@@ -159,15 +159,14 @@ without a tenant of its own takes its credentials from its location's tenant: a 
 a RouterOS device other credentials (`OTHER_CREDENTIALS`). Who a user
 is decides `role::of` per request: admin, else a resident by the owners NetBox has its
 `preferred_username` in (`netbox::owners`, kept 30 s), else nobody. Residents ask
-`/graphql/resident` (`graphql::resident`, `docs/self-service.md`), a schema of its own that
-shows only plain objects of what they have, never the admins' access types; `binary`'s
-`with_role` hands the role to the request (nobody gets `NOBODY` and nothing). An admin gets
-every resident there (support view). The frontend asks `me { role }` there first
+the one schema's residents' root fields (`graphql::resident`, `docs/self-service.md`), which
+show only plain objects of what they have, never the admins' access types; `binary`'s
+`with_role` hands the role to the request (nobody gets `me` and nothing else). An admin gets
+every resident there (support view). The frontend asks `me { role }` first
 (`app::RoleGate`): an admin gets the router of the admins' pages (with `/residents`, the
 support view), a resident only `pages::residents` (`components::resident`, the prototype's
 tabs „Dosen und Geräte“ and „Netze“), nobody a hint; its queries are in
-`graphql::resident`, a third cynic schema "resident" (`frontend/build.rs`), sent by
-`graphql::request_resident`. What a resident changes is a helper's plan too
+`graphql::resident`. What a resident changes is a helper's plan too
 (`graphql::resident::change`: `changePlan`, `saveChange` of a list of `ResidentChange`
 `@oneOf`, `savedChange`): the frontend collects them as drafts (`components::resident::drafts`,
 one per element, edited right in the tabs `ports` and `networks`) and previews and saves them
@@ -680,7 +679,7 @@ sent two to each device. The check and a new login's identity go through the fac
 
 Pages stay live over subscriptions on the WebSocket `/graphql/ws` (`graphql-transport-ws`, the
 token in the `connection_init` payload, checked as the header of `/graphql`).
-`SubscriptionAuthenticated` has the query's fields with the same types (`topology`, `jobs`), each
+`SubscriptionAdmin` has the query's fields with the same types (`topology`, `jobs`), each
 a stream of `graphql::live::rounds`: it gives the object, the selection under it is resolved by
 the query's resolvers while `LiveExtension` notes the facts and job devices they read
 (`facts::reading_in`), and it gives it again on a `facts::Change` concerning them (a job, facts
@@ -705,15 +704,16 @@ its first answer (`live::execute_once`): a view asking once shares the document 
 types with the views subscribing (`Findings`, `InterfaceView`, `SiteDevices`, `ListSites`).
 
 The UI logs in over OIDC (`yew-oauth2` in the frontend, structure taken from the cable-editor);
-the backend checks the JWT against `auth_issuer` and lets only admins in (`role::is_admin`:
-`auth_users` or the group `admin` in the claim `groups`), both as
-middleware of `/graphql` in `binary` (`authenticated_graphql`: `403` otherwise, and the server
+the backend checks the JWT against `auth_issuer` (`binary`, `graphql_with_token`: a request
+without a token gets no role, `graphql_without_token`) and finds the role (`role::of`: admin
+by `auth_users` or the group `admin` in the claim `groups`); each root field's guard decides
+(`graphql::guard`, `docs/graphql.md#rechte`; a refused token gets `403`, and the server
 log says why; the frontend words the status, `i18n::error::refused`; without a refresh token
 `yew-oauth2` keeps an expired token as authenticated, so every page shows „Anmeldung
 abgelaufen“ with a login button on top (`components::frame::login_expired`, `auth::start_login`, no
 redirect by itself) once `graphql::post` gets `401`/`403` or the WebSocket's `connection_init`
-is refused (async-graphql closes it with `1002` and the error, `token …`); not for a user
-outside `auth_users`, logging in again changes nothing there; with errors async-graphql may leave a failed non-null root
+is refused (async-graphql closes it with `1002` and the error, `token …`); a user without the
+role gets `NOT_ALLOWED` in the answer instead, logging in again changes nothing there; with errors async-graphql may leave a failed non-null root
 field out of `data`, so `graphql::decode` then gives only the errors) (`docs/login.md`:
 the `auth_*` settings and how to set up Pocket-ID; keep it in line with them). biscuit checks
 a claim only where the token has it, so `validation_options_for` requires `exp`, `iss`, `aud`
@@ -1617,9 +1617,12 @@ QEMU's, the golden image's dhcp-client is bound to it).
   `crate::i18n::…`. Names RouterOS and NetBox use themselves (`RouterOS`,
   `long-term`) stay as they are. `FrontendError::message` is the one-line text for the user,
   its `Display` is for the log.
-- Who may call what is decided at the boundary, once: the token and `auth_users` in `binary`'s
-  middleware, `allow_apply` by `#[graphql(guard = "WritesAllowed")]` on each writing mutation
-  (a new one needs it too). The work below (`apply`, `bootstrap`, `update`) doesn't ask again,
+- Who may call what: the role at the root field, ownership at the object. `binary` checks the
+  token and finds the role once per request; every root field has a guard (`graphql::guard`:
+  `Admin` on the admins' roots, `ResidentOrAdmin` on the residents', none only on
+  `QueryOpen`), and `graphql::test::rights` fails for one without (a new residents' field goes
+  into its list `RESIDENT`). `allow_apply` by `#[graphql(guard = "Admin.and(WritesAllowed)")]`
+  on each writing mutation (a new one needs it too; a field's guard replaces the object's). The work below (`apply`, `bootstrap`, `update`) doesn't ask again,
   and the frontend only hides or disables what the backend refuses anyway.
 - A `Mutex` is locked with `lock::LockAnyway::lock_anyway`: a panic in one job poisons it,
   and the server and the other jobs go on with its data.

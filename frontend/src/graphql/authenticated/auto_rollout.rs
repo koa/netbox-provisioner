@@ -1,6 +1,6 @@
 //! Scope: The queries and mutations of a site's automatic rollout card
 //! (`components::site::auto_rollout`); nothing else.
-use super::schema::schema;
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct SiteVariables {
@@ -8,34 +8,25 @@ pub struct SiteVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "SubscriptionAuthenticated",
-    variables = "SiteVariables"
-)]
+#[cynic(graphql_type = "Subscription", variables = "SiteVariables")]
 pub struct SiteAutoRolloutQuery {
     pub topology: Topology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "TopologyHolder",
-    variables = "SiteVariables"
-)]
+#[cynic(graphql_type = "TopologyHolder", variables = "SiteVariables")]
 pub struct Topology {
     #[arguments(id: $site)]
     pub site_by_id: Option<Site>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "SiteAccess")]
+#[cynic(graphql_type = "SiteAccess")]
 pub struct Site {
     pub auto_rollout: Option<SiteAutoRollout>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct SiteAutoRollout {
     pub seen: bool,
     pub error: Option<SiteAutoRolloutError>,
@@ -47,7 +38,6 @@ pub struct SiteAutoRollout {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct ChangeState {
     pub id: i32,
     pub by: String,
@@ -57,7 +47,6 @@ pub struct ChangeState {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct ChangeDevice {
     pub device: RoundDevice,
     pub state: RolloutState,
@@ -65,7 +54,6 @@ pub struct ChangeDevice {
 }
 
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum RolloutState {
     Pending,
     RolledOut,
@@ -78,14 +66,12 @@ pub enum RolloutState {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct Unmet {
     pub device: RoundDevice,
     pub lacks: Vec<Lack>,
 }
 
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum Lack {
     #[cynic(rename = "LOOPBACK_IPV_4")]
     LoopbackIpv4,
@@ -98,7 +84,6 @@ pub enum Lack {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct SiteAutoRolloutError {
     pub reason: SiteError,
     pub devices: Vec<RoundDevice>,
@@ -106,7 +91,6 @@ pub struct SiteAutoRolloutError {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct LastRound {
     pub outcome: RoundOutcome,
     pub applied: Vec<RoundDevice>,
@@ -117,14 +101,12 @@ pub struct LastRound {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct HeldDevice {
     pub device: RoundDevice,
     pub reasons: Vec<HoldReason>,
 }
 
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum HoldReason {
     PoeCut,
     CapOff,
@@ -137,14 +119,12 @@ pub enum HoldReason {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct RoundDevice {
     pub id: i32,
     pub name: String,
 }
 
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum SiteError {
     NotInLine,
     ApplyFailed,
@@ -153,7 +133,6 @@ pub enum SiteError {
 }
 
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum RoundOutcome {
     NothingToDo,
     NotInLine,
@@ -169,11 +148,7 @@ pub enum RoundOutcome {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "SiteVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "SiteVariables")]
 pub struct ClearAutoRolloutError {
     #[arguments(siteId: $site)]
     #[expect(dead_code, reason = "selected because a mutation needs a field")]
@@ -186,11 +161,7 @@ pub struct ReleaseVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "ReleaseVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "ReleaseVariables")]
 pub struct ReleaseAutoRollout {
     #[arguments(deviceIds: $devices)]
     #[expect(dead_code, reason = "selected because a mutation needs a field")]
@@ -198,11 +169,7 @@ pub struct ReleaseAutoRollout {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "ReleaseVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "ReleaseVariables")]
 pub struct AcceptAutoRolloutDiff {
     #[arguments(deviceIds: $devices)]
     #[expect(dead_code, reason = "selected because a mutation needs a field")]

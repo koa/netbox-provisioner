@@ -1,8 +1,5 @@
-//! Scope: The queries of the authenticated endpoint, one module per area; not sending them
-//! (`graphql`).
-//!
-//! The queries of the authenticated endpoint (`/graphql`), checked against its schema
-//! (`schema.graphql`, `schema`); one module per page or component.
+//! Scope: The queries of the admins' root fields, one module per page or component; not sending
+//! them (`graphql`).
 
 pub mod adjust_target;
 pub mod auto_rollout;
@@ -21,7 +18,6 @@ pub mod netbox_plan;
 pub mod network_map;
 pub mod rollout;
 pub mod saved_jobs;
-pub mod schema;
 pub mod site_diff;
 pub mod types;
 pub mod www_ca;

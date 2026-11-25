@@ -1,9 +1,6 @@
-//! Scope: The queries of the residents' endpoint; not the admins' (`authenticated`).
-//!
-//! The queries of the residents' endpoint (`/graphql/resident`), checked against its own schema
-//! (`schema`), apart from the admins'.
+//! Scope: The queries of the residents' root fields (and the role); not the admins'
+//! (`authenticated`).
 pub mod change;
 pub mod changes;
 pub mod live;
 pub mod residents;
-pub mod schema;

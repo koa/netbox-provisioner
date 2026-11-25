@@ -1,36 +1,15 @@
 use anyhow::Result;
-use backend::graphql::{create_anonymous_schema, create_schema, resident::create_resident_schema};
+use backend::graphql::create_schema;
 use std::fs;
 
+/// Writes the server's schema and registers it for cynic as the default
+/// (`graphql::schema`), which checks every query struct against it.
 fn main() -> Result<()> {
     fs::create_dir_all("target")?;
-    write_graphql_schema()?;
-    write_anonymous_graphql_schema()?;
-    write_resident_graphql_schema()?;
-    Ok(())
-}
-
-/// Also registers it for cynic as "authenticated" (`graphql::authenticated::schema`), which
-/// checks every query struct naming it against it.
-fn write_graphql_schema() -> Result<()> {
     let schema = create_schema(Default::default());
-    fs::write("src/graphql/authenticated/schema.graphql", schema.sdl())?;
-    cynic_codegen::register_schema("authenticated")
-        .from_sdl_file("src/graphql/authenticated/schema.graphql")?;
-    Ok(())
-}
-/// Registers it for cynic as "anonymous" (`graphql::anonymous::schema`), apart from the
-/// authenticated one.
-fn write_anonymous_graphql_schema() -> Result<()> {
-    let schema = create_anonymous_schema();
-    fs::write("target/anonymous_schema.graphql", schema.sdl())?;
-    cynic_codegen::register_schema("anonymous").from_sdl_file("target/anonymous_schema.graphql")?;
-    Ok(())
-}
-/// Registers it for cynic as "resident" (`graphql::resident::schema`), apart from the admins'.
-fn write_resident_graphql_schema() -> Result<()> {
-    let schema = create_resident_schema(Default::default());
-    fs::write("target/resident_schema.graphql", schema.sdl())?;
-    cynic_codegen::register_schema("resident").from_sdl_file("target/resident_schema.graphql")?;
+    fs::write("target/schema.graphql", schema.sdl())?;
+    cynic_codegen::register_schema("provisioner")
+        .from_sdl_file("target/schema.graphql")?
+        .as_default()?;
     Ok(())
 }

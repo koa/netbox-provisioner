@@ -57,6 +57,7 @@ pub fn server(problem: &impl Problem) -> String {
         "DEVICE_API" => format!("Zugriff auf das Gerät fehlgeschlagen: {}", p("cause")),
         "MISSING_CREDENTIALS" => "Keine Zugangsdaten für das Gerät".into(),
         "APPLY_NOT_ALLOWED" => "Schreiben auf Geräte ist gesperrt (allow_apply)".into(),
+        "NOT_ALLOWED" => "Das darf dieser Benutzer nicht".into(),
         "UNKNOWN_DEVICE" => format!("Gerät {} gibt es in NetBox nicht", p("id")),
         "UNKNOWN_DEVICE_NAME" => format!("Gerät {} gibt es in NetBox nicht (mehr)", p("device")),
         "UNKNOWN_SITE" => format!("Site {} gibt es in NetBox nicht", p("id")),
@@ -582,12 +583,12 @@ pub fn server(problem: &impl Problem) -> String {
 }
 
 /// What a status the server answers instead of a result means: `401` and `403` come from
-/// the token check (`binary`: the token, or the user not in `auth_users`; the server log
-/// has the reason).
+/// the token check (`binary`; the server log has the reason). A user the token names but who
+/// may not call a field gets `NOT_ALLOWED` in the answer instead.
 pub fn refused(status: u16) -> String {
     match status {
         401 => "Nicht angemeldet: bitte neu anmelden".into(),
-        403 => "Kein Zugriff: Anmeldung abgelehnt oder Benutzer nicht freigegeben".into(),
+        403 => "Kein Zugriff: Anmeldung abgelehnt".into(),
         status => format!("Server antwortet {status}"),
     }
 }

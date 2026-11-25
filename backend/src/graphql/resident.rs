@@ -1,6 +1,7 @@
-//! Scope: The residents' GraphQL schema (`/graphql/resident`): what a resident sees of its
-//! ports and networks, and an admin of every resident's; not what they change (`change`), the
-//! admins' schema (`graphql`), nor who is which role (`role`).
+//! Scope: The residents' root fields of the schema: what a resident sees of its ports and
+//! networks, and an admin of every resident's; not what they change (`change`), the admins'
+//! root fields (`graphql`), nor who is which role (`role`).
+use super::guard::ResidentOrAdmin;
 use crate::helper::connect_device::uplink_port;
 use crate::{
     role::Role,
@@ -15,7 +16,7 @@ use crate::{
         ownership::Owned,
     },
 };
-use async_graphql::{Context, EmptySubscription, Enum, MergedObject, Object, Schema, SimpleObject};
+use async_graphql::{Context, Enum, MergedObject, Object, SimpleObject};
 use std::{collections::BTreeSet, sync::Arc};
 
 pub mod change;
@@ -24,24 +25,15 @@ pub mod live;
 mod test;
 pub mod undo;
 
-pub type ResidentGraphqlSchema = Schema<QueryResident, change::MutationResident, EmptySubscription>;
-
-/// The schema the residents' endpoint serves; the request carries the user's [`Role`] and
-/// `UserInfo`.
-pub fn create_resident_schema(topology: TopologyHolder) -> ResidentGraphqlSchema {
-    let query = QueryResident(
+/// The residents' root fields, for the one schema (`graphql::Query`).
+pub fn query(topology: TopologyHolder) -> QueryResident {
+    QueryResident(
         QueryView {
             topology: topology.clone(),
         },
         change::QueryChange::new(topology.clone()),
-        live::QueryLive::new(topology.clone()),
-    );
-    Schema::build(
-        query,
-        change::MutationResident::new(topology),
-        EmptySubscription,
+        live::QueryLive::new(topology),
     )
-    .finish()
 }
 
 /// What a resident sees (`QueryView`) and the plans of its changes (`change`).
@@ -183,16 +175,18 @@ pub struct ResidentWlan {
     access_points: u32,
 }
 
-#[Object]
+/// What the user is here, by the request's role.
+pub fn me(context: &Context<'_>) -> Me {
+    let role = match context.data_opt::<Role>() {
+        Some(Role::Admin) => RoleKind::Admin,
+        Some(Role::Resident { .. }) => RoleKind::Resident,
+        Some(Role::Nobody) | None => RoleKind::Nobody,
+    };
+    Me { role }
+}
+
+#[Object(guard = "ResidentOrAdmin")]
 impl QueryView {
-    async fn me(&self, context: &Context<'_>) -> Me {
-        let role = match context.data_opt::<Role>() {
-            Some(Role::Admin) => RoleKind::Admin,
-            Some(Role::Resident { .. }) => RoleKind::Resident,
-            Some(Role::Nobody) | None => RoleKind::Nobody,
-        };
-        Me { role }
-    }
     /// The residents the user may see: a resident its own, an admin every one NetBox names
     /// at a device, port or VLAN.
     async fn residents(&self, context: &Context<'_>) -> Box<[Resident]> {

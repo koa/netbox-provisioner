@@ -1,7 +1,7 @@
 //! Scope: Tests of `graphql::resident::change`; nothing else.
 use super::behind;
 use crate::{
-    graphql::resident::create_resident_schema,
+    graphql::create_schema,
     helper::connect_device::uplink_port,
     role::Role,
     topology::{
@@ -21,7 +21,7 @@ async fn ask(role: Role, query: &str) -> Result<Value, String> {
 
 /// [`ask`] on the NetBox response `raw`.
 async fn ask_on(raw: Value, role: Role, query: &str) -> Result<Value, String> {
-    let schema = create_resident_schema(TopologyHolder::from(topology_from(raw)));
+    let schema = create_schema(TopologyHolder::from(topology_from(raw)));
     let response = schema
         .execute(async_graphql::Request::new(query).data(role))
         .await;
@@ -69,7 +69,7 @@ async fn a_resident_plans_a_change_of_its_wlan() {
     );
 }
 
-/// Nobody plans for an owner it isn't, nor for a WLAN its owner doesn't have; an admin plans
+/// Nobody plans for an owner it isn't (one without a role not at all), nor for a WLAN its owner doesn't have; an admin plans
 /// for any resident, within what that one has.
 #[tokio::test]
 async fn others_wlans_and_owners_are_refused() {
@@ -85,7 +85,7 @@ async fn others_wlans_and_owners_are_refused() {
     assert_eq!(ask(huber, &plan_query(HUBER.0, wlan, "x")).await, not_owned);
     assert_eq!(
         ask(Role::Nobody, &plan_query(MEIER.0, wlan, "x")).await,
-        not_owned
+        Err("\"NOT_ALLOWED\"".to_string())
     );
     assert!(
         ask(Role::Admin, &plan_query(MEIER.0, wlan, "x"))

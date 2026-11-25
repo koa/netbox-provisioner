@@ -4,7 +4,7 @@
 use crate::{
     error::FrontendError,
     graphql::{
-        request_resident,
+        request,
         resident::changes::{
             ChangeDevice, ChangeState, RolloutState, UndoChangeQuery, UndoChangeVariables, UndoStep,
         },
@@ -58,7 +58,7 @@ impl Component for ChangesTab {
                 };
                 self.undo_failed = None;
                 spawn_local(async move {
-                    let answer = request_resident(scope.clone(), UndoChangeQuery::build(variables))
+                    let answer = request(scope.clone(), UndoChangeQuery::build(variables))
                         .await
                         .map(|data| data.undo_change);
                     scope.send_message(ChangesMsg::UndoAnswer(answer));

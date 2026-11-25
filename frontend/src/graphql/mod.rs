@@ -1,5 +1,5 @@
 //! Scope: Sending GraphQL requests and what all of them share; not the queries (`anonymous`,
-//! `authenticated`).
+//! `authenticated`, `resident`).
 use crate::{auth, error::FrontendError};
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use serde::{Serialize, de::DeserializeOwned};
@@ -26,6 +26,7 @@ pub mod anonymous;
 pub mod authenticated;
 pub mod live;
 pub mod resident;
+pub mod schema;
 
 /// How often a view that doesn't subscribe asks again (a site's diff job).
 pub(crate) const POLL: Duration = Duration::from_secs(1);
@@ -37,12 +38,7 @@ pub(crate) const RETRY: [Duration; 4] = [
     Duration::from_secs(10),
 ];
 
-static GRAPHQL_AUTHENTICATED_URL: LazyLock<String> =
-    LazyLock::new(|| format!("{}/graphql", host()));
-static GRAPHQL_RESIDENT_URL: LazyLock<String> =
-    LazyLock::new(|| format!("{}/graphql/resident", host()));
-static GRAPHQL_ANONYMOUS_URL: LazyLock<String> =
-    LazyLock::new(|| format!("{}/graphql_anonymous", host()));
+static GRAPHQL_URL: LazyLock<String> = LazyLock::new(|| format!("{}/graphql", host()));
 
 pub fn host() -> String {
     let location = web_sys::window().unwrap().location();
@@ -65,7 +61,7 @@ impl<T: DeserializeOwned + 'static, V: Serialize> Sendable for cynic::StreamingO
     type Data = T;
 }
 
-/// Sends `operation` (cynic) to the authenticated endpoint: without data, the errors.
+/// Sends `operation` (cynic) with the user's token: without data, the errors.
 pub async fn request<O: Sendable, S: Component>(
     scope: Scope<S>,
     operation: O,
@@ -82,21 +78,7 @@ pub async fn request_response<O: Sendable, S: Component>(
     operation: O,
 ) -> Result<Response<O::Data>, FrontendError> {
     let client = authenticated_client(&scope)?;
-    post(&client, GRAPHQL_AUTHENTICATED_URL.as_str(), &operation).await
-}
-
-/// Sends `operation` (cynic) to the residents' endpoint (`graphql::resident`): without data,
-/// the errors.
-pub async fn request_resident<O: Sendable, S: Component>(
-    scope: Scope<S>,
-    operation: O,
-) -> Result<O::Data, FrontendError> {
-    let client = authenticated_client(&scope)?;
-    let response: Response<O::Data> =
-        post(&client, GRAPHQL_RESIDENT_URL.as_str(), &operation).await?;
-    response
-        .data
-        .ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))
+    post(&client, GRAPHQL_URL.as_str(), &operation).await
 }
 
 /// A client sending the user's token.
@@ -140,7 +122,8 @@ async fn post<T: DeserializeOwned>(
     let status = response.status();
     if !status.is_success() {
         let text = response.text().await.unwrap_or_default();
-        if matches!(status.as_u16(), 401 | 403) && auth::refuses_token(&text) {
+        // every user may ask, a refusal is the token's (the roles answer in the errors)
+        if matches!(status.as_u16(), 401 | 403) {
             auth::report(true);
         }
         return Err(FrontendError::Server {
@@ -170,11 +153,10 @@ pub(crate) fn decode<T: DeserializeOwned>(
     Ok(Response { data, errors })
 }
 
-/// Sends `operation` (cynic) to the anonymous endpoint, before the login.
+/// Sends `operation` (cynic) without a token, before the login.
 pub async fn request_anonymous<O: Sendable>(operation: O) -> Result<O::Data, FrontendError> {
     let client = reqwest::Client::builder().build()?;
-    let response: Response<O::Data> =
-        post(&client, GRAPHQL_ANONYMOUS_URL.as_str(), &operation).await?;
+    let response: Response<O::Data> = post(&client, GRAPHQL_URL.as_str(), &operation).await?;
     response
         .data
         .ok_or_else(|| FrontendError::Graphql(response.errors.unwrap_or_default()))

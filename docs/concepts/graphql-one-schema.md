@@ -1,6 +1,6 @@
 # Konzept: Ein GraphQL-Schema
 
-Status: nicht umgesetzt, Aufgabe B40 in [todo.md](../todo.md).
+Status: umgesetzt (B40, [done.md](../done.md)); wie es jetzt ist, sagt [GraphQL](../graphql.md#rechte). Abweichend vom Vorschlag heisst der Guard der Anwohner `ResidentOrAdmin` (`Resident` ist der Typ eines Anwohners), `me` ist wie `authentication` für jeden offen, und die Prüfung von `allow_apply` in `auto_rollout` gilt nur beim Start und ist kein Wurzelfeld.
 
 ## Heute
 

@@ -6,9 +6,9 @@
 use super::{
     interfaces::RowAction,
     neighbor_findings::{NeighborFinding, SeenNeighbor},
-    schema::schema,
     types::{DeviceRef, DeviceTarget, InterfaceRef, PoeOutStatus, PoeProblem},
 };
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct RefreshInterfaceLiveVariables {
@@ -16,11 +16,7 @@ pub struct RefreshInterfaceLiveVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "RefreshInterfaceLiveVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "RefreshInterfaceLiveVariables")]
 pub struct RefreshInterfaceLive {
     #[arguments(id: $id)]
     #[expect(dead_code, reason = "selected because a mutation needs a field")]
@@ -34,32 +30,20 @@ pub struct InterfaceLiveVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "SubscriptionAuthenticated",
-    variables = "InterfaceLiveVariables"
-)]
+#[cynic(graphql_type = "Subscription", variables = "InterfaceLiveVariables")]
 pub struct InterfaceLiveSubscription {
     pub topology: LiveTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "TopologyHolder",
-    variables = "InterfaceLiveVariables"
-)]
+#[cynic(graphql_type = "TopologyHolder", variables = "InterfaceLiveVariables")]
 pub struct LiveTopology {
     #[arguments(id: $id)]
     pub device_by_id: Option<LiveDevice>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "DeviceAccess",
-    variables = "InterfaceLiveVariables"
-)]
+#[cynic(graphql_type = "DeviceAccess", variables = "InterfaceLiveVariables")]
 pub struct LiveDevice {
     #[arguments(
         target: $target,
@@ -68,14 +52,13 @@ pub struct LiveDevice {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "AccessibleDevice")]
+#[cynic(graphql_type = "AccessibleDevice")]
 pub struct LiveAccess {
     pub interface_live_age: i32,
     pub interface_live: InterfaceLive,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct InterfaceLive {
     pub rows: Vec<LiveRow>,
     pub other_findings: Vec<NeighborFinding>,
@@ -84,7 +67,6 @@ pub struct InterfaceLive {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct LiveRow {
     pub interface: i32,
     pub seen: Vec<SeenNeighbor>,
@@ -100,7 +82,6 @@ pub struct LiveRow {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct OspfNeighbor {
     pub instance: String,
     pub address: String,
@@ -111,7 +92,6 @@ pub struct OspfNeighbor {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct BridgeAnswer {
     pub device: DeviceRef,
     pub address: Option<String>,
@@ -119,7 +99,6 @@ pub struct BridgeAnswer {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct PoeMismatch {
     pub port: InterfaceRef,
     pub problem: PoeProblem,
@@ -127,7 +106,6 @@ pub struct PoeMismatch {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DeviceOnlyAddress {
     pub address: String,
     pub interface_name: String,
@@ -138,7 +116,6 @@ pub struct DeviceOnlyAddress {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DeviceOnlyLease {
     pub address: String,
     pub mac: Option<String>,

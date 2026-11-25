@@ -1,6 +1,3 @@
-//! Scope: The queries of the anonymous endpoint; not those after the login (`authenticated`).
-//!
-//! The queries of the anonymous endpoint (`/graphql_anonymous`), before the login, checked
-//! against its own schema (`schema`), apart from the authenticated one.
-pub mod schema;
+//! Scope: The queries before the login, sent without a token; not those after it
+//! (`authenticated`, `resident`).
 pub mod settings;

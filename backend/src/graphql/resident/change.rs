@@ -16,9 +16,9 @@
 //! the first change's device, as the admins' helpers do; the devices get it from the automatic
 //! rollout.
 use super::{Named, PortKind};
+use crate::graphql::guard::{NetboxWritesAllowed, ResidentOrAdmin};
 use crate::{
     Error, auto_rollout,
-    config::CONFIG,
     error_info::{ApiError, ErrorInfo},
     graphql::{refetch, user_label},
     helper::{
@@ -34,7 +34,6 @@ use crate::{
     job::{self, JobKind, JobState},
     journal::Started,
     lock::LockAnyway,
-    netbox,
     role::Role,
     topology::{
         DeviceId, FrontPortId, InterfaceId, OwnerId, Topology, TopologyHolder, VlanId, WlanId,
@@ -664,7 +663,7 @@ impl QueryChange {
     }
 }
 
-#[Object]
+#[Object(guard = "ResidentOrAdmin")]
 impl QueryChange {
     /// What `resident`'s changes would write together, one after the other, for the preview.
     async fn change_plan(
@@ -735,10 +734,11 @@ impl MutationResident {
     }
 }
 
-#[Object]
+#[Object(guard = "ResidentOrAdmin")]
 impl MutationResident {
     /// Saves `resident`'s changes to NetBox together, if their plan is still the one shown
     /// (`ResidentPlan.fingerprint`); `savedChange` tells how it went.
+    #[graphql(guard = "ResidentOrAdmin.and(NetboxWritesAllowed)")]
     async fn save_change(
         &self,
         context: &Context<'_>,
@@ -746,9 +746,6 @@ impl MutationResident {
         changes: Vec<ResidentChange>,
         fingerprint: String,
     ) -> Result<SavedChange, ApiError> {
-        if !(CONFIG.allow_netbox_write && CONFIG.netbox_write_token.is_some()) {
-            return Err(Error::Netbox(netbox::NetboxError::WriteNotAllowed).into());
-        }
         let topology = self.topology.current().await.ok_or(Error::NoTopology)?;
         let owner = acting_for(context, &topology, resident)?;
         // what takes it back, from the resident as it is before

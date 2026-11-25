@@ -1,7 +1,8 @@
 //! Scope: The query for the device's journal entries; nothing else.
 //!
 //! The device's journal entries for „Verlauf“ (`components::device::history`).
-use super::{schema::schema, types::JobKind};
+use super::types::JobKind;
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct DeviceJournalVariables {
@@ -9,34 +10,25 @@ pub struct DeviceJournalVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "QueryAuthenticated",
-    variables = "DeviceJournalVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "DeviceJournalVariables")]
 pub struct DeviceJournal {
     pub topology: Topology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "TopologyHolder",
-    variables = "DeviceJournalVariables"
-)]
+#[cynic(graphql_type = "TopologyHolder", variables = "DeviceJournalVariables")]
 pub struct Topology {
     #[arguments(id: $device)]
     pub device_by_id: Option<Device>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "DeviceAccess")]
+#[cynic(graphql_type = "DeviceAccess")]
 pub struct Device {
     pub journal: Vec<JournalEntry>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct JournalEntry {
     pub id: i32,
     pub created: String,
@@ -50,7 +42,6 @@ pub struct JournalEntry {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct JournalObservation {
     pub found: Vec<JournalLeft>,
     pub fired: Vec<JournalLeft>,
@@ -58,7 +49,6 @@ pub struct JournalObservation {
 }
 
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum JournalOutcome {
     Running,
     Done,
@@ -71,7 +61,6 @@ pub enum JournalOutcome {
 }
 
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum JournalLeft {
     ApplyFallback,
     UpdateFallback,

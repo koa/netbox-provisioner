@@ -5,9 +5,6 @@ backend = "ws://localhost:8080/graphql/ws"
 ws = true
 [[proxy]]
 backend = "http://localhost:8080/graphql"
-[[proxy]]
-backend = "http://localhost:8080/graphql_anonymous"
 
 [watch]
 watch = ["src", "Cargo.toml", "local.css"]
-ignore = ["src/graphql/authenticated/schema.graphql"]

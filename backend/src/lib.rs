@@ -62,6 +62,8 @@ pub enum Error {
     Proxy(std::net::SocketAddr, tokio_socks::Error),
     #[error("Writing to devices is disabled (allow_apply)")]
     ApplyNotAllowed,
+    #[error("Not allowed for this user")]
+    NotAllowed,
     #[error("No device {0}")]
     UnknownDevice(u32),
     /// no device in NetBox has this name (anymore)

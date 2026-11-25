@@ -213,7 +213,7 @@ sonst gegenseitig zum Neufragen bringen.
 
 ### Subscription mit denselben Typen wie die Query
 
-`SubscriptionAuthenticated` (`backend/src/graphql/live.rs`) hat ein Wurzelfeld
+`SubscriptionAdmin` (`backend/src/graphql/live.rs`) hat ein Wurzelfeld
 `topology: TopologyHolder!`, mit denselben Typen wie die Query. Eine Anzeige abonniert so genau
 die Auswahl, die sie sonst abfragt, und die Resolver darunter sind dieselben:
 

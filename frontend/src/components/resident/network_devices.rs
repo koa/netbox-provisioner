@@ -4,7 +4,7 @@ use super::network_device::NetworkDeviceItem;
 use crate::{
     error::FrontendError,
     graphql::{
-        request_resident,
+        request,
         resident::live::{NetworkDevices, NetworkDevicesQuery, NetworkDevicesVariables},
     },
 };
@@ -50,10 +50,9 @@ impl Component for NetworkDevicesView {
                     vlan: ctx.props().vlan,
                 };
                 spawn_local(async move {
-                    let answer =
-                        request_resident(scope.clone(), NetworkDevicesQuery::build(variables))
-                            .await
-                            .map(|data| data.network_devices);
+                    let answer = request(scope.clone(), NetworkDevicesQuery::build(variables))
+                        .await
+                        .map(|data| data.network_devices);
                     scope.send_message(NetworkDevicesMsg::Answer(answer));
                 });
                 NetworkDevicesView::Reading

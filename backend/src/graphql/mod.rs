@@ -28,51 +28,66 @@ use crate::{
     },
 };
 use async_graphql::{
-    Context, EmptyMutation, EmptySubscription, Guard, InputObject, Object, Schema, SimpleObject,
-    Subscription, futures_util::Stream,
+    Context, InputObject, MergedObject, Object, Schema, SimpleObject, Subscription,
+    futures_util::Stream,
 };
+use guard::{Admin, NetboxWritesAllowed, WritesAllowed};
 use serde_json::json;
 use std::sync::Arc;
+pub mod guard;
 pub mod live;
 pub mod resident;
 pub mod scalars;
-pub type AuthenticatedGraphqlSchema =
-    Schema<QueryAuthenticated, MutationAuthenticated, SubscriptionAuthenticated>;
-pub type AnonymousGraphqlSchema = Schema<QueryAnonymous, EmptyMutation, EmptySubscription>;
+#[cfg(test)]
+mod test;
+/// The one schema at `/graphql` and `/graphql/ws`: the request carries the user's [`Role`]
+/// (`role::of`, none without a login) and `UserInfo`; each root field's guard decides
+/// (`guard`).
+pub type GraphqlSchema = Schema<Query, Mutation, SubscriptionAdmin>;
 
-pub struct QueryAuthenticated {
+#[derive(MergedObject)]
+pub struct Query(QueryAdmin, resident::QueryResident, QueryOpen);
+#[derive(MergedObject)]
+pub struct Mutation(MutationAdmin, resident::change::MutationResident);
+
+pub struct QueryAdmin {
     topology: TopologyHolder,
 }
-pub struct QueryAnonymous;
-/// The fields of [`QueryAuthenticated`] worth watching, with the same types: each gives its
+/// What anyone asks, logged in or not: how to log in, and who the user is.
+pub struct QueryOpen;
+/// The fields of [`QueryAdmin`] worth watching, with the same types: each gives its
 /// value again whenever what the selection under it read changed (`live`).
-pub struct SubscriptionAuthenticated {
+pub struct SubscriptionAdmin {
     topology: TopologyHolder,
 }
-pub struct MutationAuthenticated {
+pub struct MutationAdmin {
     topology: TopologyHolder,
 }
 
-pub fn create_schema(topology: TopologyHolder) -> AuthenticatedGraphqlSchema {
+pub fn create_schema(topology: TopologyHolder) -> GraphqlSchema {
     Schema::build(
-        QueryAuthenticated {
-            topology: topology.clone(),
-        },
-        MutationAuthenticated {
-            topology: topology.clone(),
-        },
-        SubscriptionAuthenticated { topology },
+        Query(
+            QueryAdmin {
+                topology: topology.clone(),
+            },
+            resident::query(topology.clone()),
+            QueryOpen,
+        ),
+        Mutation(
+            MutationAdmin {
+                topology: topology.clone(),
+            },
+            resident::change::MutationResident::new(topology.clone()),
+        ),
+        SubscriptionAdmin { topology },
     )
     .extension(live::LiveExtension)
     .extension(crate::operation::OperationExtension)
     .finish()
 }
-pub fn create_anonymous_schema() -> AnonymousGraphqlSchema {
-    Schema::build(QueryAnonymous, EmptyMutation, EmptySubscription).finish()
-}
 
-#[Object]
-impl QueryAuthenticated {
+#[Object(guard = "Admin")]
+impl QueryAdmin {
     async fn topology(&self) -> TopologyHolder {
         self.topology.clone()
     }
@@ -160,8 +175,8 @@ fn job_subject(device_id: Option<u32>, site_id: Option<u32>) -> Option<JobSubjec
         .or(site_id.map(|id| JobSubject::Site(SiteId(id))))
 }
 
-#[Subscription]
-impl SubscriptionAuthenticated {
+#[Subscription(name = "Subscription", guard = "Admin")]
+impl SubscriptionAdmin {
     /// `topology` of the query, again whenever what was read under it changed.
     async fn topology(&self) -> impl Stream<Item = TopologyHolder> + use<> {
         let topology = self.topology.clone();
@@ -202,7 +217,7 @@ pub(crate) async fn refetch(topology: &TopologyHolder) {
     crate::auto_rollout::netbox_changed();
 }
 
-impl MutationAuthenticated {
+impl MutationAdmin {
     async fn device(&self, id: u32) -> Result<DeviceAccess, Error> {
         self.topology
             .devices_by_id(DeviceId(id))
@@ -214,33 +229,6 @@ impl MutationAuthenticated {
             .site(SiteId(id))
             .await
             .ok_or(Error::UnknownSite(id))
-    }
-}
-
-/// Lets a mutation that writes to devices through only with `allow_apply`; every such
-/// mutation carries it, the work below doesn't ask again.
-struct WritesAllowed;
-impl Guard for WritesAllowed {
-    async fn check(&self, _ctx: &Context<'_>) -> async_graphql::Result<()> {
-        if CONFIG.allow_apply {
-            Ok(())
-        } else {
-            Err(ApiError(Error::ApplyNotAllowed).into())
-        }
-    }
-}
-
-/// Lets a helper's write to NetBox through only with `allow_netbox_write` and
-/// `netbox_write_token`. Who may is decided before: `/graphql` lets only admins in (`binary`),
-/// and residents write through their own schema (`graphql::resident::change`).
-struct NetboxWritesAllowed;
-impl Guard for NetboxWritesAllowed {
-    async fn check(&self, _ctx: &Context<'_>) -> async_graphql::Result<()> {
-        if CONFIG.allow_netbox_write && CONFIG.netbox_write_token.is_some() {
-            Ok(())
-        } else {
-            Err(ApiError(Error::Netbox(netbox::NetboxError::WriteNotAllowed)).into())
-        }
     }
 }
 
@@ -348,7 +336,7 @@ pub(crate) fn user_label(ctx: &Context<'_>) -> Box<str> {
         .unwrap_or_else(|| "unknown user".into())
 }
 
-/// One device's position for `MutationAuthenticated.publishLayout`.
+/// One device's position for `MutationAdmin.publishLayout`.
 #[derive(InputObject)]
 struct DevicePositionInput {
     device_id: u32,
@@ -356,12 +344,12 @@ struct DevicePositionInput {
     y: i32,
 }
 
-#[Object]
-impl MutationAuthenticated {
+#[Object(guard = "Admin")]
+impl MutationAdmin {
     /// Writes `helper`'s plan to NetBox, if it is still the one shown
     /// (`NetboxPlan.fingerprint`). The job's `NetboxWritten` events tell what it wrote;
     /// `undoNetboxWrite` takes that back. The topology is fetched again afterwards.
-    #[graphql(guard = "NetboxWritesAllowed")]
+    #[graphql(guard = "Admin.and(NetboxWritesAllowed)")]
     async fn write_netbox_plan(
         &self,
         ctx: &Context<'_>,
@@ -400,7 +388,7 @@ impl MutationAuthenticated {
         )?)
     }
     /// Takes back what the `NetboxWrite` job `job_id` wrote, the last first.
-    #[graphql(guard = "NetboxWritesAllowed")]
+    #[graphql(guard = "Admin.and(NetboxWritesAllowed)")]
     async fn undo_netbox_write(
         &self,
         ctx: &Context<'_>,
@@ -448,7 +436,7 @@ impl MutationAuthenticated {
     /// that machinery's fingerprint check, undo log or job buys anything here. Not a job itself
     /// either, since a handful of fast field writes don't need one; the topology is fetched
     /// again before returning so the next `networkState` already has them.
-    #[graphql(guard = "NetboxWritesAllowed")]
+    #[graphql(guard = "Admin.and(NetboxWritesAllowed)")]
     async fn publish_layout(
         &self,
         ctx: &Context<'_>,
@@ -476,7 +464,7 @@ impl MutationAuthenticated {
     /// device's config, usually one of `bootstrapPlan.discovered`. The neighbor runs no job of
     /// its own meanwhile (`BUSY` either way): an apply or a reboot of it would cut the session,
     /// and its commands would land on the neighbor's console.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn bootstrap(
         &self,
         ctx: &Context<'_>,
@@ -511,7 +499,7 @@ impl MutationAuthenticated {
     /// restored afterwards. A device without two partitions and without a neighbor to reach it
     /// through (`DeviceAccess.updateNeighbors`) is only updated with `withoutFallback`
     /// (`NO_UPDATE_FALLBACK`). The job's events tell how far it got.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     #[allow(clippy::too_many_arguments)]
     async fn update_routeros(
         &self,
@@ -539,7 +527,7 @@ impl MutationAuthenticated {
     /// after the pilots and after a device that failed (`RolloutPaused`) until
     /// `continueRollout`; `cancelJob` ends it and cancels the updates it started. One rollout
     /// at a time: while one runs, that one is given back.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn start_rollout(
         &self,
         ctx: &Context<'_>,
@@ -583,7 +571,7 @@ impl MutationAuthenticated {
         Ok(job)
     }
     /// Lets the paused rollout job `job_id` go on (`RolloutPaused`).
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn continue_rollout(&self, job_id: u32) -> Result<bool, ApiError> {
         let control = rollout::run::Control::of(job_id).ok_or(Error::UnknownJob(job_id))?;
         control.go_on();
@@ -591,7 +579,7 @@ impl MutationAuthenticated {
     }
     /// Leaves device `device_id` out of the running rollout job `job_id`, unless its update
     /// started already.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn skip_rollout_device(&self, job_id: u32, device_id: u32) -> Result<bool, ApiError> {
         let control = rollout::run::Control::of(job_id).ok_or(Error::UnknownJob(job_id))?;
         control.skip(device_id);
@@ -600,7 +588,7 @@ impl MutationAuthenticated {
     /// Starts taking RouterOS 7 on device `id` back to the older `version` (`allow_apply` must
     /// be set): the packages it runs, of that version, then `/system/package/downgrade`. The
     /// rest as for `updateRouteros`, without a channel.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     #[allow(clippy::too_many_arguments)]
     async fn downgrade_routeros(
         &self,
@@ -638,7 +626,7 @@ impl MutationAuthenticated {
     /// device mode change. A job of the supplier, so it runs next to one of the device (the
     /// device mode waiting for its confirmation); it waits while the device or one it powers
     /// updates, and keeps them from updating until the device answers again.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn power_cycle(&self, ctx: &Context<'_>, id: u32) -> Result<Arc<Job>, ApiError> {
         let device = self.device(id).await?;
         let crate::device::power_cycle::Supplier {
@@ -675,7 +663,7 @@ impl MutationAuthenticated {
     /// `allow_apply` must be set). Target and credentials as for `DeviceAccess.access`.
     /// Watchdogs a running job of another device holds suspended aren't restored
     /// (`LEFTOVER_HELD`): that job does it at its end.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn clear_leftover(
         &self,
         ctx: &Context<'_>,
@@ -707,7 +695,7 @@ impl MutationAuthenticated {
     }
     /// Starts a reboot of a device (`allow_apply` must be set) and waits until it is back.
     /// Target and credentials as for `DeviceAccess.access`.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn reboot_device(
         &self,
         ctx: &Context<'_>,
@@ -727,7 +715,7 @@ impl MutationAuthenticated {
     /// (`DeviceAccess.access.deviceMode.changes`; `allow_apply` must be set). The device asks for
     /// a confirmation at the device (`DeviceModeConfirm`): its button, or cutting its power.
     /// Target and credentials as for `DeviceAccess.access`.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn change_device_mode(
         &self,
         ctx: &Context<'_>,
@@ -748,7 +736,7 @@ impl MutationAuthenticated {
     /// Starts splitting the flash in two partitions (`DeviceAccess.access.partitions.canSplit`;
     /// `allow_apply` must be set): the device reformats its flash and reboots. Target and
     /// credentials as for `DeviceAccess.access`.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn repartition_device(
         &self,
         ctx: &Context<'_>,
@@ -767,7 +755,7 @@ impl MutationAuthenticated {
     /// Starts booting the device from `partition` (one of `DeviceAccess.access.partitions` with
     /// a RouterOS on it; `allow_apply` must be set), e.g. back to the RouterOS from before an
     /// update. Target and credentials as for `DeviceAccess.access`.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn boot_partition(
         &self,
         ctx: &Context<'_>,
@@ -796,7 +784,7 @@ impl MutationAuthenticated {
     }
     /// Removes the file of a job saved before the restart that didn't go on (`savedJobs`);
     /// what it left on the device stays, `leftovers` finds it.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn discard_saved_job(&self, device_id: u32) -> Result<bool, ApiError> {
         match crate::saved_job::discard(DeviceId(device_id)) {
             true => Ok(true),
@@ -814,13 +802,13 @@ impl MutationAuthenticated {
     }
     /// Clears the error state of an automatic site: the next round, at once, applies its
     /// devices (`auto_rollout`).
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn clear_auto_rollout_error(&self, site_id: u32) -> bool {
         crate::auto_rollout::clear_error(SiteId(site_id))
     }
     /// Releases manual devices holding the automatic rollout back: the next round, at once,
     /// applies them with the automatic ones.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn release_auto_rollout(&self, device_ids: Vec<u32>) -> bool {
         let devices: Vec<DeviceId> = device_ids.into_iter().map(DeviceId).collect();
         crate::auto_rollout::release(&devices);
@@ -828,7 +816,7 @@ impl MutationAuthenticated {
     }
     /// Takes the diffs with which manual devices hold the automatic rollout back as theirs:
     /// they stay on the devices, unapplied, and the next round goes on without them.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn accept_auto_rollout_diff(&self, device_ids: Vec<u32>) -> bool {
         let devices: Vec<DeviceId> = device_ids.into_iter().map(DeviceId).collect();
         crate::auto_rollout::accept(&devices);
@@ -837,7 +825,7 @@ impl MutationAuthenticated {
     /// Starts applying the generated config to `ids` together (`allow_apply` must be set),
     /// each with its NetBox address and credentials: one job per device, with one fallback
     /// for all of them, taken away only once every one is reached again (`device::batch`).
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn apply_batch(
         &self,
         ctx: &Context<'_>,
@@ -886,7 +874,7 @@ impl MutationAuthenticated {
     }
     /// Starts applying the generated config to a device (`allow_apply` must be set). Target
     /// and credentials as for `DeviceAccess.access`.
-    #[graphql(guard = "WritesAllowed")]
+    #[graphql(guard = "Admin.and(WritesAllowed)")]
     async fn apply_cfg(
         &self,
         ctx: &Context<'_>,
@@ -904,7 +892,11 @@ impl MutationAuthenticated {
     }
 }
 #[Object]
-impl QueryAnonymous {
+impl QueryOpen {
+    /// What the user is here (none without a login).
+    async fn me(&self, context: &Context<'_>) -> resident::Me {
+        resident::me(context)
+    }
     /// gives the coordinates for authentication
     async fn authentication(&self) -> AuthenticationData {
         AuthenticationData {

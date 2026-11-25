@@ -4,7 +4,7 @@ use crate::{
     components::{resident::ResidentView, widgets::popup::Select},
     error::FrontendError,
     graphql::{
-        request_resident,
+        request,
         resident::residents::{Resident, Residents},
     },
 };
@@ -102,7 +102,7 @@ impl Component for ResidentsPage {
 fn load(ctx: &Context<ResidentsPage>) {
     let scope = ctx.link().clone();
     spawn_local(async move {
-        let residents = request_resident(scope.clone(), Residents::build(()))
+        let residents = request(scope.clone(), Residents::build(()))
             .await
             .map(|data| data.residents);
         scope.send_message(ResidentsMsg::Residents(residents));

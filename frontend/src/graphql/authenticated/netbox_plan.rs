@@ -8,12 +8,12 @@
 use super::{
     findings::Finding,
     helper::{Helper, InterfaceTag},
-    schema::schema,
     types::{
         DeviceRef, DeviceTarget, InterfaceRef, IpVersion, JobId, JobKind, JobState, PoeMode,
         RadioRole, VlanRef,
     },
 };
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct NetboxPlanVariables {
@@ -21,11 +21,7 @@ pub struct NetboxPlanVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "QueryAuthenticated",
-    variables = "NetboxPlanVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "NetboxPlanVariables")]
 pub struct NetboxPlanQuery {
     pub allow_netbox_write: bool,
     #[arguments(helper: $helper)]
@@ -33,7 +29,6 @@ pub struct NetboxPlanQuery {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct NetboxPlan {
     pub fingerprint: String,
     pub checked_with: Option<String>,
@@ -46,7 +41,6 @@ pub struct NetboxPlan {
 
 /// A step of a plan; one this page doesn't know yet is `Unknown`.
 #[derive(cynic::InlineFragments, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub enum PlanStep {
     CreateDevice(CreateDevice),
     CreateInterface(CreateInterface),
@@ -72,7 +66,6 @@ pub enum PlanStep {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct CreateDevice {
     pub name: String,
     pub site: String,
@@ -82,7 +75,6 @@ pub struct CreateDevice {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct CreateInterface {
     pub device: DeviceRef,
     pub name: String,
@@ -92,7 +84,6 @@ pub struct CreateInterface {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct CreateAddress {
     pub address: String,
     pub device: DeviceRef,
@@ -101,7 +92,6 @@ pub struct CreateAddress {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct SetPrimaryIp {
     pub device: DeviceRef,
     pub version: IpVersion,
@@ -110,14 +100,12 @@ pub struct SetPrimaryIp {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct CreateCable {
     pub a: InterfaceRef,
     pub b: InterfaceRef,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct CreatePrefix {
     pub prefix: String,
     pub pool: String,
@@ -126,7 +114,6 @@ pub struct CreatePrefix {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct CreateIpRange {
     pub start: String,
     pub end: String,
@@ -134,7 +121,6 @@ pub struct CreateIpRange {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct UpdateInterface {
     pub interface: InterfaceRef,
     pub label: Option<String>,
@@ -149,27 +135,23 @@ pub struct UpdateInterface {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DeleteCable {
     pub port: InterfaceRef,
     pub far: Option<InterfaceRef>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DeleteAddress {
     pub address: String,
     pub interface: InterfaceRef,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DeletePrefix {
     pub prefix: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct UpdatePort {
     pub interface: InterfaceRef,
     pub name: Option<String>,
@@ -180,7 +162,6 @@ pub struct UpdatePort {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct CreateWirelessLink {
     pub a: InterfaceRef,
     pub b: InterfaceRef,
@@ -188,7 +169,6 @@ pub struct CreateWirelessLink {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct UpdateWirelessLink {
     pub a: InterfaceRef,
     pub b: InterfaceRef,
@@ -198,7 +178,6 @@ pub struct UpdateWirelessLink {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct UpdateWirelessLan {
     pub ssid: Option<String>,
     pub ssid_before: String,
@@ -207,7 +186,6 @@ pub struct UpdateWirelessLan {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct UpdateDeviceLocation {
     pub device: DeviceRef,
     pub location: Option<LocationRef>,
@@ -215,20 +193,17 @@ pub struct UpdateDeviceLocation {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct LocationRef {
     pub path: Vec<String>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DeleteWirelessLink {
     pub a: InterfaceRef,
     pub b: InterfaceRef,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct UpdatePortVlan {
     pub interface: InterfaceRef,
     pub vlan: Option<VlanRef>,
@@ -237,13 +212,11 @@ pub struct UpdatePortVlan {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DeleteInterface {
     pub interface: InterfaceRef,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct UndocumentedAddress {
     pub address: String,
     pub route: String,
@@ -259,11 +232,7 @@ pub struct NetboxPlanPreviewVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "QueryAuthenticated",
-    variables = "NetboxPlanPreviewVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "NetboxPlanPreviewVariables")]
 pub struct NetboxPlanPreview {
     pub topology: PreviewTopology,
     #[arguments(helper: $helper)]
@@ -272,7 +241,6 @@ pub struct NetboxPlanPreview {
 
 #[derive(cynic::QueryFragment, Debug)]
 #[cynic(
-    schema = "authenticated",
     graphql_type = "TopologyHolder",
     variables = "NetboxPlanPreviewVariables"
 )]
@@ -282,11 +250,7 @@ pub struct PreviewTopology {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "NetboxPlan",
-    variables = "NetboxPlanPreviewVariables"
-)]
+#[cynic(graphql_type = "NetboxPlan", variables = "NetboxPlanPreviewVariables")]
 pub struct PlanPreview {
     pub preview: FindingKinds,
     #[arguments(
@@ -297,19 +261,19 @@ pub struct PlanPreview {
 
 /// A device's findings, of which the preview shows the kinds.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "DeviceAccess")]
+#[cynic(graphql_type = "DeviceAccess")]
 pub struct FindingKinds {
     pub findings: Vec<Finding>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "AccessibleDevice")]
+#[cynic(graphql_type = "AccessibleDevice")]
 pub struct PreviewAccess {
     pub generate_cfg: Option<PreviewCfg>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "GeneratedCfg")]
+#[cynic(graphql_type = "GeneratedCfg")]
 pub struct PreviewCfg {
     pub diff: super::types::CfgDiff,
 }
@@ -321,11 +285,7 @@ pub struct WriteNetboxPlanVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "WriteNetboxPlanVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "WriteNetboxPlanVariables")]
 pub struct WriteNetboxPlan {
     #[arguments(helper: $helper, fingerprint: $fingerprint)]
     pub write_netbox_plan: JobId,
@@ -337,11 +297,7 @@ pub struct UndoNetboxWriteVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "UndoNetboxWriteVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "UndoNetboxWriteVariables")]
 pub struct UndoNetboxWrite {
     #[arguments(jobId: $job_id)]
     pub undo_netbox_write: JobId,
@@ -353,18 +309,14 @@ pub struct HelperJobsVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "QueryAuthenticated",
-    variables = "HelperJobsVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "HelperJobsVariables")]
 pub struct HelperJobs {
     #[arguments(deviceId: $device_id)]
     pub jobs: Vec<HelperJob>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "Job")]
+#[cynic(graphql_type = "Job")]
 pub struct HelperJob {
     pub id: i32,
     pub kind: JobKind,

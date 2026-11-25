@@ -9,22 +9,37 @@ keine; den Text einer Abfrage gibt `operation.query`.
 
 ## Frontend
 
-`frontend/build.rs` schreibt die Schemas der drei Endpunkte und registriert sie, ohne Default:
+Der Server hat ein Schema an einem Endpunkt (`/graphql`, die WebSocket `/graphql/ws`).
+`frontend/build.rs` schreibt es nach `target/schema.graphql` und registriert es als Default
+(`graphql::schema`): Die Typen nennen kein `schema = "…"`, die Wurzeltypen heissen `Query`,
+`Mutation` und `Subscription`. Die Abfragen liegen nach Rolle:
 
-- **authenticated** (`/graphql`, nach dem Login): die Abfragen in
-  `frontend/src/graphql/authenticated/<bereich>.rs` (`device`, `job`, `netbox_plan`,
-  `helper_options`, `site_diff`, …), jeder Typ mit `schema = "authenticated"`. Typen, die
-  mehrere Abfragen brauchen, stehen in `authenticated/types.rs` (`DeviceRef`, `InterfaceRef`,
-  `ErrorInfo`, `JobPhase`, `ApplyWarning`, `DeviceVariables`, `JobId`, …), der Input `Helper`
-  (ein `@oneOf`, als Enum) in `authenticated/helper.rs`.
-- **anonymous** (`/graphql_anonymous`, vor dem Login): nur `Settings` in `graphql/anonymous/`.
-- **resident** (`/graphql/resident`, nach dem Login, für alle Rollen): die Rolle und die
-  Anwohner in `graphql/resident/` ([Self-Service](self-service.md)).
-  Die drei bleiben getrennt; kein Typ des einen taugt für ein anderes.
+- **authenticated** (Admins): `frontend/src/graphql/authenticated/<bereich>.rs` (`device`,
+  `job`, `netbox_plan`, `helper_options`, `site_diff`, …). Typen, die mehrere Abfragen
+  brauchen, stehen in `authenticated/types.rs` (`DeviceRef`, `InterfaceRef`, `ErrorInfo`,
+  `JobPhase`, `ApplyWarning`, `DeviceVariables`, `JobId`, …), der Input `Helper` (ein
+  `@oneOf`, als Enum) in `authenticated/helper.rs`.
+- **anonymous** (vor dem Login, ohne Token): nur `Settings` in `graphql/anonymous/`.
+- **resident** (nach dem Login, für alle Rollen): die Rolle und die Anwohner in
+  `graphql/resident/` ([Self-Service](self-service.md)).
 
 Gesendet wird mit `graphql::request` (die Daten, ohne Daten die Fehler als
 `FrontendError::Graphql`) oder `request_response` (Daten und Fehler nebeneinander, z.B. das
-Gerät mit dem Grund, warum es nicht erreichbar ist), anonym mit `request_anonymous`, an den Endpunkt der Anwohner mit `request_resident`.
+Gerät mit dem Grund, warum es nicht erreichbar ist), ohne Token mit `request_anonymous`.
+
+## Rechte
+
+Jedes Wurzelfeld hat einen Guard (`graphql::guard`): `Admin` an den Wurzeln der Admins
+(`QueryAdmin`, `MutationAdmin`, `SubscriptionAdmin`, als Guard des Objekts), `ResidentOrAdmin`
+an denen der Anwohner, keinen nur an `QueryOpen` (`authentication`, `me`). Die Rolle bestimmt
+`role::of` einmal pro Anfrage (`binary`: `with_role` bei HTTP, `connection_init` beim
+WebSocket); ohne Token gibt es keine. Ein abgelehnter Aufruf bekommt den Fehler `NOT_ALLOWED`.
+Ein Feld mit eigenem Guard ersetzt den des Objekts und nennt die Rolle darum selbst
+(`Admin.and(WritesAllowed)`, `ResidentOrAdmin.and(NetboxWritesAllowed)`). Was einem Anwohner
+gehört, prüfen die Resolver der Anwohner am Objekt. Der Test `graphql::test::rights` ruft jedes
+Wurzelfeld ohne Rolle, als Niemand und als Anwohner auf und erwartet die Ablehnung, ausser für
+die Listen `OPEN` und `RESIDENT`: Ein neues Feld der Anwohner kommt in die Liste, eines ohne
+Guard lässt den Test scheitern.
 `graphql::live::watch` abonniert über die WebSocket des Tabs ([Gerätezustand](device-state.md)),
 `watch_data` gibt wie `request` die Daten. Antwort und Fehler sind cynics
 (`graphql::Response`, `GraphqlError`, mit den `extensions` als JSON für `code` und `params`);

@@ -25,6 +25,7 @@
 //! router at the other end of NetBox's cable sees the device's port by name in its neighbors
 //! (`seenUplinks`). Taken over by the resident, nothing happens by itself.
 use super::{Named, PortKind, PortNetwork, change::acting_for};
+use crate::graphql::guard::ResidentOrAdmin;
 use crate::{
     Error,
     device::{
@@ -232,7 +233,7 @@ impl QueryLive {
     }
 }
 
-#[Object]
+#[Object(guard = "ResidentOrAdmin")]
 impl QueryLive {
     /// The devices in `resident`'s network (VLAN) `vlan`: leases and WLAN clients.
     async fn network_devices(

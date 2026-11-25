@@ -56,7 +56,7 @@ Entscheidung erledigt, wandert sie nach [done.md](done.md#entscheidungen).
 
 | # | Aufgabe | Aufwand | Status |
 |---|---|---|---|
-| B40 | Ein GraphQL-Schema statt drei (authenticated, resident, anonymous): ein Endpunkt, Token optional, die Rolle einmal pro Anfrage im Kontext; ein Guard `Admin` oder `Resident` an jedem Wurzelfeld, der Besitz weiter am Objekt; ein Test ruft jedes Wurzelfeld als Anwohner und ohne Token auf; im Frontend ein cynic-Schema. Danach gilt „Rolle am Wurzelfeld, Besitz am Objekt“ statt „an der Grenze, einmal“ (CLAUDE.md), und die Anwohner bekommen Subscriptions (Z51). [Konzept](concepts/graphql-one-schema.md) | M | offen |
+| B41 | Ein Token mit falscher Signatur oder kaputtem Base64 bekommt `500` („Crypto handling error: …“ von `OidcBiscuitValidator`) statt `401`/`403`: Das UI zeigt dann „Server antwortet 500“ statt „Anmeldung abgelaufen“. Live gesehen am 2026-11-25 nach B40; der Weg durch den Validator ist von B40 unverändert, vorher nicht geprüft. Die Antwort des Validators auf `401` abbilden (Middleware um ihn) | S | offen |
 
 ## C. Konzepte zum Umsetzen
 

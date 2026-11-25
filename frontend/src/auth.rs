@@ -18,10 +18,6 @@ pub(crate) fn start_login<C: Component>(scope: &Scope<C>) -> Option<String> {
         .map(|error| error.to_string())
 }
 
-/// What the server answers a user it knows but doesn't let in (`require_allowed_user`): not a
-/// login that expired, logging in again changes nothing.
-const NOT_ALLOWED: &str = "user not in auth_users";
-
 /// The close code async-graphql ends a WebSocket with whose `connection_init` it refused
 /// (`graphql-transport-ws`), the error as the reason.
 const WS_INIT_REFUSED: u16 = 1002;
@@ -32,15 +28,9 @@ thread_local! {
     static NEXT: Cell<u64> = const { Cell::new(0) };
 }
 
-/// Whether a refusal with `text` (a request's `401`/`403`, the WebSocket's close reason) is the
-/// server refusing the token, rather than the user.
-pub fn refuses_token(text: &str) -> bool {
-    text.trim() != NOT_ALLOWED
-}
-
 /// Whether a WebSocket closed with `code` and `reason` before its `connection_ack` was the
-/// server refusing the token: `token refused …` or `token without exp` (`authenticate`), not a
-/// user it doesn't let in.
+/// server refusing the token: `token refused …` or `token without exp` (`authenticate`), not
+/// the server without a login provider (`no OIDC`).
 pub fn ws_refuses_token(code: u16, reason: &str) -> bool {
     code == WS_INIT_REFUSED && reason.starts_with("token ")
 }
@@ -79,17 +69,13 @@ pub fn unwatch(id: u64) {
 
 #[cfg(test)]
 mod test {
-    use super::{refuses_token, ws_refuses_token};
+    use super::ws_refuses_token;
 
     #[test]
-    fn a_user_not_let_in_is_no_expired_login() {
-        assert!(refuses_token("Token does not have sufficient rights"));
-        assert!(refuses_token("token refused"));
-        assert!(refuses_token(""));
-        assert!(!refuses_token("user not in auth_users"));
+    fn a_socket_refused_for_its_token_is_an_expired_login() {
         assert!(ws_refuses_token(1002, "token refused"));
         assert!(ws_refuses_token(1002, "token refused: InvalidSignature"));
-        assert!(!ws_refuses_token(1002, "user not in auth_users"));
+        assert!(!ws_refuses_token(1002, "no OIDC"));
         assert!(!ws_refuses_token(1006, ""));
     }
 }

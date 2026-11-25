@@ -1,21 +1,19 @@
 //! Scope: The query for the user's role and the residents it sees; nothing else.
-use super::schema::schema;
+use crate::graphql::schema::schema;
 
 /// What the user is: an admin sees the admins' pages, a resident only its own.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "resident", graphql_type = "QueryResident")]
+#[cynic(graphql_type = "Query")]
 pub struct WhoAmI {
     pub me: Me,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct Me {
     pub role: RoleKind,
 }
 
 #[derive(cynic::Enum, Debug, Clone, PartialEq, Eq)]
-#[cynic(schema = "resident")]
 pub enum RoleKind {
     Admin,
     Resident,
@@ -27,13 +25,12 @@ pub enum RoleKind {
 
 /// The residents the user sees: a resident itself, an admin every one.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "resident", graphql_type = "QueryResident")]
+#[cynic(graphql_type = "Query")]
 pub struct Residents {
     pub residents: Vec<Resident>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct Resident {
     pub id: i32,
     pub name: String,
@@ -45,7 +42,6 @@ pub struct Resident {
 
 /// A room a device of the resident can stand in.
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ResidentLocation {
     pub id: i32,
     pub path: Vec<String>,
@@ -53,7 +49,6 @@ pub struct ResidentLocation {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ResidentDevice {
     pub id: i32,
     pub name: String,
@@ -64,14 +59,12 @@ pub struct ResidentDevice {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct Named {
     pub id: i32,
     pub name: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ResidentPort {
     pub id: i32,
     pub kind: PortKind,
@@ -88,7 +81,6 @@ pub struct ResidentPort {
 }
 
 #[derive(cynic::Enum, Debug, Clone, PartialEq, Eq)]
-#[cynic(schema = "resident")]
 pub enum PortKind {
     Interface,
     Socket,
@@ -98,7 +90,6 @@ pub enum PortKind {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct FarEnd {
     pub device: Named,
     pub port: String,
@@ -106,7 +97,6 @@ pub struct FarEnd {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ResidentNetwork {
     pub id: i32,
     pub name: String,
@@ -114,7 +104,6 @@ pub struct ResidentNetwork {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ResidentWlan {
     pub id: i32,
     pub ssid: String,

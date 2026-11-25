@@ -1,10 +1,8 @@
 //! Scope: The queries of what a resident's view reads from the devices: the devices in a
 //! network, the devices behind its ports, the ports the devices are plugged in, which devices
 //! behind its elements are up; nothing else.
-use super::{
-    residents::{Named, PortKind},
-    schema::schema,
-};
+use super::residents::{Named, PortKind};
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct NetworkDevicesVariables {
@@ -14,25 +12,19 @@ pub struct NetworkDevicesVariables {
 
 /// The devices in one of the resident's networks: leases and WLAN clients.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "resident",
-    graphql_type = "QueryResident",
-    variables = "NetworkDevicesVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "NetworkDevicesVariables")]
 pub struct NetworkDevicesQuery {
     #[arguments(resident: $resident, vlan: $vlan)]
     pub network_devices: NetworkDevices,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct NetworkDevices {
     pub devices: Vec<NetworkDevice>,
     pub unreachable: Vec<Named>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct NetworkDevice {
     pub mac_address: String,
     pub address: Option<String>,
@@ -41,7 +33,6 @@ pub struct NetworkDevice {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct WlanConnection {
     pub ssid: String,
     pub access_point: String,
@@ -50,14 +41,12 @@ pub struct WlanConnection {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct WlanBand {
     pub frequency: WlanFrequency,
     pub standard: Option<WlanStandard>,
 }
 
 #[derive(cynic::Enum, Debug, Clone, Copy, PartialEq, Eq)]
-#[cynic(schema = "resident")]
 pub enum WlanFrequency {
     #[cynic(rename = "GHZ_2")]
     Ghz2,
@@ -71,7 +60,6 @@ pub enum WlanFrequency {
 }
 
 #[derive(cynic::Enum, Debug, Clone, Copy, PartialEq, Eq)]
-#[cynic(schema = "resident")]
 pub enum WlanStandard {
     A,
     B,
@@ -92,25 +80,19 @@ pub struct SeenUplinksVariables {
 
 /// Where the routers see the resident's devices plugged in, where it isn't NetBox's Anschluss.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "resident",
-    graphql_type = "QueryResident",
-    variables = "SeenUplinksVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "SeenUplinksVariables")]
 pub struct SeenUplinksQuery {
     #[arguments(resident: $resident)]
     pub seen_uplinks: SeenUplinks,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct SeenUplinks {
     pub devices: Vec<SeenUplink>,
     pub unreachable: Vec<Named>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct SeenUplink {
     pub device: i32,
     pub port: Named,
@@ -123,25 +105,19 @@ pub struct PortDevicesVariables {
 
 /// The devices behind the resident's ports in one of its networks.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "resident",
-    graphql_type = "QueryResident",
-    variables = "PortDevicesVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "PortDevicesVariables")]
 pub struct PortDevicesQuery {
     #[arguments(resident: $resident)]
     pub port_devices: PortDevices,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct PortDevices {
     pub ports: Vec<PortHosts>,
     pub unreachable: Vec<Named>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct PortHosts {
     pub kind: PortKind,
     pub port: i32,
@@ -155,18 +131,13 @@ pub struct LiveStateVariables {
 
 /// Which devices behind the resident's elements are up, as the OSPF routers see them.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "resident",
-    graphql_type = "QueryResident",
-    variables = "LiveStateVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "LiveStateVariables")]
 pub struct LiveStateQuery {
     #[arguments(resident: $resident)]
     pub live_state: LiveState,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct LiveState {
     pub known: bool,
     pub devices: Vec<DeviceLive>,
@@ -175,14 +146,12 @@ pub struct LiveState {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct DeviceLive {
     pub device: Named,
     pub reached: bool,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct PortLive {
     pub kind: PortKind,
     pub id: i32,
@@ -192,7 +161,6 @@ pub struct PortLive {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct WlanLive {
     pub wlan: i32,
     pub access_points: i32,

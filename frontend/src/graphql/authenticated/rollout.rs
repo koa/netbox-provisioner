@@ -2,10 +2,8 @@
 //!
 //! Updates across the network (`pages::rollout`): what a rollout would do (`rolloutPlan`),
 //! starting and steering it, and its job's events.
-use super::{
-    schema::schema,
-    types::{Channel, ErrorInfo, JobState, UpdateState, WideInt},
-};
+use super::types::{Channel, ErrorInfo, JobState, UpdateState, WideInt};
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct RolloutPlanVariables {
@@ -14,18 +12,13 @@ pub struct RolloutPlanVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "QueryAuthenticated",
-    variables = "RolloutPlanVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "RolloutPlanVariables")]
 pub struct RolloutPlanQuery {
     #[arguments(siteIds: $sites, channel: $channel)]
     pub rollout_plan: RolloutPlan,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct RolloutPlan {
     pub channel: Channel,
     pub target: String,
@@ -33,7 +26,6 @@ pub struct RolloutPlan {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct PlannedDevice {
     pub id: i32,
     pub name: String,
@@ -54,7 +46,6 @@ pub struct PlannedDevice {
 }
 
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum RolloutFallback {
     Partition,
     Neighbor,
@@ -64,7 +55,6 @@ pub enum RolloutFallback {
 }
 
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum RolloutSkip {
     UpToDate,
     Unreachable,
@@ -77,14 +67,14 @@ pub enum RolloutSkip {
 
 /// Whether writes are allowed, and the newest rollout job, to follow on opening the page.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "QueryAuthenticated")]
+#[cynic(graphql_type = "Query")]
 pub struct RolloutStatus {
     pub allow_apply: bool,
     pub rollout_job: Option<RolloutJobId>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "Job")]
+#[cynic(graphql_type = "Job")]
 pub struct RolloutJobId {
     pub id: i32,
 }
@@ -97,11 +87,7 @@ pub struct StartRolloutVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "StartRolloutVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "StartRolloutVariables")]
 pub struct StartRollout {
     #[arguments(siteIds: $sites, channel: $channel, pilots: $pilots)]
     pub start_rollout: RolloutJobId,
@@ -113,11 +99,7 @@ pub struct ContinueRolloutVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "ContinueRolloutVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "ContinueRolloutVariables")]
 pub struct ContinueRollout {
     #[arguments(jobId: $job)]
     #[expect(dead_code, reason = "selected because a mutation needs a field")]
@@ -131,11 +113,7 @@ pub struct SkipRolloutDeviceVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "SkipRolloutDeviceVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "SkipRolloutDeviceVariables")]
 pub struct SkipRolloutDevice {
     #[arguments(jobId: $job, deviceId: $device)]
     #[expect(dead_code, reason = "selected because a mutation needs a field")]
@@ -149,22 +127,14 @@ pub struct RolloutEventsVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "QueryAuthenticated",
-    variables = "RolloutEventsVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "RolloutEventsVariables")]
 pub struct RolloutEvents {
     #[arguments(id: $id)]
     pub job: Option<RolloutJob>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "Job",
-    variables = "RolloutEventsVariables"
-)]
+#[cynic(graphql_type = "Job", variables = "RolloutEventsVariables")]
 pub struct RolloutJob {
     pub state: JobState,
     pub error: Option<ErrorInfo>,
@@ -173,7 +143,7 @@ pub struct RolloutJob {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "Logged")]
+#[cynic(graphql_type = "Logged")]
 pub struct RolloutLogged {
     pub index: i32,
     pub event: RolloutEvent,
@@ -181,7 +151,7 @@ pub struct RolloutLogged {
 
 /// The events of a rollout; the job has no others.
 #[derive(cynic::InlineFragments, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "Event")]
+#[cynic(graphql_type = "Event")]
 pub enum RolloutEvent {
     RolloutPlanned(RolloutPlanned),
     RolloutDevice(RolloutDevice),
@@ -195,19 +165,17 @@ pub enum RolloutEvent {
 
 /// A package the rollout downloaded before its first device.
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated", graphql_type = "PackageDownloaded")]
+#[cynic(graphql_type = "PackageDownloaded")]
 pub struct RolloutDownloaded {
     pub file: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct RolloutPlanned {
     pub plan: RolloutPlan,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct RolloutDevice {
     pub device: i32,
     pub state: RolloutDeviceState,
@@ -217,7 +185,6 @@ pub struct RolloutDevice {
 }
 
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum RolloutDeviceState {
     Waiting,
     Started,
@@ -228,27 +195,23 @@ pub enum RolloutDeviceState {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct RolloutPaused {
     pub reason: RolloutPause,
     pub device: Option<String>,
 }
 
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum RolloutPause {
     AfterPilots,
     Failed,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct RolloutContinued {
     pub after: RolloutPause,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct RolloutDone {
     pub updated: i32,
     pub skipped: i32,

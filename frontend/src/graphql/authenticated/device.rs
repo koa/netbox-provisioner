@@ -3,27 +3,20 @@
 //! The device page (`pages::site::device::show`): its overview, subscribed (the device, its jobs,
 //! what the provisioner would change, its RouterOS, partitions, device mode, leftovers and log),
 //! and the jobs it starts (apply, setup, update, downgrade, reboot, power cycle, …).
-use super::{
-    schema::schema,
-    types::{
-        ApplyWarning, Channel, DeviceModeChange, DeviceModeName, DeviceRef, DeviceTarget,
-        DeviceVariablesFields, ErrorInfo, JobId, JobState, LeftoverAction, Mac, Partition,
-        Watching,
-    },
+use super::types::{
+    ApplyWarning, Channel, DeviceModeChange, DeviceModeName, DeviceRef, DeviceTarget,
+    DeviceVariablesFields, ErrorInfo, JobId, JobState, LeftoverAction, Mac, Partition, Watching,
 };
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "QueryAuthenticated")]
+#[cynic(graphql_type = "Query")]
 pub struct AllowApply {
     pub allow_apply: bool,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "DeviceVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "DeviceVariables")]
 pub struct RefreshDevice {
     #[arguments(id: $id)]
     #[expect(dead_code, reason = "selected because a mutation needs a field")]
@@ -38,32 +31,20 @@ pub struct TargetVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "SubscriptionAuthenticated",
-    variables = "TargetVariables"
-)]
+#[cynic(graphql_type = "Subscription", variables = "TargetVariables")]
 pub struct DeviceOverview {
     pub topology: OverviewTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "TopologyHolder",
-    variables = "TargetVariables"
-)]
+#[cynic(graphql_type = "TopologyHolder", variables = "TargetVariables")]
 pub struct OverviewTopology {
     #[arguments(id: $id)]
     pub device_by_id: Option<OverviewDevice>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "DeviceAccess",
-    variables = "TargetVariables"
-)]
+#[cynic(graphql_type = "DeviceAccess", variables = "TargetVariables")]
 pub struct OverviewDevice {
     pub name: String,
     pub jobs: Vec<DeviceJob>,
@@ -79,7 +60,7 @@ pub struct OverviewDevice {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "Job")]
+#[cynic(graphql_type = "Job")]
 pub struct DeviceJob {
     pub id: i32,
     pub state: JobState,
@@ -88,7 +69,6 @@ pub struct DeviceJob {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct BootstrapPlan {
     pub neighbor: String,
     pub neighbor_port: String,
@@ -97,14 +77,12 @@ pub struct BootstrapPlan {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct PowerSupply {
     pub device: DeviceRef,
     pub port: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct Watchdog {
     pub device: String,
     pub supplier: bool,
@@ -113,7 +91,7 @@ pub struct Watchdog {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "AccessibleDevice")]
+#[cynic(graphql_type = "AccessibleDevice")]
 pub struct OverviewAccess {
     pub connected: Connected,
     pub device_stats: DeviceStats,
@@ -126,7 +104,6 @@ pub struct OverviewAccess {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct Connected {
     pub address: String,
     pub neighbor: Option<String>,
@@ -135,7 +112,6 @@ pub struct Connected {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated")]
 pub struct DeviceStats {
     pub routerboard: Routerboard,
     pub netbox_device_type: String,
@@ -143,13 +119,13 @@ pub struct DeviceStats {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "GraphqlSystemRouterboard")]
+#[cynic(graphql_type = "GraphqlSystemRouterboard")]
 pub struct Routerboard {
     pub device_type: String,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "GeneratedCfg")]
+#[cynic(graphql_type = "GeneratedCfg")]
 pub struct OverviewCfg {
     pub age: i32,
     pub diff: super::types::CfgDiff,
@@ -159,7 +135,6 @@ pub struct OverviewCfg {
 }
 
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum WwwCertificate {
     Off,
     InPlace,
@@ -167,21 +142,18 @@ pub enum WwwCertificate {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DeviceMode {
     pub mode: DeviceModeName,
     pub changes: Vec<DeviceModeChange>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct Partitions {
     pub partitions: Vec<Partition>,
     pub can_split: bool,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct Leftovers {
     pub apply_fallback: Option<ScheduledLeft>,
     pub update_fallback: Option<ScheduledLeft>,
@@ -191,13 +163,11 @@ pub struct Leftovers {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct ScheduledLeft {
     pub next_run: Option<String>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct WatchdogsLeft {
     pub next_run: Option<String>,
     pub watching: Watching,
@@ -205,20 +175,17 @@ pub struct WatchdogsLeft {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct WatchdogsHeld {
     pub job: i32,
     pub device: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct PackageLeft {
     pub file: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct LogEntry {
     pub time: String,
     pub topics: String,
@@ -226,7 +193,7 @@ pub struct LogEntry {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated", graphql_type = "RouterOsVersions")]
+#[cynic(graphql_type = "RouterOsVersions")]
 pub struct Routeros {
     pub version: String,
     pub packages: Vec<String>,
@@ -238,7 +205,6 @@ pub struct Routeros {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct ChannelUpdate {
     pub channel: Channel,
     pub newest: String,
@@ -247,11 +213,7 @@ pub struct ChannelUpdate {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "TargetVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "TargetVariables")]
 pub struct ApplyDeviceCfg {
     #[arguments(
         id: $id,
@@ -261,11 +223,7 @@ pub struct ApplyDeviceCfg {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "TargetVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "TargetVariables")]
 pub struct RebootDevice {
     #[arguments(
         id: $id,
@@ -275,11 +233,7 @@ pub struct RebootDevice {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "TargetVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "TargetVariables")]
 pub struct ChangeDeviceMode {
     #[arguments(
         id: $id,
@@ -289,11 +243,7 @@ pub struct ChangeDeviceMode {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "TargetVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "TargetVariables")]
 pub struct RepartitionDevice {
     #[arguments(
         id: $id,
@@ -303,52 +253,39 @@ pub struct RepartitionDevice {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "DeviceVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "DeviceVariables")]
 pub struct PowerCycle {
     #[arguments(id: $id)]
     pub power_cycle: JobId,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "QueryAuthenticated",
-    variables = "DeviceVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "DeviceVariables")]
 pub struct BootstrapCandidates {
     pub topology: CandidatesTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "TopologyHolder",
-    variables = "DeviceVariables"
-)]
+#[cynic(graphql_type = "TopologyHolder", variables = "DeviceVariables")]
 pub struct CandidatesTopology {
     #[arguments(id: $id)]
     pub device_by_id: Option<CandidatesDevice>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "DeviceAccess")]
+#[cynic(graphql_type = "DeviceAccess")]
 pub struct CandidatesDevice {
     pub bootstrap_plan: Option<CandidatesPlan>,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "BootstrapPlan")]
+#[cynic(graphql_type = "BootstrapPlan")]
 pub struct CandidatesPlan {
     pub discovered: Vec<Discovered>,
 }
 
 /// A device the neighbor sees on its port, to set up.
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct Discovered {
     pub mac: Mac,
     pub identity: String,
@@ -364,11 +301,7 @@ pub struct BootstrapVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "BootstrapVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "BootstrapVariables")]
 pub struct BootstrapDevice {
     #[arguments(id: $id, mac: $mac)]
     pub bootstrap: JobId,
@@ -384,11 +317,7 @@ pub struct UpdateVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "UpdateVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "UpdateVariables")]
 pub struct UpdateRouteros {
     #[arguments(
         id: $id,
@@ -410,11 +339,7 @@ pub struct DowngradeVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "DowngradeVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "DowngradeVariables")]
 pub struct DowngradeRouteros {
     #[arguments(
         id: $id,
@@ -434,11 +359,7 @@ pub struct ClearLeftoverVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "ClearLeftoverVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "ClearLeftoverVariables")]
 pub struct ClearLeftover {
     #[arguments(
         id: $id,
@@ -456,11 +377,7 @@ pub struct BootPartitionVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "BootPartitionVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "BootPartitionVariables")]
 pub struct BootPartition {
     #[arguments(
         id: $id,

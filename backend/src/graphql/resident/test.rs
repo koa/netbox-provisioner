@@ -1,5 +1,6 @@
 //! Scope: Tests of `graphql::resident`; nothing else.
-use super::{create_resident_schema, resident};
+use super::resident;
+use crate::graphql::create_schema;
 use crate::role::Role;
 use crate::topology::{
     OwnerId, TopologyHolder,
@@ -58,12 +59,12 @@ fn a_resident_sees_its_ports_and_networks() {
     assert!(resident(&topology, OwnerId(9003)).is_none());
 }
 
-/// Over the schema a resident gets only its own, an admin every resident, nobody nothing.
+/// Over the schema a resident gets only its own, an admin every resident, nobody its role only.
 #[tokio::test]
 async fn the_schema_gives_each_role_its_residents() {
     let topology = topology_from(owned_example().raw);
     let holder = TopologyHolder::from(topology);
-    let schema = create_resident_schema(holder);
+    let schema = create_schema(holder);
     let ask = async |role: Role| {
         let response = schema
             .execute(
@@ -92,9 +93,12 @@ async fn the_schema_gives_each_role_its_residents() {
         names.contains(&"Familie Meier") && names.contains(&"Huber AG"),
         "{names:?}"
     );
+    let nobody = schema
+        .execute(async_graphql::Request::new("{ me { role } }").data(Role::Nobody))
+        .await;
     assert_eq!(
-        ask(Role::Nobody).await,
-        json!({"me": {"role": "NOBODY"}, "residents": []})
+        nobody.data.into_json().expect("json"),
+        json!({"me": {"role": "NOBODY"}})
     );
 }
 

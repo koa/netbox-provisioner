@@ -1,11 +1,11 @@
 //! Scope: The queries and mutations of a resident's changes: their plan for the preview, saving
 //! them, how saving went; not what a resident sees (`residents`).
-use super::{residents::Named, schema::schema};
+use super::residents::Named;
 use crate::error::ServerProblem;
+use crate::graphql::schema::schema;
 
 /// A change of a resident (`@oneOf`).
 #[derive(cynic::InputObject, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub enum ResidentChange {
     Wlan(WlanInput),
     PortVlan(PortVlanChange),
@@ -15,14 +15,12 @@ pub enum ResidentChange {
 }
 
 #[derive(cynic::InputObject, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct DeviceRoomChange {
     pub device: i32,
     pub location: i32,
 }
 
 #[derive(cynic::InputObject, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ConnectDeviceChange {
     pub device: i32,
     pub port: i32,
@@ -32,7 +30,6 @@ pub struct ConnectDeviceChange {
 }
 
 #[derive(cynic::InputObject, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct PortVlanChange {
     pub port: i32,
     pub kind: PortKindInput,
@@ -42,14 +39,13 @@ pub struct PortVlanChange {
 
 /// The kind of a port row, as input (the output's has a fallback).
 #[derive(cynic::Enum, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[cynic(schema = "resident", graphql_type = "PortKind")]
+#[cynic(graphql_type = "PortKind")]
 pub enum PortKindInput {
     Interface,
     Socket,
 }
 
 #[derive(cynic::InputObject, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct WlanInput {
     pub wlan: i32,
     pub ssid: Option<String>,
@@ -65,18 +61,13 @@ pub struct ChangePlanVariables {
 
 /// What changes would write together, for the preview.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "resident",
-    graphql_type = "QueryResident",
-    variables = "ChangePlanVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "ChangePlanVariables")]
 pub struct ChangePlanQuery {
     #[arguments(resident: $resident, changes: $changes)]
     pub change_plan: ResidentPlan,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ResidentPlan {
     pub fingerprint: String,
     pub wlans: Vec<UpdateWirelessLan>,
@@ -89,14 +80,12 @@ pub struct ResidentPlan {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct CreateCable {
     pub a: InterfaceRef,
     pub b: InterfaceRef,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct DeleteCable {
     pub port: InterfaceRef,
     pub far: Option<InterfaceRef>,
@@ -104,20 +93,17 @@ pub struct DeleteCable {
 
 /// A port and its device, by name.
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct InterfaceRef {
     pub name: String,
     pub device: DeviceRef,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct DeviceRef {
     pub name: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct UpdateDeviceLocation {
     pub device: DeviceRef,
     pub location: Option<LocationRef>,
@@ -125,27 +111,23 @@ pub struct UpdateDeviceLocation {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct LocationRef {
     pub path: Vec<String>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct UpdatePortVlan {
     pub vlan: Option<VlanRef>,
     pub vlan_before: Option<VlanRef>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct VlanRef {
     pub vid: i32,
     pub name: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct UpdateWirelessLan {
     pub ssid: Option<String>,
     pub ssid_before: String,
@@ -162,11 +144,7 @@ pub struct SaveChangeVariables {
 
 /// Saves changes together, if their plan is still the one previewed.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "resident",
-    graphql_type = "MutationResident",
-    variables = "SaveChangeVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "SaveChangeVariables")]
 pub struct SaveChange {
     #[arguments(resident: $resident, changes: $changes, fingerprint: $fingerprint)]
     pub save_change: SavedChange,
@@ -179,18 +157,13 @@ pub struct SavedChangeVariables {
 
 /// How saving a change stands.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "resident",
-    graphql_type = "QueryResident",
-    variables = "SavedChangeVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "SavedChangeVariables")]
 pub struct SavedChangeQuery {
     #[arguments(job: $job)]
     pub saved_change: Option<SavedChange>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct SavedChange {
     pub job: i32,
     pub state: SaveState,
@@ -198,7 +171,6 @@ pub struct SavedChange {
 }
 
 #[derive(cynic::Enum, Debug, Clone, PartialEq, Eq)]
-#[cynic(schema = "resident")]
 pub enum SaveState {
     Saving,
     Saved,
@@ -209,7 +181,6 @@ pub enum SaveState {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ErrorInfo {
     pub code: String,
     pub params: Vec<ErrorParam>,
@@ -217,7 +188,6 @@ pub struct ErrorInfo {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "resident")]
 pub struct ErrorParam {
     pub name: String,
     pub value: String,

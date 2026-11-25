@@ -4,9 +4,9 @@
 //! `components::device::interfaces`), the findings of `super::findings` grouped onto the rows.
 use super::{
     findings::Finding,
-    schema::schema,
     types::{AddressRef, DeviceRef, InterfaceRef, VlanRef},
 };
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct DeviceInterfacesVariables {
@@ -14,18 +14,13 @@ pub struct DeviceInterfacesVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "SubscriptionAuthenticated",
-    variables = "DeviceInterfacesVariables"
-)]
+#[cynic(graphql_type = "Subscription", variables = "DeviceInterfacesVariables")]
 pub struct DeviceInterfaces {
     pub topology: InterfacesTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
 #[cynic(
-    schema = "authenticated",
     graphql_type = "TopologyHolder",
     variables = "DeviceInterfacesVariables"
 )]
@@ -36,13 +31,12 @@ pub struct InterfacesTopology {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "DeviceAccess")]
+#[cynic(graphql_type = "DeviceAccess")]
 pub struct InterfacesDevice {
     pub interface_view: InterfaceView,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct InterfaceView {
     pub rows: Vec<InterfaceRow>,
     pub device_findings: Vec<Finding>,
@@ -51,7 +45,6 @@ pub struct InterfaceView {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct InterfaceRow {
     pub task: InterfaceTask,
     pub interface: InterfaceRef,
@@ -76,7 +69,6 @@ pub struct InterfaceRow {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct PortRow {
     pub interface: InterfaceRef,
     pub label: Option<String>,
@@ -85,7 +77,6 @@ pub struct PortRow {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct RadioPath {
     pub router_port: Option<InterfaceRef>,
     pub bridge_port: Option<InterfaceRef>,
@@ -97,7 +88,6 @@ pub struct RadioPath {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct RowAction {
     pub kind: ActionKind,
     pub helper: ActionHelper,
@@ -110,7 +100,6 @@ pub struct RowAction {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct SeenDevice {
     pub identity: String,
     pub board: String,
@@ -118,7 +107,6 @@ pub struct SeenDevice {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct LeaseSeen {
     pub mac: String,
     pub name: Option<String>,
@@ -126,7 +114,6 @@ pub struct LeaseSeen {
 
 /// What a row is for (`InterfaceTask`).
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum InterfaceTask {
     Loopback,
     Uplink,
@@ -140,7 +127,6 @@ pub enum InterfaceTask {
 
 /// How an action is offered (`ActionKind`).
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum ActionKind {
     Suggestion,
     Remove,
@@ -152,7 +138,6 @@ pub enum ActionKind {
 
 /// The helper an action opens (`ActionHelper`).
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum ActionHelper {
     Loopback,
     Connection,

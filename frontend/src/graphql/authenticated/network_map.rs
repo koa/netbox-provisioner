@@ -3,10 +3,8 @@
 //! The network map (`components::network_map`): the devices and links as the provisioner reads
 //! them (`networkState`), the slower details beside (`networkStateDetails`), and the layout
 //! published to NetBox (`publishLayout`).
-use super::{
-    schema::schema,
-    types::{DeviceRef, ErrorInfo, InterfaceRef, PoeOutStatus, PoeProblem, WideInt},
-};
+use super::types::{DeviceRef, ErrorInfo, InterfaceRef, PoeOutStatus, PoeProblem, WideInt};
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryVariables, Debug)]
 pub struct MapVariables {
@@ -14,29 +12,20 @@ pub struct MapVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "QueryAuthenticated",
-    variables = "MapVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "MapVariables")]
 pub struct NetworkMap {
     pub allow_netbox_write: bool,
     pub topology: MapTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "TopologyHolder",
-    variables = "MapVariables"
-)]
+#[cynic(graphql_type = "TopologyHolder", variables = "MapVariables")]
 pub struct MapTopology {
     #[arguments(siteId: $site)]
     pub network_state: NetworkState,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct NetworkState {
     pub read_from: Option<DeviceRef>,
     pub age: i32,
@@ -50,7 +39,6 @@ pub struct NetworkState {
 
 /// A device of the rollout running now.
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct RolloutNode {
     pub device: i32,
     pub state: RolloutNodeState,
@@ -58,7 +46,6 @@ pub struct RolloutNode {
 }
 
 #[derive(cynic::Enum, Debug, Clone, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum RolloutNodeState {
     Pending,
     Waiting,
@@ -72,7 +59,6 @@ pub enum RolloutNodeState {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct MapNode {
     pub device: DeviceRef,
     pub routeros: bool,
@@ -82,14 +68,12 @@ pub struct MapNode {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct MapPosition {
     pub x: i32,
     pub y: i32,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct MapEdge {
     pub kind: MapEdgeKind,
     pub a: InterfaceRef,
@@ -100,35 +84,25 @@ pub struct MapEdge {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "QueryAuthenticated",
-    variables = "MapVariables"
-)]
+#[cynic(graphql_type = "Query", variables = "MapVariables")]
 pub struct NetworkMapDetails {
     pub topology: DetailsTopology,
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "TopologyHolder",
-    variables = "MapVariables"
-)]
+#[cynic(graphql_type = "TopologyHolder", variables = "MapVariables")]
 pub struct DetailsTopology {
     #[arguments(siteId: $site)]
     pub network_state_details: NetworkStateDetails,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct NetworkStateDetails {
     pub nodes: Vec<MapNodeDetails>,
     pub poe_edges: Vec<MapPoeEdge>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct MapNodeDetails {
     pub device: DeviceRef,
     pub health: Vec<MapHealth>,
@@ -137,7 +111,6 @@ pub struct MapNodeDetails {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct PoeLoad {
     pub first: String,
     pub last: String,
@@ -147,7 +120,6 @@ pub struct PoeLoad {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct MapHealth {
     pub name: String,
     pub value: String,
@@ -155,7 +127,6 @@ pub struct MapHealth {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct MapResources {
     /// nanoseconds
     pub uptime: u64,
@@ -167,7 +138,6 @@ pub struct MapResources {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct MapPoeEdge {
     pub pse: InterfaceRef,
     pub pd: InterfaceRef,
@@ -182,18 +152,13 @@ pub struct PublishLayoutVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "PublishLayoutVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "PublishLayoutVariables")]
 pub struct PublishLayout {
     #[arguments(positions: $positions)]
     pub publish_layout: i32,
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct DevicePositionInput {
     pub device_id: i32,
     pub x: i32,
@@ -202,7 +167,6 @@ pub struct DevicePositionInput {
 
 /// How a device was reached (`NodeState`).
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum NodeState {
     Reached,
     Isolated,
@@ -214,7 +178,6 @@ pub enum NodeState {
 
 /// What a link is (`MapEdgeKind`).
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum MapEdgeKind {
     Cable,
     Radio,
@@ -224,7 +187,6 @@ pub enum MapEdgeKind {
 
 /// Whether OSPF runs over a link (`MapEdgeState`).
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum MapEdgeState {
     Up,
     V3Down,
@@ -236,7 +198,6 @@ pub enum MapEdgeState {
 
 /// Why a link is down (`MapDownReason`).
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum MapDownReason {
     RouterMissing,
     NoSegment,

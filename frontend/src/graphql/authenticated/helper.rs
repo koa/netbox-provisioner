@@ -3,10 +3,9 @@
 //! The input naming a helper and its start (`Helper`, `@oneOf`): what its plan, its preview and
 //! the findings after it are computed for. `components::netbox_helper::choice::helper`
 //! builds it from the card's choice.
-use super::schema::schema;
+use crate::graphql::schema::schema;
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub enum Helper {
     Loopback(i32),
     Connection(ConnectionInput),
@@ -27,7 +26,6 @@ pub enum Helper {
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct ConnectionInput {
     pub interface: i32,
     pub peer: i32,
@@ -35,21 +33,18 @@ pub struct ConnectionInput {
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct DisconnectInput {
     pub device: i32,
     pub interface: i32,
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct FlagsInput {
     pub device: i32,
     pub changes: Vec<TagChange>,
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct TagChange {
     pub interface: i32,
     pub tag: InterfaceTag,
@@ -57,7 +52,6 @@ pub struct TagChange {
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct CustomerNetInput {
     pub device: i32,
     pub target: CustomerNetTarget,
@@ -69,21 +63,18 @@ pub struct CustomerNetInput {
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct DhcpRangeInput {
     pub first: Option<i32>,
     pub last: Option<i32>,
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub enum CustomerNetTarget {
     Interface(i32),
     Vlan(i32),
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct PoeInput {
     pub device: i32,
     pub pse: i32,
@@ -91,14 +82,12 @@ pub struct PoeInput {
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct PoeRemoveInput {
     pub device: i32,
     pub port: i32,
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct RadioBridgeInput {
     pub ap: i32,
     pub station: i32,
@@ -110,7 +99,6 @@ pub struct RadioBridgeInput {
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct RadioDisconnectInput {
     pub device: i32,
     pub radio: i32,
@@ -118,14 +106,12 @@ pub struct RadioDisconnectInput {
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct CustomerDisconnectInput {
     pub device: i32,
     pub interface: i32,
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct PortVlanInput {
     pub device: i32,
     pub port: i32,
@@ -133,21 +119,18 @@ pub struct PortVlanInput {
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct CableTakeoverInput {
     pub port: i32,
     pub peer: i32,
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct BridgeLeaveInput {
     pub device: i32,
     pub port: i32,
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct NewDeviceInput {
     pub port: i32,
     pub name: String,
@@ -158,7 +141,6 @@ pub struct NewDeviceInput {
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct AddressTakeoverInput {
     pub device: i32,
     pub interface: i32,
@@ -166,7 +148,6 @@ pub struct AddressTakeoverInput {
 }
 
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct LeaseTakeoverInput {
     pub device: i32,
     pub address: String,
@@ -178,7 +159,6 @@ pub struct LeaseTakeoverInput {
 
 /// A tag the provisioner acts on (`InterfaceTag`); one a newer backend has keeps its name.
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum InterfaceTag {
     Ospf,
     Dhcp,

@@ -1,11 +1,10 @@
 //! Scope: The schema's types several queries share; not a type one query alone uses (its module).
 //!
 //! Types of the backend's schema that several queries share (cynic, [`super::schema`]).
-use super::schema::schema;
+use crate::graphql::schema::schema;
 
 /// A job's kind (`JobKind`); one this frontend doesn't know yet is `Other`, with its name.
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum JobKind {
     Update,
     Downgrade,
@@ -42,7 +41,6 @@ cynic::impl_scalar!(Mac, schema::ScalarMac);
 
 /// The state of an apply (`ApplyState`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum ApplyState {
     Planning,
     InstallingCertificate,
@@ -63,7 +61,6 @@ pub enum ApplyState {
 
 /// The state of an update or a downgrade (`UpdateState`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum UpdateState {
     Reading,
     SuspendingWatchdogs,
@@ -87,7 +84,6 @@ pub enum UpdateState {
 
 /// How bad a finding is (`Severity`).
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum Severity {
     Error,
     Warning,
@@ -98,7 +94,6 @@ pub enum Severity {
 
 /// IPv4 or IPv6 (`IpVersion`).
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum IpVersion {
     V4,
     V6,
@@ -109,7 +104,6 @@ pub enum IpVersion {
 // The references the backend gives to NetBox objects (`*Ref`): id and what names it.
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DeviceRef {
     pub id: i32,
     pub name: String,
@@ -117,7 +111,6 @@ pub struct DeviceRef {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct InterfaceRef {
     pub id: i32,
     pub name: String,
@@ -125,7 +118,6 @@ pub struct InterfaceRef {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct AddressRef {
     pub id: i32,
     pub address: String,
@@ -138,7 +130,6 @@ impl AddressRef {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct VlanRef {
     pub id: i32,
     pub vid: i32,
@@ -146,35 +137,30 @@ pub struct VlanRef {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct ServiceRef {
     pub id: i32,
     pub name: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct SiteRef {
     pub id: i32,
     pub name: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct WlanGroupRef {
     pub id: i32,
     pub name: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct PrefixRef {
     pub id: i32,
     pub prefix: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct PortRef {
     pub name: String,
     pub interface: Option<InterfaceRef>,
@@ -183,7 +169,6 @@ pub struct PortRef {
 /// How to reach a device (`DeviceTarget`): at `address`, else its primary IP; with the
 /// credentials named `credentialName` or the ad-hoc ones, else those of its tenant.
 #[derive(cynic::InputObject, Debug, Clone, Default)]
-#[cynic(schema = "authenticated")]
 pub struct DeviceTarget {
     pub address: Option<String>,
     pub credential_name: Option<String>,
@@ -192,7 +177,6 @@ pub struct DeviceTarget {
 
 /// A login typed in for one connection (`AdhocCredentials`).
 #[derive(cynic::InputObject, Debug, Clone)]
-#[cynic(schema = "authenticated")]
 pub struct AdhocCredentials {
     pub username: Option<String>,
     pub password: Option<String>,
@@ -200,7 +184,6 @@ pub struct AdhocCredentials {
 
 /// Where a job stands (`JobState`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum JobState {
     Running,
     Done,
@@ -212,7 +195,6 @@ pub enum JobState {
 
 /// An error the backend reports (`ErrorInfo`), worded through `error::ServerProblem`.
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct ErrorInfo {
     pub code: String,
     pub params: Vec<ErrorParam>,
@@ -220,7 +202,6 @@ pub struct ErrorInfo {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct ErrorParam {
     pub name: String,
     pub value: String,
@@ -228,7 +209,6 @@ pub struct ErrorParam {
 
 /// What applying would cut or leave behind (`ApplyWarning`), shown before applying.
 #[derive(cynic::InlineFragments, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub enum ApplyWarning {
     PoeCut(PoeCut),
     CapOffOutsideWlanGroup(CapOffOutsideWlanGroup),
@@ -240,7 +220,6 @@ pub enum ApplyWarning {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct OspfAuthKept {
     pub port: String,
     pub network: String,
@@ -249,7 +228,6 @@ pub struct OspfAuthKept {
 
 /// Why an OSPF segment's credentials stay (`OspfAuthDoubt`).
 #[derive(cynic::InlineFragments, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub enum OspfAuthDoubt {
     OspfEndsOutside(OspfEndsOutside),
     OspfEndNotOspf(OspfEndNotOspf),
@@ -261,53 +239,45 @@ pub enum OspfAuthDoubt {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct OspfEndsOutside {
     pub devices: Vec<String>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct OspfEndNotOspf {
     pub address: String,
     pub device: Option<String>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct OspfForeignNeighbor {
     pub device: String,
     pub router_id: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct OspfNeighborMissing {
     pub device: String,
     pub missing: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct OspfCredentialsDiffer {
     pub devices: Vec<String>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct PoeCut {
     pub port: String,
     pub default_name: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct CapOffOutsideWlanGroup {
     pub package: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct WatchTargetSilent {
     pub address: String,
     pub port: Option<String>,
@@ -315,14 +285,12 @@ pub struct WatchTargetSilent {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct ApiClientsOutside {
     pub clients: Vec<String>,
 }
 
 /// What doesn't fit at a PoE port (`PoeProblem`).
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum PoeProblem {
     NoPoeOut,
     NoLoad,
@@ -336,7 +304,7 @@ pub enum PoeProblem {
 /// The state a job is in, by its kind (`JobPhaseObject`); each phase's `state` is aliased, the
 /// union can't merge fields of one name and different types.
 #[derive(cynic::InlineFragments, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated", graphql_type = "JobPhaseObject")]
+#[cynic(graphql_type = "JobPhaseObject")]
 pub enum JobPhase {
     ApplyPhase(ApplyPhase),
     UpdatePhase(UpdatePhase),
@@ -351,56 +319,48 @@ pub enum JobPhase {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct ApplyPhase {
     #[cynic(alias, rename = "state")]
     pub apply: ApplyState,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct UpdatePhase {
     #[cynic(alias, rename = "state")]
     pub update: UpdateState,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct RebootPhase {
     #[cynic(alias, rename = "state")]
     pub reboot: RebootState,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct PowerCyclePhase {
     #[cynic(alias, rename = "state")]
     pub power_cycle: PowerCycleState,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DeviceModePhase {
     #[cynic(alias, rename = "state")]
     pub device_mode: DeviceModeState,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct BootstrapPhase {
     #[cynic(alias, rename = "state")]
     pub bootstrap: BootstrapState,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct CleanupPhase {
     #[cynic(alias, rename = "state")]
     pub cleanup: CleanupState,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct NetboxPhase {
     #[cynic(alias, rename = "state")]
     pub netbox: NetboxState,
@@ -408,7 +368,6 @@ pub struct NetboxPhase {
 
 /// The state of a reboot (`RebootState`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum RebootState {
     Reading,
     WaitingForChain,
@@ -419,7 +378,6 @@ pub enum RebootState {
 
 /// The state of a power cycle (`PowerCycleState`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum PowerCycleState {
     Reading,
     WaitingForChain,
@@ -431,7 +389,6 @@ pub enum PowerCycleState {
 
 /// The state of a device-mode change (`DeviceModeState`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum DeviceModeState {
     Reading,
     WaitingForChain,
@@ -444,7 +401,6 @@ pub enum DeviceModeState {
 
 /// The state of a setup (`BootstrapState`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum BootstrapState {
     SuspendingWatchdogs,
     CheckingNeighbor,
@@ -457,7 +413,6 @@ pub enum BootstrapState {
 
 /// The state of a cleanup (`CleanupState`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum CleanupState {
     Clearing,
     WaitingForChain,
@@ -468,7 +423,6 @@ pub enum CleanupState {
 
 /// The state of a NetBox write (`NetboxState`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum NetboxState {
     Planning,
     Writing,
@@ -480,7 +434,6 @@ pub enum NetboxState {
 
 /// Which way PoE goes at a port (`PoeMode`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum PoeMode {
     Pse,
     Pd,
@@ -490,7 +443,6 @@ pub enum PoeMode {
 
 /// The NetBox RF role of a radio (`RadioRole`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum RadioRole {
     Ap,
     Station,
@@ -500,7 +452,6 @@ pub enum RadioRole {
 
 /// A feature of the device mode the provisioner needs, and why (`DeviceModeChange`).
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DeviceModeChange {
     pub feature: DeviceModeFeature,
     pub reason: DeviceModeReason,
@@ -508,7 +459,6 @@ pub struct DeviceModeChange {
 
 /// A feature of `/system/device-mode` the provisioner may need (`DeviceModeFeature`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum DeviceModeFeature {
     Scheduler,
     Socks,
@@ -519,7 +469,6 @@ pub enum DeviceModeFeature {
 
 /// `poe-out-status` of a port (`PoeOutStatus`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum PoeOutStatus {
     Disabled,
     WaitingForLoad,
@@ -541,7 +490,6 @@ pub enum PoeOutStatus {
 
 /// The mode of `/system/device-mode` (`DeviceModeName`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum DeviceModeName {
     Advanced,
     Basic,
@@ -555,7 +503,6 @@ pub enum DeviceModeName {
 
 /// A partition of the flash (`Partition`).
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct Partition {
     pub name: String,
     pub version: String,
@@ -567,7 +514,6 @@ pub struct Partition {
 
 /// What a watchdog watches (`Watching`).
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct Watching {
     pub watch_address: Option<String>,
     pub poe_pings: Vec<PoePing>,
@@ -575,7 +521,6 @@ pub struct Watching {
 
 /// A PoE port a watchdog switches off and on when its address stops answering (`PoePing`).
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct PoePing {
     pub port: String,
     pub address: String,
@@ -584,7 +529,6 @@ pub struct PoePing {
 
 /// What to do about something a job left on the device (`LeftoverAction`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum LeftoverAction {
     StopApplyFallback,
     ApplyFallbackNow,
@@ -597,7 +541,6 @@ pub enum LeftoverAction {
 
 /// Why the provisioner needs a feature of the device mode (`DeviceModeReason`).
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum DeviceModeReason {
     ApplyFallback,
     ManagementProxy,
@@ -614,14 +557,13 @@ pub struct DeviceVariables {
 
 /// The job an operation started.
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "Job")]
+#[cynic(graphql_type = "Job")]
 pub struct JobId {
     pub id: i32,
 }
 
 /// A release channel of RouterOS (`Channel`); one a newer backend sends keeps its name.
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum Channel {
     LongTerm,
     Stable,
@@ -665,7 +607,6 @@ mod tests {
 
 /// What an apply would change, in each view of `components::diff_view`.
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct CfgDiff {
     pub tables: Vec<TableChanges>,
     pub entries: Vec<EntryChange>,
@@ -675,7 +616,6 @@ pub struct CfgDiff {
 
 /// What an apply would do in one table (`ip/address`).
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct TableChanges {
     pub table: String,
     pub added: i32,
@@ -685,7 +625,6 @@ pub struct TableChanges {
 
 /// What an apply changes in one entry (`components::diff_view`).
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct EntryChange {
     pub table: String,
     pub kind: EntryChangeKind,
@@ -694,7 +633,6 @@ pub struct EntryChange {
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct DiffField {
     pub field: String,
     pub before: Option<String>,
@@ -702,7 +640,6 @@ pub struct DiffField {
 }
 
 #[derive(cynic::Enum, Clone, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum EntryChangeKind {
     Add,
     Set,

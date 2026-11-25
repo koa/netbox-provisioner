@@ -10,7 +10,7 @@ use crate::{
     error::FrontendError,
     graphql::{
         anonymous::settings::{Authentication, Settings},
-        request_anonymous, request_resident,
+        request, request_anonymous,
         resident::residents::{RoleKind, WhoAmI},
     },
     i18n,
@@ -171,7 +171,7 @@ impl Component for RoleGate {
         if first_render {
             let scope = ctx.link().clone();
             spawn_local(async move {
-                let role = request_resident(scope.clone(), WhoAmI::build(()))
+                let role = request(scope.clone(), WhoAmI::build(()))
                     .await
                     .map(|data| data.me.role);
                 scope.send_message(role);

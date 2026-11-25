@@ -2,10 +2,10 @@
 //!
 //! The credentials the backend knows by name (`listCredentials`), for
 //! `components::device::adjust_target`.
-use super::schema::schema;
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "QueryAuthenticated")]
+#[cynic(graphql_type = "Query")]
 pub struct ListCredentials {
     pub list_credentials: Vec<String>,
 }

@@ -34,10 +34,7 @@ mod token_expiry;
 use backend::{
     config::CONFIG,
     context::UserInfo,
-    graphql::{
-        AnonymousGraphqlSchema, AuthenticatedGraphqlSchema, create_anonymous_schema, create_schema,
-        resident::{ResidentGraphqlSchema, create_resident_schema},
-    },
+    graphql::{GraphqlSchema, create_schema},
     netbox::NetboxError,
     role::Role,
     topology::TopologyHolder,
@@ -76,61 +73,33 @@ fn walk_resources(target: &mut HashMap<&'static str, Resource>, dir: &'static Di
     }
 }
 
+/// One request of `/graphql`: with a token its user's [`Role`] and `UserInfo` (`with_role`),
+/// without neither; the root fields' guards decide (`backend::graphql::guard`).
 async fn graphql(
     context: Data<ApplicationContext>,
-    user: Option<DecodedInfo>,
+    role: Option<actix_web::web::ReqData<Role>>,
+    user: Option<actix_web::web::ReqData<UserInfo>>,
     request: GraphQLRequest,
 ) -> GraphQLResponse {
-    trace!("Execute Authenticated: {user:#?}");
-    let schema = &context.schema;
     let histogram = context.graphql_request_histogram.clone();
-    let request = request.into_inner();
-    let subject = user
-        .as_ref()
-        .and_then(|user| user.payload.registered.subject.as_deref());
-    let found_user = if let Some(DecodedInfo { jwt: _jwt, payload }) = &user {
-        match serde_json::from_value::<UserInfo>(payload.private.clone()) {
-            Ok(user) => Some(user),
-            Err(error) => {
-                error!("Cannot decode user info: {:#?}: {error}", payload.private);
-                None
-            }
-        }
-    } else {
-        None
-    };
+    let mut request = request.into_inner();
+    let user = user.map(|user| user.into_inner());
+    trace!("Execute as {user:?}");
     let timer = histogram
         .with_label_values(&[
             request.operation_name.as_deref().unwrap_or_default(),
-            found_user
-                .as_ref()
-                .and_then(|u| u.name.as_deref())
-                .or(subject)
+            user.as_ref()
+                .and_then(|user| user.name.as_deref())
                 .unwrap_or_default(),
         ])
         .start_timer();
-    let request = if let Some(user) = found_user {
-        request.data(user)
-    } else {
-        request
-    };
-
-    let response = backend::graphql::live::execute_once(schema, request).await;
-    timer.stop_and_record();
-    response.into()
-}
-async fn graphql_anonymous(
-    context: Data<ApplicationContext>,
-    request: GraphQLRequest,
-) -> GraphQLResponse {
-    let schema = &context.anonymous_schema;
-    let histogram = context.graphql_request_histogram.clone();
-    let request = request.into_inner();
-    let timer = histogram
-        .with_label_values(&[request.operation_name.as_deref().unwrap_or_default(), ""])
-        .start_timer();
-
-    let response = schema.execute(request).await;
+    if let Some(role) = role {
+        request = request.data(role.into_inner());
+    }
+    if let Some(user) = user {
+        request = request.data(user);
+    }
+    let response = backend::graphql::live::execute_once(&context.schema, request).await;
     timer.stop_and_record();
     response.into()
 }
@@ -138,8 +107,8 @@ async fn graphql_anonymous(
 /// Subscriptions over a WebSocket (`graphql-transport-ws`, `backend::graphql::live`). A
 /// browser can't set headers on one: the token comes in the `connection_init` payload
 /// (`{"token": …}`) and is checked as `/graphql` checks its header, against the issuer's keys
-/// of the moment ([`IssuerKeys::for_token`]). Every operation on the
-/// connection ends at the token's expiry ([`Expiring`]).
+/// of the moment ([`IssuerKeys::for_token`]), and gives the connection its user's [`Role`].
+/// Every operation on the connection ends at the token's expiry ([`Expiring`]).
 async fn graphql_ws(
     context: Data<ApplicationContext>,
     request: actix_web::HttpRequest,
@@ -153,9 +122,15 @@ async fn graphql_ws(
                 .and_then(|token| token.as_str())
                 .unwrap_or_default();
             let keys = keys.ok_or_else(|| async_graphql::Error::new("no OIDC"))?;
-            let Authenticated { user, expiry } = authenticate(keys.for_token(token).await, token)?;
+            let Authenticated {
+                subject,
+                user,
+                expiry,
+            } = authenticate(keys.for_token(token).await, token)?;
+            let role = backend::role::of(subject.as_deref(), user.as_ref()).await;
             let mut data = async_graphql::Data::default();
             data.insert(expiry);
+            data.insert(role);
             if let Some(user) = user {
                 data.insert(user);
             }
@@ -166,12 +141,13 @@ async fn graphql_ws(
 
 /// The user of a token and when it expires ([`authenticate`]).
 struct Authenticated {
+    subject: Option<String>,
     user: Option<UserInfo>,
     expiry: TokenExpiry,
 }
 
-/// Checks `token` as the middleware of `/graphql` does (signature, `validation_options`,
-/// `auth_users`) and gives the user info in it and when it expires. The extractor reads the
+/// Checks `token` as the middleware of `/graphql` does (signature, `validation_options`) and
+/// gives the user in it and when it expires. The extractor reads the
 /// token from a request's header only, so it gets a request carrying it.
 fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<Authenticated> {
     use actix_web::FromRequest;
@@ -187,12 +163,8 @@ fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<Authenticated>
         warn!("token refused on the WebSocket: {error}");
         return Err(async_graphql::Error::new("token refused"));
     }
-    let subject = info.payload.registered.subject.as_deref();
+    let subject = info.payload.registered.subject.clone();
     let user = serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok();
-    if !backend::role::is_admin(subject, user.as_ref()) {
-        warn!("user refused on the WebSocket, no admin: {subject:?}");
-        return Err(async_graphql::Error::new("user not in auth_users"));
-    }
     // `exp` is required by `validation_options`
     let expiry = info
         .payload
@@ -200,7 +172,11 @@ fn authenticate(oidc: Oidc, token: &str) -> async_graphql::Result<Authenticated>
         .expiry
         .ok_or_else(|| async_graphql::Error::new("token without exp"))?;
     let expiry = TokenExpiry(*expiry + chrono::Duration::seconds(LEEWAY_SECONDS));
-    Ok(Authenticated { user, expiry })
+    Ok(Authenticated {
+        subject,
+        user,
+        expiry,
+    })
 }
 
 #[get("/health")]
@@ -269,9 +245,7 @@ async fn metrics(request: HttpRequest, scrape: Data<Scrape>) -> HttpResponse {
 #[derive(Clone)]
 struct ApplicationContext {
     graphql_request_histogram: HistogramVec,
-    schema: AuthenticatedGraphqlSchema,
-    anonymous_schema: AnonymousGraphqlSchema,
-    resident_schema: ResidentGraphqlSchema,
+    schema: GraphqlSchema,
 }
 
 #[derive(Error, Debug)]
@@ -328,8 +302,6 @@ async fn main() -> Result<(), BackendError> {
     backend::auto_rollout::start(topology.clone());
 
     let schema = create_schema(topology.clone());
-    let anonymous_schema = create_anonymous_schema();
-    let resident_schema = create_resident_schema(topology.clone());
 
     let issuer_keys = IssuerKeys::fetch(CONFIG.auth_issuer()).await?;
     issuer_keys.clone().keep_fresh();
@@ -341,8 +313,6 @@ async fn main() -> Result<(), BackendError> {
     let data = Data::new(ApplicationContext {
         graphql_request_histogram,
         schema,
-        anonymous_schema,
-        resident_schema,
     });
     let main_server = HttpServer::new(move || {
         let resources = generate();
@@ -354,22 +324,15 @@ async fn main() -> Result<(), BackendError> {
             .app_data(data.clone())
             .app_data(Data::from(issuer_keys.clone()))
             // `/…/`: workaround for proxy troubles
-            .service(authenticated_graphql("/graphql", biscuit_validator.clone()))
-            .service(authenticated_graphql(
-                "/graphql/",
-                biscuit_validator.clone(),
-            ))
+            .service(graphql_with_token("/graphql", biscuit_validator.clone()))
+            .service(graphql_with_token("/graphql/", biscuit_validator.clone()))
+            .service(graphql_without_token("/graphql"))
+            .service(graphql_without_token("/graphql/"))
             .service(
                 resource("/graphql/ws")
                     .guard(actix_web::guard::Get())
                     .to(graphql_ws),
             )
-            .service(resident_graphql(
-                "/graphql/resident",
-                biscuit_validator.clone(),
-            ))
-            .service(anonymous_graphql("/graphql_anonymous"))
-            .service(anonymous_graphql("/graphql_anonymous/"))
             .service(www_ca)
             .service(netbox_webhook)
             .service(ResourceFiles::new("/", resources).resolve_not_found_to_root())
@@ -406,36 +369,30 @@ async fn main() -> Result<(), BackendError> {
     Ok(())
 }
 
-/// The authenticated API: a valid token (`biscuit_validator`, against the issuer's keys of the
-/// moment, `with_issuer_keys`; why one is refused is logged by `log_refused_token`) of a user in
-/// `auth_users` (`require_allowed_user`), otherwise `403`.
-fn authenticated_graphql(
+/// `/graphql` with a token: a valid one (`biscuit_validator`, against the issuer's keys of the
+/// moment, `with_issuer_keys`; why one is refused is logged by `log_refused_token`), otherwise
+/// `403`, and the user's role (`with_role`).
+fn graphql_with_token(
     path: &'static str,
     biscuit_validator: OidcBiscuitValidator,
 ) -> impl HttpServiceFactory {
     resource(path)
         .guard(Post())
-        .wrap(from_fn(require_allowed_user))
+        .guard(actix_web::guard::fn_guard(|ctx| {
+            ctx.head()
+                .headers()
+                .contains_key(actix_web::http::header::AUTHORIZATION)
+        }))
+        .wrap(from_fn(with_role))
         .wrap(biscuit_validator)
         .wrap(from_fn(log_refused_token))
         .wrap(from_fn(with_issuer_keys))
         .to(graphql)
 }
 
-/// The residents' API (`backend::graphql::resident`): a valid token as for
-/// [`authenticated_graphql`], with the user's role (`with_role`); nobody gets the role and
-/// nothing else, so the UI can say why.
-fn resident_graphql(
-    path: &'static str,
-    biscuit_validator: OidcBiscuitValidator,
-) -> impl HttpServiceFactory {
-    resource(path)
-        .guard(Post())
-        .wrap(from_fn(with_role))
-        .wrap(biscuit_validator)
-        .wrap(from_fn(log_refused_token))
-        .wrap(from_fn(with_issuer_keys))
-        .to(graphql_resident)
+/// `/graphql` without a token: no role, only the root fields open to anyone answer.
+fn graphql_without_token(path: &'static str) -> impl HttpServiceFactory {
+    resource(path).guard(Post()).to(graphql)
 }
 
 /// Finds the user's role (`backend::role::of`) after the token is checked and hands it on to
@@ -459,50 +416,6 @@ async fn with_role(
     req.extensions_mut().insert(role);
     if let Some(user) = user {
         req.extensions_mut().insert(user);
-    }
-    Ok(next.call(req).await?.map_into_boxed_body())
-}
-
-async fn graphql_resident(
-    context: Data<ApplicationContext>,
-    role: actix_web::web::ReqData<Role>,
-    user: Option<actix_web::web::ReqData<UserInfo>>,
-    request: GraphQLRequest,
-) -> GraphQLResponse {
-    let histogram = context.graphql_request_histogram.clone();
-    let request = request.into_inner();
-    let timer = histogram
-        .with_label_values(&[request.operation_name.as_deref().unwrap_or_default(), ""])
-        .start_timer();
-    let mut request = request.data(role.into_inner());
-    if let Some(user) = user {
-        request = request.data(user.into_inner());
-    }
-    let response = context.resident_schema.execute(request).await;
-    timer.stop_and_record();
-    response.into()
-}
-
-fn anonymous_graphql(path: &'static str) -> impl HttpServiceFactory {
-    resource(path).guard(Post()).to(graphql_anonymous)
-}
-
-/// Lets only admins in (`backend::role::is_admin`: `auth_users` or the group `admin`), after
-/// the token is checked.
-async fn require_allowed_user(
-    mut req: ServiceRequest,
-    next: Next<impl MessageBody + 'static>,
-) -> Result<ServiceResponse<BoxBody>, actix_web::Error> {
-    let info = req.extract::<DecodedInfo>().await.ok();
-    let subject = info
-        .as_ref()
-        .and_then(|info| info.payload.registered.subject.clone());
-    let user = info
-        .as_ref()
-        .and_then(|info| serde_json::from_value::<UserInfo>(info.payload.private.clone()).ok());
-    if !backend::role::is_admin(subject.as_deref(), user.as_ref()) {
-        warn!("user refused, no admin: {subject:?}");
-        return Ok(req.into_response(HttpResponse::Forbidden().body("user not in auth_users")));
     }
     Ok(next.call(req).await?.map_into_boxed_body())
 }

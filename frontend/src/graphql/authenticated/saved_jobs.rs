@@ -1,17 +1,17 @@
 //! Scope: The queries for the jobs saved before a restart; nothing else.
 //!
 //! The jobs saved before a restart that didn't go on (`components::saved_jobs`).
-use super::{schema::schema, types::JobPhase};
+use super::types::JobPhase;
+use crate::graphql::schema::schema;
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(schema = "authenticated", graphql_type = "QueryAuthenticated")]
+#[cynic(graphql_type = "Query")]
 pub struct SavedJobs {
     pub allow_apply: bool,
     pub saved_jobs: Vec<Waiting>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
-#[cynic(schema = "authenticated")]
 pub struct Waiting {
     pub device_id: i32,
     pub device_name: Option<String>,
@@ -23,7 +23,6 @@ pub struct Waiting {
 }
 
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum SavedJobKind {
     Apply,
     Update,
@@ -32,7 +31,6 @@ pub enum SavedJobKind {
 }
 
 #[derive(cynic::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-#[cynic(schema = "authenticated")]
 pub enum HeldBack {
     DeviceGone,
     BatchIncomplete,
@@ -46,11 +44,7 @@ pub struct DiscardSavedJobVariables {
 }
 
 #[derive(cynic::QueryFragment, Debug)]
-#[cynic(
-    schema = "authenticated",
-    graphql_type = "MutationAuthenticated",
-    variables = "DiscardSavedJobVariables"
-)]
+#[cynic(graphql_type = "Mutation", variables = "DiscardSavedJobVariables")]
 pub struct DiscardSavedJob {
     #[arguments(deviceId: $device_id)]
     #[expect(
