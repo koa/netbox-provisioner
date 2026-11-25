@@ -87,6 +87,32 @@ und sie, wo möglich, auf ein schlankeres VPN wie WireGuard umstellen.
   festen IPv6-Adressen der Hubs; für die IPv4 braucht es ein Custom Field an der Termination,
   etwa `endpoint` (DDNS-Name, leer für „baut nur selbst auf“, die Mobilfunk-Standorte).
 
+## WireGuard oder IPsec
+
+Nicht gemessen (kein Lab-Gerät dafür); aus dem Wissen über RouterOS, im Einzelnen zu prüfen:
+
+- **Leistung:** Viele MikroTik-Router verschlüsseln IPsec (AES) in Hardware, WireGuard läuft in
+  RouterOS nur auf der CPU. Bei hohen Raten auf einem Router mit IPsec-Beschleunigung (etwa dem
+  CCR2004) ist IPsec deshalb wahrscheinlich schneller; MikroTik gibt pro Modell einen
+  IPsec-Durchsatz an, für WireGuard keinen. An einem 50-Mbit/s-LTE-Anschluss begrenzt der
+  Anschluss, nicht die Verschlüsselung.
+- **Routing:** RouterOS' IPsec arbeitet mit Policies, nicht mit einem Interface. Für BGP oder OSPF
+  braucht es ein Interface, also GRE oder IPIP mit IPsec im Transport-Modus darunter (wie heute).
+  WireGuard ist selbst ein Interface.
+- **Dynamische Adressen und NAT:** GRE und IPIP brauchen beide Adressen fest eingetragen; ändert
+  sich eine, muss ein Skript nachführen (wie heute). Hinter CGNAT kommt GRE nur in ESP über UDP
+  (NAT-T) verpackt durch, und die Adressen darin sind die privaten. WireGuard lernt die Adresse
+  der Gegenseite aus den Paketen.
+
+IPsec passt also dort, wo **beide Enden feste Adressen** haben und viel Verkehr fliesst: zwischen
+den beiden Hubs über ihr statisches IPv6, GRE über IPv6 mit IPsec (in RouterOS `ipsec-secret`
+am GRE-Interface), ohne NAT und ohne Skript, wenn beide Router IPsec in Hardware können. Für die
+Spokes (dynamische IPv4, CGNAT) bleibt WireGuard: Ihre Anschlüsse sind langsamer als die
+Verschlüsselung, und sie brauchen kein Nachführen.
+
+Messen ohne Lab: auf den zwei Hubs, sobald beide Tunnel stehen, mit `/tool bandwidth-test` über
+jeden und der CPU-Last daneben (`/tool profile`); das macht der Betreiber, nicht der Provisioner.
+
 ## Vorschlag
 
 ### 1. Bestandsaufnahme (lesend)
