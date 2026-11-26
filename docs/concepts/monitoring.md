@@ -1,11 +1,11 @@
 # Konzept: Überwachung
 
-Status: Konzept, zum Teil umgesetzt: Health, PoE, WLAN-Clients, System, Interfaces, Leases, die
+Status: umgesetzt (C8 erledigt 2026-11-26): Health, PoE, WLAN-Clients, System, Interfaces, Leases, die
 Strecken aus der LSDB und den Uplink-Ping liefert der Provisioner an `/metrics`
 ([Gerätemetriken](../device-metrics.md), C14, C8); die Seite „Zustand“ für Admins gibt es
 (`/condition`, siehe unten), ebenso die Internet-Zeile der Anwohner. Offen sind die Radios von
-`/interface/wifi` und die 60-GHz-Strecken. Der Rest ist
-Aufgabe C8 in [todo.md](../todo.md). Baut auf der [Netz-Karte](../network-map.md) auf.
+`/interface/wifi` (E40), die 60-GHz-Strecken (E41) und ob der Provisioner Syslog-Server wird
+(Z65), in [todo.md](../todo.md). Baut auf der [Netz-Karte](../network-map.md) auf.
 
 ## Ziel
 
@@ -35,7 +35,7 @@ die WLAN-Clients und das Signal der 5-GHz-Funkstrecken (beim AP-Ende) liefert `/
 pro Scrape gelesen statt vom Sammler; ebenso die Strecken aus der LSDB (`mikrotik_link_up`,
 `mikrotik_link_ipv6_up`) und der Uplink-Ping (`mikrotik_uplink_ping_*`, 2026-11-25): Ein eigener
 Sammler ist damit nicht nötig, Prometheus fragt regelmässig. Offen sind die 60-GHz-Strecken
-(`w60g` monitor) und die Radios von `/interface/wifi` in `mikrotik_wireless_radio_*`:
+(`w60g` monitor, E41) und die Radios von `/interface/wifi` in `mikrotik_wireless_radio_*` (E40):
 
 | Was | woher | wie oft |
 |---|---|---|
@@ -113,7 +113,7 @@ Provisioner. Vorteil: Ereignisse im Moment, in dem sie passieren, und eine Histo
 („Funkbrücke 3-mal in der letzten Stunde weggefallen“). Nachteile: Syslog über UDP geht genau
 dann verloren, wenn die Strecke dazwischen ausfällt, und den aktuellen Zustand muss man
 trotzdem abfragen. Die Netz-Ansicht fragt deshalb ab. Das Logging der Geräte an einen Server
-(`device_syslog`) generiert der Provisioner schon; ob er selbst einer wird, ist offen.
+(`device_syslog`) generiert der Provisioner schon; ob er selbst einer wird, ist offen (Z65).
 
 ## Entschieden (2026-10-23)
 
