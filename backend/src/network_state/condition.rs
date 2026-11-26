@@ -6,7 +6,7 @@
 //! (the network map's candidates), in the order of the concept: a router the provisioner
 //! doesn't reach, a dead link, a link up only in OSPFv2, an uplink losing pings or without a
 //! default route, a WLAN client with a weak or bad signal (`wlan_signal`, Z64), a reboot in
-//! the last 24 h, a PoE port without load. Health and resources are shown, not judged (Z16).
+//! the last 24 h, a PoE port contradicting NetBox (E8) or without load. Health and resources are shown, not judged (Z16).
 //! Reads the LSDB (at most 5 s old), then each router, its WLAN clients and leases, then the
 //! uplinks' pings (at most 30 s old, as the network map's details): one device's reads stay
 //! sequential.
@@ -74,6 +74,9 @@ pub enum ConditionKind {
     SignalWeak,
     /// the router booted in the last 24 h
     Rebooted,
+    /// the port contradicts NetBox's PoE mode (`ConditionFinding::poe`: no PoE out, the far
+    /// end not `pd`, feeding where NetBox has it fed, feeding without a mode)
+    PoeMismatch,
     /// NetBox has the port feed, nothing at the other end draws power (`PoeProblem::NoLoad`)
     PoeNoLoad,
 }
@@ -84,8 +87,10 @@ pub struct ConditionFinding {
     pub device: DeviceRef,
     /// a link's ends, `device`'s first
     pub link: Option<ConditionLink>,
-    /// the PoE port without load
+    /// the PoE port without load or contradicting NetBox
     pub port: Option<InterfaceRef>,
+    /// what the PoE port contradicts
+    pub poe: Option<PoeProblem>,
     /// since the reboot
     pub uptime: Option<ScalarDuration>,
     pub uplink: Option<UplinkQuality>,
@@ -239,6 +244,7 @@ pub(crate) fn build(
         uptime: None,
         uplink: None,
         client: None,
+        poe: None,
     };
     let unreachable = candidates
         .iter()
@@ -259,12 +265,16 @@ pub(crate) fn build(
             });
         }
         for feeding in poe::feeding(device, &data.poe) {
-            if feeding.problem == Some(PoeProblem::NoLoad) {
-                findings.push(ConditionFinding {
-                    port: Some(feeding.port),
-                    ..finding(ConditionKind::PoeNoLoad, device)
-                });
-            }
+            let kind = match feeding.problem {
+                None => continue,
+                Some(PoeProblem::NoLoad) => ConditionKind::PoeNoLoad,
+                Some(_) => ConditionKind::PoeMismatch,
+            };
+            findings.push(ConditionFinding {
+                port: Some(feeding.port),
+                poe: feeding.problem,
+                ..finding(kind, device)
+            });
         }
         for client in readings.clients.get(&device.id()).into_iter().flatten() {
             if let Some(kind) = signal_kind(client.signal, thresholds) {

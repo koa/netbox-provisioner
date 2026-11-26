@@ -358,3 +358,61 @@ fn a_client_s_signal_by_the_thresholds() {
     let condition = build(&net.devices, &edges, &readings, custom);
     assert_eq!(condition.findings.len(), 3);
 }
+
+/// A port NetBox has feed without PoE out, and one feeding without a mode in NetBox: each a
+/// PoE finding with what it contradicts (E8).
+#[test]
+fn a_poe_port_contradicting_netbox() {
+    let net = net();
+    let core = net.devices[0].id();
+    let mut device_data = net
+        .devices
+        .iter()
+        .map(|device| (device.id(), up_since(LONG)))
+        .collect::<BTreeMap<_, _>>();
+    let port = |name: &str, poe_out| EthernetPort {
+        name: name.into(),
+        default_name: name.into(),
+        poe_out,
+    };
+    device_data.get_mut(&core).unwrap().poe = PoePorts {
+        ethernet: vec![port("ether1", true), port("ether2", false)].into(),
+        monitor: vec![
+            monitor_reading(&[("name", "ether1"), ("poe-out-status", "powered-on")]),
+            monitor_reading(&[("name", "ether2"), ("poe-out-status", "disabled")]),
+        ]
+        .into(),
+    };
+    let edges = [edge(net.to_a, EdgeState::Up), edge(net.to_b, EdgeState::Up)];
+    let readings = Readings {
+        device_data,
+        ..Readings::default()
+    };
+    let condition = build(&net.devices, &edges, &readings, THRESHOLDS);
+    let poe = condition
+        .findings
+        .iter()
+        .map(|finding| {
+            (
+                finding.kind,
+                finding.port.as_ref().map(|port| &*port.name),
+                finding.poe,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        poe,
+        [
+            (
+                ConditionKind::PoeMismatch,
+                Some("ether1"),
+                Some(PoeProblem::Undocumented)
+            ),
+            (
+                ConditionKind::PoeMismatch,
+                Some("ether2"),
+                Some(PoeProblem::NoPoeOut)
+            ),
+        ]
+    );
+}

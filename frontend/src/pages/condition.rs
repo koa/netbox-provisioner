@@ -11,7 +11,7 @@ use crate::{
         authenticated::{
             condition::{Condition, ConditionFinding, ConditionKind, NetworkCondition},
             network_map::{MapEdgeKind, MapNodeDetails},
-            types::{DeviceRef, InterfaceRef},
+            types::{DeviceRef, InterfaceRef, PoeProblem},
         },
         request,
     },
@@ -132,9 +132,10 @@ fn status(kind: ConditionKind) -> &'static str {
             "danger"
         }
         ConditionKind::SignalBad => "danger",
-        ConditionKind::LinkIpv6Down | ConditionKind::UplinkLoss | ConditionKind::SignalWeak => {
-            "warning"
-        }
+        ConditionKind::LinkIpv6Down
+        | ConditionKind::UplinkLoss
+        | ConditionKind::SignalWeak
+        | ConditionKind::PoeMismatch => "warning",
         ConditionKind::Rebooted | ConditionKind::PoeNoLoad | ConditionKind::Other => "info",
     }
 }
@@ -169,6 +170,18 @@ fn view_finding(finding: &ConditionFinding) -> Html {
         },
         (ConditionKind::Rebooted, ..) => {
             t::rebooted(finding.uptime.unwrap_or_default() / 1_000_000_000)
+        }
+        (ConditionKind::PoeMismatch, ..) => {
+            let problem = match finding.poe {
+                Some(PoeProblem::NoPoeOut) => map::POE_NO_POE_OUT,
+                Some(PoeProblem::NoLoad) => map::POE_NO_LOAD,
+                Some(PoeProblem::PdMissing) => map::POE_PD_MISSING,
+                Some(PoeProblem::FeedsInstead) => map::POE_FEEDS_INSTEAD,
+                Some(PoeProblem::Undocumented) => map::POE_UNDOCUMENTED,
+                Some(PoeProblem::Other) | None => t::UNKNOWN,
+            };
+            let port = finding.port.as_ref().map(|port| port.name.as_str());
+            t::poe_mismatch(port.unwrap_or_default(), problem)
         }
         (ConditionKind::PoeNoLoad, ..) => t::poe_no_load(
             finding

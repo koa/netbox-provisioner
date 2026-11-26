@@ -207,5 +207,5 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
 
 ## Noch nicht geprüft
 
-Das Image lief noch in keinem Cluster, und beide Workflows sind auf GitHub noch nicht gelaufen
-(E3).
+Das Image lief noch in keinem Cluster (E3). Beide Workflows laufen auf GitHub: `ci` bei jedem
+Push, `cleanup` täglich (geprüft 2026-11-26).

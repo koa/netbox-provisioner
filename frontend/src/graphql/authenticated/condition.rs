@@ -4,7 +4,7 @@
 //! (`networkCondition`, `docs/concepts/monitoring.md`).
 use super::{
     network_map::{MapEdgeKind, MapNodeDetails},
-    types::{DeviceRef, ErrorInfo, InterfaceRef},
+    types::{DeviceRef, ErrorInfo, InterfaceRef, PoeProblem},
 };
 use crate::graphql::schema::schema;
 
@@ -33,6 +33,7 @@ pub struct ConditionFinding {
     pub device: DeviceRef,
     pub link: Option<ConditionLink>,
     pub port: Option<InterfaceRef>,
+    pub poe: Option<PoeProblem>,
     /// nanoseconds
     pub uptime: Option<u64>,
     pub uplink: Option<UplinkQuality>,
@@ -74,6 +75,7 @@ pub enum ConditionKind {
     SignalBad,
     SignalWeak,
     Rebooted,
+    PoeMismatch,
     PoeNoLoad,
     #[cynic(fallback)]
     Other,
