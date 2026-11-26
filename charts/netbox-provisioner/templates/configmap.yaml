@@ -51,6 +51,17 @@ data:
       {{- with $s.internet_targets }}
       internet_targets: {{ . | toJson }}
       {{- end }}
+      {{- with $s.wlan_signal }}
+      {{- if or .weak .bad }}
+      wlan_signal:
+        {{- with .weak }}
+        weak: {{ . | int }}
+        {{- end }}
+        {{- with .bad }}
+        bad: {{ . | int }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
       {{- with $s.ospf_auth }}
       {{- if .current }}
       ospf_auth:

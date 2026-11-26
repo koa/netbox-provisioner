@@ -5,8 +5,9 @@
 //! `Query.topology.networkCondition`: the findings of a site's, or every site's, OSPF routers
 //! (the network map's candidates), in the order of the concept: a router the provisioner
 //! doesn't reach, a dead link, a link up only in OSPFv2, an uplink losing pings or without a
-//! default route, a reboot in the last 24 h, a PoE port without load. Health and resources are
-//! shown, not judged (Z16). Reads the LSDB (at most 5 s old), then each router, then the
+//! default route, a WLAN client with a weak or bad signal (`wlan_signal`, Z64), a reboot in
+//! the last 24 h, a PoE port without load. Health and resources are shown, not judged (Z16).
+//! Reads the LSDB (at most 5 s old), then each router, its WLAN clients and leases, then the
 //! uplinks' pings (at most 30 s old, as the network map's details): one device's reads stay
 //! sequential.
 
@@ -17,7 +18,10 @@ use super::{
     read::{read, readers},
 };
 use crate::{
+    config::{CONFIG, SignalThresholds},
     device::{
+        interface_live::client_name,
+        metrics::{Lease, WlanClient},
         poe::{self, PoeProblem},
         uplink::{self, UplinkQuality, UplinkReading},
     },
@@ -64,6 +68,10 @@ pub enum ConditionKind {
     NoDefaultRoute,
     /// pings to the uplink's gateway got lost
     UplinkLoss,
+    /// a WLAN client's signal is below `wlan_signal.bad`
+    SignalBad,
+    /// a WLAN client's signal is below `wlan_signal.weak`
+    SignalWeak,
     /// the router booted in the last 24 h
     Rebooted,
     /// NetBox has the port feed, nothing at the other end draws power (`PoeProblem::NoLoad`)
@@ -81,6 +89,22 @@ pub struct ConditionFinding {
     /// since the reboot
     pub uptime: Option<ScalarDuration>,
     pub uplink: Option<UplinkQuality>,
+    /// the WLAN client with a weak or bad signal
+    pub client: Option<ConditionClient>,
+}
+
+/// A WLAN client as the device it is registered at hears it.
+#[derive(Debug, Clone, PartialEq, SimpleObject)]
+pub struct ConditionClient {
+    pub mac_address: Box<str>,
+    /// from a lease of any router by MAC
+    pub hostname: Option<Box<str>>,
+    pub ssid: Box<str>,
+    /// the CAP it is on; empty for a radio of the device itself
+    pub access_point: Box<str>,
+    pub interface: Box<str>,
+    /// dBm
+    pub signal: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, SimpleObject)]
@@ -92,6 +116,23 @@ pub struct ConditionLink {
 
 /// What each uplink router's reading found, those that answered.
 pub type Uplinks = BTreeMap<DeviceId, UplinkReading>;
+
+/// What the routers answered, those that did.
+#[derive(Default)]
+pub(crate) struct Readings {
+    pub device_data: BTreeMap<DeviceId, DeviceMapData>,
+    /// the WLAN clients registered at each
+    pub clients: BTreeMap<DeviceId, Box<[WlanClient]>>,
+    /// every router's bound leases, to name the clients
+    pub leases: Box<[Lease]>,
+    pub uplinks: Uplinks,
+}
+
+/// A router's WLAN clients and leases.
+struct Wlan {
+    clients: Box<[WlanClient]>,
+    leases: Box<[Lease]>,
+}
 
 pub async fn network_condition(devices: Vec<DeviceAccess>) -> NetworkCondition {
     let readers = readers(&devices);
@@ -106,6 +147,21 @@ pub async fn network_condition(devices: Vec<DeviceAccess>) -> NetworkCondition {
         Err(error) => (None, Some(ErrorInfo::from(&error))),
     };
     let device_data = device_data::read_all(&candidates).await;
+    let wlan = join_all(
+        candidates
+            .iter()
+            .filter(|device| device_data.contains_key(&device.id()))
+            .map(|device| async move { (device.id(), wlan(device).await) }),
+    )
+    .await;
+    let mut clients = BTreeMap::new();
+    let mut leases = Vec::new();
+    for (id, wlan) in wlan {
+        if let Some(wlan) = wlan {
+            clients.insert(id, wlan.clients);
+            leases.extend(wlan.leases);
+        }
+    }
     let uplinks = join_all(
         candidates
             .iter()
@@ -116,14 +172,38 @@ pub async fn network_condition(devices: Vec<DeviceAccess>) -> NetworkCondition {
     .into_iter()
     .filter_map(|(id, ping)| Some((id, ping?)))
     .collect();
+    let readings = Readings {
+        device_data,
+        clients,
+        leases: leases.into(),
+        uplinks,
+    };
     NetworkCondition {
         lsdb_error,
         ..build(
             &candidates,
             edges.as_deref().unwrap_or_default(),
-            &device_data,
-            &uplinks,
+            &readings,
+            CONFIG.wlan_signal(),
         )
+    }
+}
+
+/// `device`'s WLAN clients, then its leases; none where it isn't reached or didn't answer.
+async fn wlan(device: &DeviceAccess) -> Option<Wlan> {
+    let accessible = device.connect(DeviceTarget::default()).await.ok()??;
+    let freshness = Freshness::MaxAge(DEVICE_DATA_AGE);
+    let clients = accessible.wlan_clients(freshness).await.ok()?;
+    let leases = accessible.leases(freshness).await.ok()?;
+    Some(Wlan { clients, leases })
+}
+
+/// A client's finding by the thresholds: bad, weak or none.
+fn signal_kind(signal: i16, thresholds: SignalThresholds) -> Option<ConditionKind> {
+    match signal {
+        _ if signal < thresholds.bad => Some(ConditionKind::SignalBad),
+        _ if signal < thresholds.weak => Some(ConditionKind::SignalWeak),
+        _ => None,
     }
 }
 
@@ -138,9 +218,18 @@ async fn ping(device: &DeviceAccess) -> Option<UplinkReading> {
 pub(crate) fn build(
     candidates: &[DeviceAccess],
     edges: &[Edge],
-    device_data: &BTreeMap<DeviceId, DeviceMapData>,
-    uplinks: &Uplinks,
+    readings: &Readings,
+    thresholds: SignalThresholds,
 ) -> NetworkCondition {
+    let device_data = &readings.device_data;
+    let hostnames = readings
+        .leases
+        .iter()
+        .filter_map(|lease| {
+            let name = client_name(lease.hostname.as_deref()?)?;
+            Some((lease.mac_address, name))
+        })
+        .collect::<BTreeMap<_, _>>();
     let mut findings = Vec::new();
     let finding = |kind, device: &DeviceAccess| ConditionFinding {
         kind,
@@ -149,6 +238,7 @@ pub(crate) fn build(
         port: None,
         uptime: None,
         uplink: None,
+        client: None,
     };
     let unreachable = candidates
         .iter()
@@ -176,7 +266,22 @@ pub(crate) fn build(
                 });
             }
         }
-        match uplinks.get(&device.id()) {
+        for client in readings.clients.get(&device.id()).into_iter().flatten() {
+            if let Some(kind) = signal_kind(client.signal, thresholds) {
+                findings.push(ConditionFinding {
+                    client: Some(ConditionClient {
+                        mac_address: client.mac_address.to_string().into(),
+                        hostname: hostnames.get(&client.mac_address).cloned(),
+                        ssid: client.ssid.clone(),
+                        access_point: client.ap.clone(),
+                        interface: client.interface.clone(),
+                        signal: client.signal.into(),
+                    }),
+                    ..finding(kind, device)
+                });
+            }
+        }
+        match readings.uplinks.get(&device.id()) {
             Some(UplinkReading::NoDefaultRoute) => {
                 findings.push(finding(ConditionKind::NoDefaultRoute, device))
             }
@@ -229,6 +334,10 @@ pub(crate) fn build(
             .then_with(|| {
                 let port = |f: &ConditionFinding| f.port.as_ref().map(|p| p.name.clone());
                 port(a).cmp(&port(b))
+            })
+            .then_with(|| {
+                let signal = |f: &ConditionFinding| f.client.as_ref().map(|c| c.signal);
+                signal(a).cmp(&signal(b))
             })
     });
     NetworkCondition {

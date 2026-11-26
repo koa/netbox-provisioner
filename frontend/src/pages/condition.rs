@@ -131,7 +131,10 @@ fn status(kind: ConditionKind) -> &'static str {
         ConditionKind::Unreachable | ConditionKind::LinkDown | ConditionKind::NoDefaultRoute => {
             "danger"
         }
-        ConditionKind::LinkIpv6Down | ConditionKind::UplinkLoss => "warning",
+        ConditionKind::SignalBad => "danger",
+        ConditionKind::LinkIpv6Down | ConditionKind::UplinkLoss | ConditionKind::SignalWeak => {
+            "warning"
+        }
         ConditionKind::Rebooted | ConditionKind::PoeNoLoad | ConditionKind::Other => "info",
     }
 }
@@ -151,6 +154,19 @@ fn view_finding(finding: &ConditionFinding) -> Html {
         (ConditionKind::UplinkLoss, _, Some(uplink)) => {
             t::uplink_loss(uplink.loss, &uplink.gateway, uplink.rtt_ms)
         }
+        (ConditionKind::SignalBad | ConditionKind::SignalWeak, ..) => match &finding.client {
+            Some(client) => t::weak_signal(
+                finding.kind == ConditionKind::SignalBad,
+                client.hostname.as_deref().unwrap_or(&client.mac_address),
+                &client.ssid,
+                match client.access_point.is_empty() {
+                    true => &client.interface,
+                    false => &client.access_point,
+                },
+                client.signal,
+            ),
+            None => t::UNKNOWN.to_string(),
+        },
         (ConditionKind::Rebooted, ..) => {
             t::rebooted(finding.uptime.unwrap_or_default() / 1_000_000_000)
         }

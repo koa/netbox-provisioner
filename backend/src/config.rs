@@ -79,6 +79,23 @@ pub struct Settings {
     /// automatic rollout, `docs/auto-rollout.md`): a family is reached when one of
     /// its targets answers. Default: the anycast DNS resolvers of Cloudflare, Quad9 and Google.
     internet_targets: Option<Box<[IpAddr]>>,
+    /// Below which signal a WLAN client is a finding on the page „Zustand“ (dBm, as the AP
+    /// hears it): `weak` (default -75) a warning, `bad` (default -80) an error.
+    #[serde(default)]
+    wlan_signal: WlanSignalSettings,
+}
+
+#[derive(Deserialize, Default)]
+struct WlanSignalSettings {
+    weak: Option<i16>,
+    bad: Option<i16>,
+}
+
+/// Below which signal a WLAN client is weak or bad, dBm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SignalThresholds {
+    pub weak: i16,
+    pub bad: i16,
 }
 
 /// [`Settings::internet_targets`] without the setting.
@@ -232,6 +249,12 @@ impl Settings {
     }
     pub fn update_fallback(&self) -> std::time::Duration {
         std::time::Duration::from_secs(self.update_fallback_seconds.unwrap_or(900))
+    }
+    pub fn wlan_signal(&self) -> SignalThresholds {
+        SignalThresholds {
+            weak: self.wlan_signal.weak.unwrap_or(-75),
+            bad: self.wlan_signal.bad.unwrap_or(-80),
+        }
     }
     pub fn internet_targets(&self) -> &[IpAddr] {
         self.internet_targets

@@ -59,6 +59,9 @@ CD, Secrets, Gateway) macht der Betreiber von Hand.
   mit dieser Bedingung, für das automatische Rollout). Eine antwortende pro Familie genügt.
   Vorgabe: die Anycast-Resolver von Cloudflare, Quad9 und Google (`1.1.1.1`, `9.9.9.9`,
   `8.8.8.8`, `2606:4700:4700::1111`, `2620:fe::fe`, `2001:4860:4860::8888`).
+- **WLAN-Signal:** `wlan_signal` mit `weak` und `bad` (dBm, wie der AP den Client hört): Ein
+  Client darunter ist auf der Seite „Zustand“ ein Befund, unter `weak` eine Warnung, unter
+  `bad` ein Fehler. Vorgabe −75 und −80.
 - **OSPF-Authentisierung** ([OSPF-Authentisierung](ospf-auth.md)): `ospf_auth` mit
   `current` (die Version, auf die Segmente wechseln, 1–255) und `secrets` (ein Geheimnis pro
   Version, im Chart jedes ein `value` oder `secretKeyRef`, als

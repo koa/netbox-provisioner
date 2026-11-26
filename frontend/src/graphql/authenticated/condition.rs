@@ -36,6 +36,17 @@ pub struct ConditionFinding {
     /// nanoseconds
     pub uptime: Option<u64>,
     pub uplink: Option<UplinkQuality>,
+    pub client: Option<ConditionClient>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+pub struct ConditionClient {
+    pub mac_address: String,
+    pub hostname: Option<String>,
+    pub ssid: String,
+    pub access_point: String,
+    pub interface: String,
+    pub signal: i32,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -60,6 +71,8 @@ pub enum ConditionKind {
     LinkIpv6Down,
     NoDefaultRoute,
     UplinkLoss,
+    SignalBad,
+    SignalWeak,
     Rebooted,
     PoeNoLoad,
     #[cynic(fallback)]

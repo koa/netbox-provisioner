@@ -3,6 +3,7 @@
 use super::*;
 use crate::{
     device::{
+        metrics::{Capsman, Lease, WlanClient},
         poe::{EthernetPort, PoePorts, monitor_reading},
         uplink::UplinkPing,
     },
@@ -121,6 +122,19 @@ fn up_since(uptime: Duration) -> DeviceMapData {
     }
 }
 
+fn readings(device_data: BTreeMap<DeviceId, DeviceMapData>, uplinks: Uplinks) -> Readings {
+    Readings {
+        device_data,
+        uplinks,
+        ..Readings::default()
+    }
+}
+
+const THRESHOLDS: SignalThresholds = SignalThresholds {
+    weak: -75,
+    bad: -80,
+};
+
 const LONG: Duration = Duration::from_secs(30 * 24 * 3600);
 
 fn edge(ends: [InterfaceId; 2], state: EdgeState) -> Edge {
@@ -157,7 +171,7 @@ fn a_healthy_network_has_no_findings() {
         rtt: Some(Duration::from_millis(2)),
     };
     let uplinks = Uplinks::from([(net.devices[0].id(), UplinkReading::Pinged(ping))]);
-    let condition = build(&net.devices, &edges, &data, &uplinks);
+    let condition = build(&net.devices, &edges, &readings(data, uplinks), THRESHOLDS);
     assert_eq!(kinds(&condition), vec![]);
     assert_eq!(condition.devices.len(), 3);
 }
@@ -195,7 +209,7 @@ fn the_findings_most_urgent_first() {
         rtt: Some(Duration::from_millis(12)),
     };
     let uplinks = Uplinks::from([(core, UplinkReading::Pinged(ping))]);
-    let condition = build(&net.devices, &edges, &data, &uplinks);
+    let condition = build(&net.devices, &edges, &readings(data, uplinks), THRESHOLDS);
     assert_eq!(
         kinds(&condition),
         vec![
@@ -249,7 +263,7 @@ fn a_dead_link_and_no_default_route() {
         edge(net.to_b, EdgeState::Up),
     ];
     let uplinks = Uplinks::from([(net.devices[0].id(), UplinkReading::NoDefaultRoute)]);
-    let condition = build(&net.devices, &edges, &data, &uplinks);
+    let condition = build(&net.devices, &edges, &readings(data, uplinks), THRESHOLDS);
     assert_eq!(
         kinds(&condition),
         vec![
@@ -273,6 +287,74 @@ fn a_default_route_without_an_address_is_no_finding() {
         interface: "pppoe-out1".into(),
     };
     let uplinks = Uplinks::from([(net.devices[0].id(), reading)]);
-    let condition = build(&net.devices, &edges, &data, &uplinks);
+    let condition = build(&net.devices, &edges, &readings(data, uplinks), THRESHOLDS);
     assert_eq!(kinds(&condition), vec![]);
+}
+
+fn wlan_client(mac: &str, signal: i16) -> WlanClient {
+    WlanClient {
+        mac_address: mac.parse().unwrap(),
+        interface: "cap-a-1".into(),
+        ssid: "berg".into(),
+        ap: "a".into(),
+        capsman: Capsman::Wifi,
+        rx_bytes: 0,
+        tx_bytes: 0,
+        rx_packets: 0,
+        tx_packets: 0,
+        signal,
+        signal_to_noise: None,
+        uptime: LONG,
+        band: None,
+    }
+}
+
+/// Below -75 dBm a client is weak, below -80 bad, at -75 still neither; a lease names it.
+#[test]
+fn a_client_s_signal_by_the_thresholds() {
+    let net = net();
+    let core = net.devices[0].id();
+    let device_data = net
+        .devices
+        .iter()
+        .map(|device| (device.id(), up_since(LONG)))
+        .collect();
+    let edges = [edge(net.to_a, EdgeState::Up), edge(net.to_b, EdgeState::Up)];
+    let readings = Readings {
+        device_data,
+        clients: BTreeMap::from([(
+            core,
+            Box::from([
+                wlan_client("02:00:00:00:00:01", -75),
+                wlan_client("02:00:00:00:00:02", -76),
+                wlan_client("02:00:00:00:00:03", -85),
+            ]),
+        )]),
+        leases: Box::new([Lease {
+            server: "dhcp-clients".into(),
+            address: "10.0.1.20".parse().unwrap(),
+            mac_address: "02:00:00:00:00:03".parse().unwrap(),
+            hostname: Some("laptop".into()),
+        }]),
+        uplinks: Uplinks::new(),
+    };
+    let condition = build(&net.devices, &edges, &readings, THRESHOLDS);
+    assert_eq!(
+        kinds(&condition),
+        vec![
+            (ConditionKind::SignalBad, "core"),
+            (ConditionKind::SignalWeak, "core"),
+        ]
+    );
+    let bad = condition.findings[0].client.as_ref().unwrap();
+    assert_eq!(
+        (&*bad.mac_address, bad.hostname.as_deref(), bad.signal),
+        ("02:00:00:00:00:03", Some("laptop"), -85)
+    );
+    let custom = SignalThresholds {
+        weak: -70,
+        bad: -76,
+    };
+    let condition = build(&net.devices, &edges, &readings, custom);
+    assert_eq!(condition.findings.len(), 3);
 }

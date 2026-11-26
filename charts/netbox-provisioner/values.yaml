@@ -77,6 +77,11 @@ settings:
   # IPv6, one answering per family is enough; empty: the anycast DNS resolvers of Cloudflare,
   # Quad9 and Google
   internet_targets: []
+  # below which signal (dBm, as the AP hears it) a WLAN client is a finding on the page
+  # „Zustand“: weak a warning (empty: -75), bad an error (empty: -80)
+  wlan_signal:
+    weak: ""
+    bad: ""
   # the CA issuing each device's certificate for WebFig over HTTPS (PEM: the issuing CA's, then
   # the ones above it, each with a subject key identifier); with it, an apply installs one per
   # device with the ones between it and the root, turns www-ssl on and www (HTTP) off. `root`
