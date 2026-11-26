@@ -193,9 +193,12 @@ read per switch and router; shown in the ports tab next to a port without cable,
 (`components::resident::status`): unsaved, else the rollout of the newest saved change
 touching it (`ChangeState.touched`, from its undo steps), else what is up (`liveState`: the
 LSDB as the network map reads it, `NetworkState::states`, for the own devices, each port's
-switch and each WLAN's access points; a device without OSPF of its own isn't judged and its
+switch and each WLAN's access points, with the WLAN's clients an unreached one had at the
+last read of its controller (`device::wlan_seen`: every `wlan_clients`/`metrics` read notes
+them per access point, kept a day, E36); a device without OSPF of its own isn't judged and its
 port gets no „Ok“; and the link of each port NetBox has a cable at, `PortLive.link` from
-`AccessibleDevice::port_links`, `/interface` `running`, each RouterOS switch not missing read
+`AccessibleDevice::port_links`, `/interface` `running`, without a link since how long:
+`linkDownFor`, `last-link-down-time` against the switch's `/system/clock`, E35, each RouterOS switch not missing read
 once); the view reads changes and live state every 15 s and sums them up on top.
 `LiveState.internet` is each network's way out (`graphql::resident::live::way_out`, C8): from
 the router with the network's DHCP server up the `ManagementTree` to the first router with an

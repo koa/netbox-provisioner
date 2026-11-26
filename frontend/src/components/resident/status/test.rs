@@ -4,7 +4,7 @@ use crate::graphql::resident::{
     changes::{
         ChangeDevice, ChangeState, HoldReason, RolloutState, RoundDevice, Touched, TouchedPort,
     },
-    live::{DeviceLive, LiveState, PortLive, SeenUplink, WlanLive},
+    live::{DeviceLive, LiveState, LostClient, PortLive, SeenUplink, WlanLive},
     residents::{
         FarEnd, Named, PortKind, Resident, ResidentDevice, ResidentNetwork, ResidentPort,
         ResidentWlan,
@@ -117,6 +117,7 @@ fn a_socket_shows_its_rollout_then_its_live_state() {
             switch: named(10, "lab-crs125"),
             reached: Some(true),
             link: None,
+            link_down_for: None,
         }],
         Vec::new(),
     );
@@ -268,6 +269,8 @@ fn a_cabled_port_without_link() {
                 switch: named(10, "lab-crs125"),
                 reached: Some(true),
                 link: Some(link),
+                // the switch saw it go 2 h 10 min ago
+                link_down_for: (!link).then_some(130 * 60 * 1_000_000_000),
             }],
             Vec::new(),
         )
@@ -281,7 +284,7 @@ fn a_cabled_port_without_link() {
     assert_eq!(status.label, StatusLabel::Down);
     assert_eq!(
         status.text.as_deref(),
-        Some("Kein Link. Steckt das Kabel an der Dose und am Gerät?")
+        Some("Kein Link seit 2 h 10 min. Steckt das Kabel an der Dose und am Gerät?")
     );
     let status = state.device(&wap, None, Some(&port)).expect("a label");
     assert_eq!(
@@ -297,7 +300,7 @@ fn a_cabled_port_without_link() {
         issues,
         [
             "lab-wap ist nicht erreichbar.",
-            "Wohnzimmer hat keinen Link: steckt das Kabel?"
+            "Wohnzimmer hat keinen Link seit 2 h 10 min: steckt das Kabel?"
         ]
     );
     let plugged = state_of(true);
@@ -332,6 +335,16 @@ fn a_network_by_its_access_points() {
             wlan: 1,
             access_points: 2,
             unreached: vec![named(7, "lab-wap")],
+            lost: ["laptop", ""]
+                .into_iter()
+                .enumerate()
+                .map(|(n, hostname)| LostClient {
+                    mac_address: format!("02:00:00:00:00:0{n}"),
+                    hostname: (!hostname.is_empty()).then(|| hostname.into()),
+                    access_point: named(7, "lab-wap"),
+                    seen_ago: 3 * 60 * 1_000_000_000,
+                })
+                .collect(),
         }],
     );
     let state = State {
@@ -345,6 +358,23 @@ fn a_network_by_its_access_points() {
         Some("WLAN nur auf 1 von 2 Access Points; lab-wap nicht erreichbar.")
     );
     assert_eq!(label(state.network(&wlan(false))), Some(StatusLabel::Off));
+    // the clients gone with lab-wap, by name, else MAC (E36)
+    let resident = Resident {
+        networks: vec![wlan(true)],
+        ..resident(Vec::new(), Vec::new())
+    };
+    let issues = state
+        .issues(&resident, &[])
+        .into_iter()
+        .map(|issue| issue.text)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        issues,
+        [
+            "WLAN „lab-wlan“ nur auf 1 von 2 Access Points.",
+            "Mit lab-wap weg (dort zuletzt vor 3 min gesehen): laptop, 02:00:00:00:00:01",
+        ]
+    );
 }
 
 /// A change waiting for an admin at a manual device says so, not that the other device,

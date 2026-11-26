@@ -48,9 +48,10 @@ use mikrotik_model::{
         CapsManRegistrationTableState, InterfaceBridgeHostState, InterfaceEthernetState,
         InterfaceState, InterfaceWifi, InterfaceWifiRadioState,
         InterfaceWifiRegistrationTableState, InterfaceWireless,
-        InterfaceWirelessRegistrationTableState, IpDhcpServerLease,
+        InterfaceWirelessRegistrationTableState, IpDhcpServerLease, SystemClockState,
     },
-    resource::collect_resource,
+    resource::{SingleResource, collect_resource},
+    value::{ClockDate, LogTime, TimeOfDay},
 };
 use std::{collections::HashMap, net::IpAddr, time::Duration};
 
@@ -262,12 +263,17 @@ pub struct PortLink {
     /// the port's default name, where it has one (`ether3`)
     pub default_name: Option<Box<str>>,
     pub up: bool,
+    /// down, how long since its link went, by the device's clock; none where it had none since
+    /// the boot
+    pub down_for: Option<Duration>,
 }
 
 impl AccessibleDevice {
     /// The device's [`DeviceMetrics`], as fresh as `freshness` asks (a scrape: begun since it).
     pub async fn metrics(&self, freshness: Freshness) -> Result<DeviceMetrics, Error> {
-        read(&self.reader().at(freshness)).await
+        let metrics = read(&self.reader().at(freshness)).await?;
+        self.note_clients(&metrics.wlan_clients);
+        Ok(metrics)
     }
     /// The bound leases of the device's DHCP servers.
     pub async fn leases(&self, freshness: Freshness) -> Result<Box<[Lease]>, Error> {
@@ -285,10 +291,12 @@ impl AccessibleDevice {
         let hosts = collect_resource::<InterfaceBridgeHostState>(&client).await?;
         Ok(learned(&interfaces, hosts))
     }
-    /// Whether its enabled Ethernet ports have a link.
+    /// Whether its enabled Ethernet ports have a link, and since when one is down.
     pub async fn port_links(&self, freshness: Freshness) -> Result<Box<[PortLink]>, Error> {
         let client = self.reader().at(freshness);
-        Ok(links(&collect_resource::<InterfaceState>(&client).await?))
+        let interfaces = collect_resource::<InterfaceState>(&client).await?;
+        let clock = SystemClockState::fetch(&client).await?;
+        Ok(links(&interfaces, clock.as_ref()))
     }
     /// The WLAN clients the device's CAPsMANs and its own radios have registered.
     pub async fn wlan_clients(&self, freshness: Freshness) -> Result<Box<[WlanClient]>, Error> {
@@ -297,7 +305,13 @@ impl AccessibleDevice {
         let mut clients = wifi_clients(&client).await?;
         clients.extend(legacy_clients(&client, &capsman).await?);
         clients.extend(wireless(&client).await?.clients);
+        self.note_clients(&clients);
         Ok(clients.into())
+    }
+    /// Keeps which clients each access point has (`wlan_seen`).
+    fn note_clients(&self, clients: &[WlanClient]) {
+        let device = &self.device_config;
+        super::wlan_seen::note(device.id(), device.name(), clients);
     }
 }
 
@@ -752,7 +766,7 @@ fn learned(
 
 /// The enabled Ethernet ports among `interfaces`, each with whether it is running: a disabled
 /// one has no link by choice, nothing to judge.
-fn links(interfaces: &[InterfaceState]) -> Box<[PortLink]> {
+fn links(interfaces: &[InterfaceState], clock: Option<&SystemClockState>) -> Box<[PortLink]> {
     interfaces
         .iter()
         .filter(|interface| interface._type.0.as_ref() == b"ether")
@@ -764,8 +778,39 @@ fn links(interfaces: &[InterfaceState]) -> Box<[PortLink]> {
                 .as_ref()
                 .map(|name| name.to_string().into()),
             up: interface.running,
+            down_for: match interface.running {
+                true => None,
+                false => interface
+                    .last_link_down_time
+                    .zip(clock)
+                    .and_then(|(down, clock)| since(down, clock.date, clock.time)),
+            },
         })
         .collect()
+}
+
+/// The time from `then` to the device's date and time now, both its local time; none for a
+/// time without its date (RouterOS 6) or after now.
+pub(crate) fn since(then: LogTime, date: ClockDate, time: TimeOfDay) -> Option<Duration> {
+    let LogTime::At {
+        year,
+        month,
+        day,
+        time: then_time,
+    } = then
+    else {
+        return None;
+    };
+    let moment = |year: u16, month: u8, day: u8, time: TimeOfDay| {
+        let date =
+            time::Date::from_calendar_date(year.into(), time::Month::try_from(month).ok()?, day)
+                .ok()?;
+        let time = time::Time::from_hms(time.hour, time.minute, time.second.min(59)).ok()?;
+        Some(time::PrimitiveDateTime::new(date, time))
+    };
+    let then = moment(year, month, day, then_time)?;
+    let now = moment(date.year, date.month, date.day, time)?;
+    (now - then).try_into().ok()
 }
 
 fn bound_lease(lease: IpDhcpServerLease) -> Option<Lease> {

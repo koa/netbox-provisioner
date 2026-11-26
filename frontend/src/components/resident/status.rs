@@ -22,6 +22,11 @@ use i18n::{
 use patternfly_yew::prelude::{Alert, AlertType, Color, Label};
 use yew::{Html, html};
 
+/// Since how many seconds `live`'s port has no link, where its switch knows.
+fn down_seconds(live: &PortLive) -> Option<u64> {
+    live.link_down_for.map(|nanos| nanos / 1_000_000_000)
+}
+
 /// An element's label, with the text saying what isn't ok.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Status {
@@ -208,10 +213,8 @@ impl State<'_> {
         let link = switch.and_then(|switch| switch.link);
         if link == Some(false) {
             let socket = port.kind == PortKind::Socket;
-            return Some(Status::new(
-                StatusLabel::Down,
-                t::no_link(socket).to_string(),
-            ));
+            let down_for = switch.and_then(down_seconds);
+            return Some(Status::new(StatusLabel::Down, t::no_link(socket, down_for)));
         }
         if let Some(device) = occupant.filter(|device| self.reached(device.id) == Some(false)) {
             return Some(Status::new(
@@ -415,14 +418,13 @@ impl State<'_> {
                 text: t::summary_unreachable(&device.device.name),
             });
         }
-        for port in resident
-            .ports
-            .iter()
-            .filter(|port| self.port_live(port).and_then(|live| live.link) == Some(false))
-        {
+        for port in resident.ports.iter() {
+            let Some(live) = self.port_live(port).filter(|live| live.link == Some(false)) else {
+                continue;
+            };
             issues.push(Issue {
                 kind: AlertType::Warning,
-                text: t::summary_no_link(&place(port)),
+                text: t::summary_no_link(&place(port), down_seconds(live)),
             });
         }
         for seen in seen {
@@ -451,6 +453,25 @@ impl State<'_> {
                 kind: AlertType::Warning,
                 text: t::summary_wlan(&wlan.ssid, of.saturating_sub(at.unreached.len()), of),
             });
+            for ap in &at.unreached {
+                let lost = at
+                    .lost
+                    .iter()
+                    .filter(|lost| lost.access_point.id == ap.id)
+                    .collect::<Vec<_>>();
+                let Some(first) = lost.first() else {
+                    continue;
+                };
+                let clients = lost
+                    .iter()
+                    .map(|lost| lost.hostname.as_deref().unwrap_or(&lost.mac_address))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                issues.push(Issue {
+                    kind: AlertType::Warning,
+                    text: t::summary_lost(&ap.name, first.seen_ago / 1_000_000_000, &clients),
+                });
+            }
         }
         issues
     }

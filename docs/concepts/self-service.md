@@ -1,6 +1,7 @@
 # Konzept: Self-Service für Anwohner
 
-Status: zum grossen Teil gebaut. Was gebaut ist, beschreibt [self-service.md](../self-service.md):
+Status: gebaut (C7 erledigt 2026-11-26); offen sind nur die Leserechte der produktiven NetBox
+(E39, von Hand). Was gebaut ist, beschreibt [self-service.md](../self-service.md):
 Besitz, Rollen, die Schnittstelle der Anwohner mit ihren Prüfungen und das Anwohner-UI mit
 Entwürfen. Hier steht, was offen ist, dazu die Entscheidungen vom 2026-10-23 und 2026-11-17 und
 die Ergebnisse des [Prototyps](#anwohner-ui) (2026-11-17). Aufgaben C7 und C21 in
@@ -105,11 +106,15 @@ Live-Zustand. Ein Text steht nur, wenn etwas nicht Ok ist.
 - **Oben** fasst eine Meldung zusammen: jede Änderung, die noch nicht durch ist, mit dem Text
   ihres Elements, jedes nicht erreichte Gerät, jeder Port ohne Link, an dem NetBox ein Kabel
   hat, jedes Gerät, dessen Kabel ein Router an einem anderen Port sieht als am Anschluss
-  (`seenUplinks`), jedes WLAN auf einem Teil seiner Access Points;
+  (`seenUplinks`), jedes WLAN auf einem Teil seiner Access Points und, pro nicht erreichtem
+  Access Point, die Clients des WLANs, die er zuletzt hatte („Mit lab-wap weg (dort zuletzt vor
+  3 min gesehen): laptop, …“, E36: jede Lesung der Clients eines Controllers merkt sie sich pro
+  Access Point, `device::wlan_seen`; mit dem Namen aus einer Lease des Netzes, sonst der MAC);
   sonst „Alles ok“. Änderungen und Live-Zustand liest die Ansicht alle 15 s neu.
-
-Nicht gebaut: seit wann ein Link fehlt (der Entwurf sagt „seit 09:15“, E35) und die Clients
-eines WLANs, die mit einem Access Point verschwinden (E36).
+- **Seit wann** ein Link fehlt (E35): „Kein Link seit 2 h 10 min“, aus `last-link-down-time`
+  des Switch-Ports gegen die Uhr des Switches (`PortLive.linkDownFor`); als Dauer statt als
+  Uhrzeit wie im Entwurf („seit 09:15“), so zählt die Uhr des Switches nur gegen sich selbst.
+  Ohne Zeit, wo der Port seit dem Start des Switches nie Link hatte.
 
 ## Leases
 

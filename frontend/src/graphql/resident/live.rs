@@ -192,6 +192,8 @@ pub struct PortLive {
     pub switch: Named,
     pub reached: Option<bool>,
     pub link: Option<bool>,
+    /// nanoseconds
+    pub link_down_for: Option<u64>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -199,4 +201,14 @@ pub struct WlanLive {
     pub wlan: i32,
     pub access_points: i32,
     pub unreached: Vec<Named>,
+    pub lost: Vec<LostClient>,
+}
+
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+pub struct LostClient {
+    pub mac_address: String,
+    pub hostname: Option<String>,
+    pub access_point: Named,
+    /// nanoseconds
+    pub seen_ago: u64,
 }

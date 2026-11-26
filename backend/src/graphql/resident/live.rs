@@ -19,13 +19,14 @@
 //! from one router's LSDB as the network map reads it; a device without OSPF of its own isn't
 //! judged. And where NetBox has a cable at one of its ports (a socket: plugged into its front),
 //! whether the switch port has a link (`/interface` `running`), each RouterOS switch the routers
-//! don't miss read once, all at once.
+//! don't miss read once, all at once; without a link, since how long (`last-link-down-time`
+//! against the switch's clock).
 //!
 //! The port a device's cable is in (its Anschluss), where it isn't the one of NetBox: the
 //! router at the other end of NetBox's cable sees the device's port by name in its neighbors
 //! (`seenUplinks`). Taken over by the resident, nothing happens by itself.
-use super::{Named, PortKind, PortNetwork, change::acting_for};
-use crate::graphql::guard::ResidentOrAdmin;
+use super::{Named, PortKind, PortNetwork, change::acting_for, named_device};
+use crate::graphql::{guard::ResidentOrAdmin, scalars::ScalarDuration};
 use crate::{
     Error,
     device::{
@@ -33,6 +34,7 @@ use crate::{
         metrics::{BridgeHost, Lease, WlanBand, WlanClient},
         neighbors::{self, SeenNeighbor},
         uplink::{self, UplinkPing, UplinkQuality, UplinkReading},
+        wlan_seen,
     },
     error_info::ApiError,
     facts::Freshness,
@@ -51,6 +53,7 @@ use crate::{
 };
 use async_graphql::{Context, Enum, Object, SimpleObject, futures_util::future::join_all};
 use ipnet::IpNet;
+use mikrotik_model::MacAddress;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 /// How old the tables may be: the view asks on a click, a second click shortly after shares.
@@ -215,6 +218,9 @@ pub struct PortLive {
     /// port has a link; none where its switch isn't read (no RouterOS, not reached, not
     /// answering)
     link: Option<bool>,
+    /// without a link: since how long, by the switch's clock; none where it had none since its
+    /// boot
+    link_down_for: Option<ScalarDuration>,
 }
 
 /// A port of the resident by its switch port, and whether NetBox has a cable at it.
@@ -240,6 +246,20 @@ pub struct WlanLive {
     access_points: u32,
     /// those not reached (one without OSPF of its own counts as reached)
     unreached: Box<[Named]>,
+    /// the clients of this WLAN the unreached ones had when the controller last listed them
+    /// (`device::wlan_seen`, E36)
+    lost: Box<[LostClient]>,
+}
+
+/// A WLAN client gone with its access point.
+#[derive(SimpleObject, Debug, Clone)]
+pub struct LostClient {
+    mac_address: Box<str>,
+    /// from a lease of the WLAN's network
+    hostname: Option<Box<str>>,
+    access_point: Named,
+    /// since the controller last listed it there
+    seen_ago: ScalarDuration,
 }
 
 /// Where the routers see the resident's devices plugged in, where it isn't NetBox's Anschluss.
@@ -560,10 +580,13 @@ impl QueryLive {
             .into_iter()
             .filter_map(|row| {
                 let switch = row.switch_port?.device()?;
-                let link = links
+                let found = links
                     .iter()
-                    .find(|link| link.kind == row.kind && link.id == row.id)
-                    .and_then(|link| link.up);
+                    .find(|link| link.kind == row.kind && link.id == row.id);
+                let link = found.and_then(|link| link.up);
+                let link_down_for = found
+                    .and_then(|link| link.down_for)
+                    .map(ScalarDuration::from);
                 let reached = reached(&switch);
                 (reached.is_some() || link.is_some()).then(|| PortLive {
                     kind: row.kind,
@@ -571,6 +594,7 @@ impl QueryLive {
                     switch: named(&switch),
                     reached,
                     link,
+                    link_down_for,
                 })
             })
             .collect();
@@ -584,21 +608,31 @@ impl QueryLive {
             })
             .filter(|wlan| owned.wlans.contains(&AccessTopology::id(wlan)))
             .map(|wlan| {
-                let aps = wlan
-                    .wlan_group()
-                    .map(|group| group.aps())
+                let group = wlan.wlan_group();
+                let aps = group.as_ref().map(|group| group.aps()).unwrap_or_default();
+                let unreached = aps
+                    .iter()
+                    .filter(|ap| reached(ap) == Some(false))
+                    .collect::<Vec<_>>();
+                let controller = group.and_then(|group| group.controller());
+                let ssid = wlan.ssid().unwrap_or_default();
+                let lost = controller
+                    .map(|controller| lost_clients(&controller, &unreached, ssid))
                     .unwrap_or_default();
-                WlanLive {
-                    wlan: AccessTopology::id(&wlan).0,
-                    access_points: aps.len() as u32,
-                    unreached: aps
-                        .iter()
-                        .filter(|ap| reached(ap) == Some(false))
-                        .map(named)
-                        .collect(),
+                LostWlan {
+                    live: WlanLive {
+                        wlan: AccessTopology::id(&wlan).0,
+                        access_points: aps.len() as u32,
+                        unreached: unreached.into_iter().map(named).collect(),
+                        lost: Box::default(),
+                    },
+                    vlan: wlan.vlan(),
+                    lost,
                 }
             })
-            .collect();
+            .collect::<Vec<_>>();
+        // after the switches: one device's reads stay sequential
+        let wlans = named_lost(wlans).await;
         // after the switches: one device's reads stay sequential
         let tree = ManagementTree::of(&topology, topology.management_proxy());
         let ways = owned
@@ -877,6 +911,87 @@ struct CabledLink {
     kind: PortKind,
     id: u32,
     up: Option<bool>,
+    down_for: Option<Duration>,
+}
+
+/// A resident's WLAN with the clients its unreached access points had, not named yet.
+struct LostWlan {
+    live: WlanLive,
+    vlan: Option<VlanAccess>,
+    lost: Vec<Lost>,
+}
+
+/// A client an unreached access point had at the last read of the controller.
+struct Lost {
+    mac_address: MacAddress,
+    access_point: Named,
+    seen_ago: Duration,
+}
+
+/// The clients with `ssid` that `unreached` had when `controller` last listed them.
+fn lost_clients(controller: &DeviceAccess, unreached: &[&DeviceAccess], ssid: &str) -> Vec<Lost> {
+    unreached
+        .iter()
+        .filter_map(|ap| Some((ap, wlan_seen::of(controller.id(), ap.name())?)))
+        .flat_map(|(ap, seen)| {
+            let seen_ago = seen.at.elapsed();
+            seen.clients
+                .iter()
+                .filter(|client| &*client.ssid == ssid)
+                .map(|client| Lost {
+                    mac_address: client.mac_address,
+                    access_point: named_device(ap),
+                    seen_ago,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// The WLANs with their lost clients named by the leases of their networks' DHCP servers, read
+/// only where a client is lost, each server once, all at once.
+async fn named_lost(wlans: Vec<LostWlan>) -> Box<[WlanLive]> {
+    let mut servers = BTreeMap::<DeviceId, DeviceAccess>::new();
+    for wlan in wlans.iter().filter(|wlan| !wlan.lost.is_empty()) {
+        for server in wlan
+            .vlan
+            .iter()
+            .flat_map(dhcp_servers)
+            .map(|(_, s)| s.device)
+        {
+            servers.entry(server.id()).or_insert(server);
+        }
+    }
+    let wanted = Wanted {
+        leases: true,
+        clients: false,
+        hosts: false,
+    };
+    let leases = join_all(servers.values().map(|server| read(server, &wanted)))
+        .await
+        .into_iter()
+        .filter_map(Result::ok)
+        .flat_map(|tables| tables.leases)
+        .collect::<Vec<_>>();
+    wlans
+        .into_iter()
+        .map(|wlan| WlanLive {
+            lost: wlan
+                .lost
+                .into_iter()
+                .map(|lost| LostClient {
+                    mac_address: lost.mac_address.to_string().into(),
+                    hostname: leases
+                        .iter()
+                        .find(|lease| lease.mac_address == lost.mac_address)
+                        .and_then(|lease| client_name(lease.hostname.as_deref()?)),
+                    access_point: lost.access_point,
+                    seen_ago: lost.seen_ago.into(),
+                })
+                .collect(),
+            ..wlan.live
+        })
+        .collect()
 }
 
 /// The links of `cabled`: each switch read once, all of them at once.
@@ -905,22 +1020,20 @@ async fn port_links(cabled: &[Cabled]) -> Vec<CabledLink> {
         .iter()
         .map(|port| {
             let name = port.switch_port.name();
-            let up = port
+            let link = port
                 .switch_port
                 .device()
                 .and_then(|switch| read.get(&switch.id())?.as_ref())
                 .and_then(|links| {
-                    links
-                        .iter()
-                        .find(|link| {
-                            &*link.name == name || link.default_name.as_deref() == Some(name)
-                        })
-                        .map(|link| link.up)
+                    links.iter().find(|link| {
+                        &*link.name == name || link.default_name.as_deref() == Some(name)
+                    })
                 });
             CabledLink {
                 kind: port.kind,
                 id: port.id,
-                up,
+                up: link.map(|link| link.up),
+                down_for: link.and_then(|link| link.down_for),
             }
         })
         .collect()

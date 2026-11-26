@@ -6,7 +6,10 @@ use super::{
     standalone_client, wifi_band, wireless_radio,
 };
 use crate::device::{access::Row, answer::parsed as parse};
-use mikrotik_model::{ascii::AsciiString, model::InterfaceEthernetState};
+use mikrotik_model::{
+    ascii::AsciiString,
+    model::{InterfaceEthernetState, SystemClockState},
+};
 use std::{collections::HashMap, time::Duration};
 
 fn row(fields: &[(&str, &str)]) -> Row {
@@ -551,6 +554,8 @@ fn an_ethernet_port_has_a_link_while_it_runs() {
             ("type", "ether"),
             ("running", "false"),
             ("disabled", "false"),
+            ("last-link-down-time", "2026-11-24 20:28:14"),
+            ("last-link-up-time", "2026-11-24 09:15:00"),
         ]),
         parse(&[
             (".id", "*5"),
@@ -568,7 +573,12 @@ fn an_ethernet_port_has_a_link_while_it_runs() {
             ("disabled", "false"),
         ]),
     ];
-    let links = links(&interfaces);
+    let clock = parse::<SystemClockState>(&[
+        ("date", "2026-11-26"),
+        ("time", "05:31:47"),
+        ("gmt-offset", "+01:00"),
+    ]);
+    let links = links(&interfaces, Some(&clock));
     assert_eq!(
         &*links,
         [
@@ -576,12 +586,39 @@ fn an_ethernet_port_has_a_link_while_it_runs() {
                 name: "e03-lab-wap".into(),
                 default_name: Some("ether3".into()),
                 up: true,
+                down_for: None,
             },
             PortLink {
                 name: "e04".into(),
                 default_name: Some("ether4".into()),
                 up: false,
+                // from 2026-11-24 20:28:14 to 2026-11-26 05:31:47
+                down_for: Some(Duration::from_secs(33 * 3600 + 3 * 60 + 33)),
             },
         ]
     );
+}
+
+/// RouterOS 6's time without its date gives no time since; nor a time after the clock.
+#[test]
+fn no_time_since_without_a_date_or_ahead() {
+    use mikrotik_model::value::{ClockDate, LogTime, TimeOfDay};
+    let at = |hour| TimeOfDay {
+        hour,
+        minute: 0,
+        second: 0,
+    };
+    let today = ClockDate {
+        year: 2026,
+        month: 11,
+        day: 26,
+    };
+    assert_eq!(super::since(LogTime::Today(at(4)), today, at(5)), None);
+    let later = LogTime::At {
+        year: 2026,
+        month: 11,
+        day: 26,
+        time: at(6),
+    };
+    assert_eq!(super::since(later, today, at(5)), None);
 }

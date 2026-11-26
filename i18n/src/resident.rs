@@ -499,12 +499,21 @@ pub fn device_silent(device: &str, link: bool) -> String {
     }
 }
 
-/// a port with a cable in NetBox whose switch port has no link; `socket`: a socket's
-pub fn no_link(socket: bool) -> &'static str {
-    match socket {
-        true => "Kein Link. Steckt das Kabel an der Dose und am Gerät?",
-        false => "Kein Link. Steckt das Kabel an beiden Enden?",
-    }
+/// a port with a cable in NetBox whose switch port has no link; `socket`: a socket's; `for_seconds`:
+/// since how long, where the switch knows
+pub fn no_link(socket: bool, for_seconds: Option<u64>) -> String {
+    let check = match socket {
+        true => "Steckt das Kabel an der Dose und am Gerät?",
+        false => "Steckt das Kabel an beiden Enden?",
+    };
+    format!("Kein Link{}. {check}", since(for_seconds))
+}
+
+/// „ seit 2 h 10 min“ where it is known
+fn since(for_seconds: Option<u64>) -> String {
+    for_seconds
+        .map(|seconds| format!(" seit {}", crate::network_map::uptime(seconds)))
+        .unwrap_or_default()
 }
 
 /// a device whose port has no link
@@ -532,9 +541,12 @@ pub fn summary_change(head: &str, stands: &str) -> String {
 pub fn summary_unreachable(device: &str) -> String {
     format!("{device} ist nicht erreichbar.")
 }
-/// the summary on top: a port with a cable in NetBox and no link
-pub fn summary_no_link(port: &str) -> String {
-    format!("{port} hat keinen Link: steckt das Kabel?")
+/// the summary on top: a port with a cable in NetBox and no link, since how long where known
+pub fn summary_no_link(port: &str, for_seconds: Option<u64>) -> String {
+    format!(
+        "{port} hat keinen Link{}: steckt das Kabel?",
+        since(for_seconds)
+    )
 }
 /// the summary on top: a device's cable seen at another port than its Anschluss
 pub fn summary_misplugged(device: &str, seen: &str, uplink: &str) -> String {
@@ -546,6 +558,14 @@ pub fn summary_wlan(ssid: &str, on: usize, of: usize) -> String {
         0 => format!("WLAN „{ssid}“ auf keinem Access Point."),
         _ => format!("WLAN „{ssid}“ nur auf {on} von {of} Access Points."),
     }
+}
+/// the summary on top: the clients of a WLAN an access point not reached had when last seen,
+/// `seconds` ago; each by its name, else its MAC
+pub fn summary_lost(access_point: &str, seconds: u64, clients: &str) -> String {
+    format!(
+        "Mit {access_point} weg (dort zuletzt vor {} gesehen): {clients}",
+        crate::network_map::uptime(seconds)
+    )
 }
 /// the summary on top: its title where something isn't ok
 pub const NOT_ALL_OK: &str = "Nicht alles ok";

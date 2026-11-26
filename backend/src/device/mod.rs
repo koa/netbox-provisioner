@@ -46,6 +46,7 @@ pub mod update;
 pub mod update_fallback;
 pub mod uplink;
 pub mod watchdog;
+pub mod wlan_seen;
 pub mod www_certificate;
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum Credentials {
