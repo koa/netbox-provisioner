@@ -724,4 +724,5 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
   Helfer oben beschrieben. Gegen das laufende Lab prüft `backend/tests/lab_helpers.rs` (E9) einen
   Helfer ganz: Vorschau-Skript jedes Geräts, Schreiben, das automatische Rollout wendet genau
   diese Skripte an, danach jedes Gerät wie NetBox, Rückgängig und wieder wie vorher. Bisher mit
-  „Loopback“; die übrigen Helfer kommen einzeln dazu (E9).
+  „Loopback“ und „Verbindung“ samt „Abräumen“ (zwei freie Ports von lab-hex und lab-crs226);
+  die übrigen Helfer kommen einzeln dazu (E9).

@@ -5,7 +5,8 @@
 //! the lab's NetBox; the automatic rollout brings the lab's devices along. It checks that each
 //! device got the script the plan's preview showed for it (`NetboxPlan.previewAccess`, against
 //! the rollout's `ApplyPlanned`), that every device is like NetBox afterwards, and the same
-//! once the write is undone, with the plan as before. It stops before writing at a device not
+//! once the write is undone, with the plan as before (or a helper taking it out again, like
+//! „Abräumen“ after „Verbindung“). It stops before writing at a device not
 //! like NetBox and at a plan announcing something outward (`announcesOutward`), which the
 //! rollout would hold back anyway.
 //!
@@ -144,6 +145,23 @@ impl Lab {
             .and_then(|device| device["id"].as_u64())
             .map(|id| id as u32)
             .with_context(|| format!("no device {name}"))
+    }
+
+    async fn interface_id(&self, device: u32, name: &str) -> anyhow::Result<u32> {
+        let data = self
+            .query(&format!(
+                "{{ topology {{ deviceById(id: {device}) {{ interfaceView {{ rows {{ interface {{ id name }} }} }} }} }} }}"
+            ))
+            .await?;
+        data["topology"]["deviceById"]["interfaceView"]["rows"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|row| &row["interface"])
+            .find(|interface| interface["name"] == name)
+            .and_then(|interface| interface["id"].as_u64())
+            .map(|id| id as u32)
+            .with_context(|| format!("no interface {name} at {device}"))
     }
 
     /// The script an apply would run on `device` now, read anew.
@@ -295,10 +313,14 @@ impl Lab {
     }
 
     /// Waits for the rollout's first round after `since` that does something: it must apply
-    /// to `changed`, or have nothing to do where nothing changes. A round that found a device
-    /// busy or the internet away is waited past; one holding back, failing or not reading
-    /// NetBox fails.
-    async fn rolled_out(&self, since: Instant, changed: &BTreeSet<String>) -> anyhow::Result<()> {
+    /// to `changed` (any, or none, where it is `None`), or have nothing to do where nothing
+    /// changes. A round that found a device busy or the internet away is waited past; one
+    /// holding back, failing or not reading NetBox fails.
+    async fn rolled_out(
+        &self,
+        since: Instant,
+        changed: Option<&BTreeSet<String>>,
+    ) -> anyhow::Result<()> {
         let query = format!(
             "{{ topology {{ siteById(id: {}) {{ autoRollout {{ error {{ __typename }} lastRound {{ age outcome applied {{ name }} heldBy {{ name }} held {{ device {{ name }} reasons }} deferred {{ name }} }} }} }} }} }}",
             self.site
@@ -323,6 +345,9 @@ impl Lab {
                     .collect::<BTreeSet<_>>();
                 match round["outcome"].as_str() {
                     Some("APPLIED") => {
+                        let Some(changed) = changed else {
+                            return Ok(());
+                        };
                         ensure!(
                             &applied == changed,
                             "applied to {applied:?}, the preview changes {changed:?}"
@@ -331,7 +356,7 @@ impl Lab {
                     }
                     Some("NOTHING_TO_DO") => {
                         ensure!(
-                            changed.is_empty(),
+                            changed.is_none_or(BTreeSet::is_empty),
                             "nothing applied, the preview changes {changed:?}"
                         );
                         return Ok(());
@@ -381,8 +406,9 @@ impl Lab {
         Ok(applied)
     }
 
-    /// Writes `helper`'s plan, checks the rollout against the preview and takes it back.
-    async fn try_helper(&self, helper: &str) -> anyhow::Result<()> {
+    /// Writes `helper`'s plan and checks the rollout against the preview: the write's job
+    /// and the devices it changes, also where the check failed (the error), to take it back.
+    async fn write_checked(&self, helper: &str) -> anyhow::Result<Written> {
         let devices = self.routeros_devices().await?;
         self.all_like_netbox(&devices).await?;
         let preview = self.preview(helper, &devices).await?;
@@ -397,7 +423,7 @@ impl Lab {
         let job = self.write(helper, &preview.fingerprint).await?;
         let written = Instant::now();
         let checked = async {
-            self.rolled_out(written, &changed).await?;
+            self.rolled_out(written, Some(&changed)).await?;
             let applied = self.applied(&devices, &before).await?;
             let expected = preview
                 .scripts
@@ -407,21 +433,57 @@ impl Lab {
                 .collect::<BTreeMap<_, _>>();
             ensure!(
                 applied == expected,
-                "applied:\n{applied:#?}\npreviewed:\n{expected:#?}"
+                "{helper}: applied:\n{applied:#?}\npreviewed:\n{expected:#?}"
             );
             self.all_like_netbox(&devices).await
         }
         .await;
-        self.undo(job).await?;
-        self.rolled_out(Instant::now(), &changed).await?;
-        self.all_like_netbox(&devices).await?;
-        let (again, _) = self.plan_fingerprint(helper).await?;
-        ensure!(
-            again == preview.fingerprint,
-            "{helper}: another plan after undo"
-        );
-        checked
+        Ok(Written {
+            write: Write { job, changed },
+            checked,
+        })
     }
+
+    /// Undoes `write` and waits for the rollout to bring its devices back; every device like
+    /// NetBox after. Where its check failed (`checked`), which devices got it is unknown.
+    async fn take_back(&self, write: &Write, checked: bool) -> anyhow::Result<()> {
+        self.undo(write.job).await?;
+        self.rolled_out(Instant::now(), checked.then_some(&write.changed))
+            .await?;
+        self.all_like_netbox(&self.routeros_devices().await?).await
+    }
+
+    /// Writes `helper`'s plan, checks the rollout against the preview and takes it back, with
+    /// the plan as before.
+    async fn try_helper(&self, helper: &str) -> anyhow::Result<()> {
+        let (fingerprint, _) = self.plan_fingerprint(helper).await?;
+        let written = self.write_checked(helper).await?;
+        let checked = written.checked.is_ok();
+        let back = self.take_back(&written.write, checked).await;
+        written.checked?;
+        back?;
+        self.same_plan(helper, &fingerprint).await
+    }
+
+    async fn same_plan(&self, helper: &str, fingerprint: &str) -> anyhow::Result<()> {
+        let (again, _) = self.plan_fingerprint(helper).await?;
+        ensure!(again == fingerprint, "{helper}: another plan than before");
+        Ok(())
+    }
+}
+
+/// A plan written to NetBox by [`Lab::write_checked`].
+struct Written {
+    write: Write,
+    /// what the check after the rollout found
+    checked: anyhow::Result<()>,
+}
+
+/// What [`Lab::take_back`] undoes.
+struct Write {
+    job: u32,
+    /// the devices its preview changes
+    changed: BTreeSet<String>,
 }
 
 /// `fields` as a form body.
@@ -481,4 +543,41 @@ async fn loopback() {
     lab.try_helper(&format!("{{ loopback: {switch} }}"))
         .await
         .unwrap();
+}
+
+/// „Verbindung“ between two free ports of lab-hex and lab-crs226 (no cable at either: OSPF on
+/// them meets nobody), undone; then written again and taken out with „Abräumen“ (the
+/// helper `disconnect`), which leaves the lab as before. Not lab-np2's: as the management
+/// proxy it rolls out by hand, a change to it holds the rollout back.
+#[tokio::test]
+#[ignore]
+async fn connection_and_disconnect() {
+    let lab = Lab::from_env();
+    let hex = lab.device_id("lab-hex").await.expect("lab-hex");
+    let crs226 = lab.device_id("lab-crs226").await.expect("lab-crs226");
+    let port = lab.interface_id(hex, "ether5").await.expect("ether5");
+    let peer = lab.interface_id(crs226, "ether24").await.expect("ether24");
+    let connection = format!("{{ connection: {{ interface: {port}, peer: {peer} }} }}");
+    lab.try_helper(&connection).await.unwrap();
+
+    let (fingerprint, _) = lab.plan_fingerprint(&connection).await.unwrap();
+    let connected = lab.write_checked(&connection).await.unwrap();
+    let disconnect = format!("{{ disconnect: {{ device: {hex}, interface: {port} }} }}");
+    let result = match connected.checked {
+        Ok(()) => match lab.write_checked(&disconnect).await {
+            Ok(disconnected) => match disconnected.checked {
+                Ok(()) => lab.same_plan(&connection, &fingerprint).await,
+                Err(error) => {
+                    lab.take_back(&disconnected.write, false).await.unwrap();
+                    Err(error)
+                }
+            },
+            Err(error) => Err(error),
+        },
+        Err(error) => Err(error),
+    };
+    if result.is_err() {
+        lab.take_back(&connected.write, false).await.unwrap();
+    }
+    result.unwrap();
 }
