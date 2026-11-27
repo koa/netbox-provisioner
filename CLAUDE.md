@@ -1302,7 +1302,10 @@ ECDSA, 397 days, anew within 30 days of its end, for other names or another CA),
 fallback, `WwwCertificateInstalled`); the services' target keeps the `certificate` the device
 has, so the diff leaves it. Only with a usable one attached (`DeviceCfg.www_certificate`, `InPlace`, read in
 `generate_live`) the config turns `www-ssl` on, restricted like `www`, and `www` off
-(`services::use_www_ssl`); `Needed` enables „Anwenden“ without a script and is a change of
+(`services::use_www_ssl`). The diff shown before an apply (`ros::graphql::generate`: device
+page, preview, auto rollout) takes a `Needed` one as installed (`CertificateSeen::AfterInstall`),
+as the apply installs it first; the apply's own plan and checks read it as it is (`AsRead`), so a
+failed install keeps `www` on; `Needed` enables „Anwenden“ without a script and is a change of
 `certificate` in the site diff. RouterOS removes a certificate in use and leaves the service a
 dangling `*N` (CHR 7.24.6), so the provisioner's older ones go only once no other service names
 them (CHR test `webfig_gets_a_certificate_of_the_ca`, HTTPS checked against the root). `www_ca.certificate`

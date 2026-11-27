@@ -3,7 +3,7 @@
 //!
 //! Applying the generated config (`AccessibleDevice::apply`): the script on the device, its
 //! fallback, the checks after it, and the job events of all that.
-use super::cfg::{DeviceCfg, in_script, render_script};
+use super::cfg::{CertificateSeen, DeviceCfg, in_script, render_script};
 use crate::device::device_mode::DeviceModeName;
 use crate::{
     Error,
@@ -915,8 +915,13 @@ impl AccessibleDevice {
     /// addresses of the other members of its batch (`DeviceCfg::generate_live`).
     pub(crate) async fn read_plan(&self, batch: &BTreeSet<IpAddr>) -> Result<PlanRead, Error> {
         let mut cfg = DeviceCfg::fetch(&self.login.client, &self.device_config).await?;
-        cfg.generate_live(&self.device_config, &self.login.client, batch)
-            .await?;
+        cfg.generate_live(
+            &self.device_config,
+            &self.login.client,
+            batch,
+            CertificateSeen::AsRead,
+        )
+        .await?;
         let ospf = cfg
             .read_ospf(&self.device_config, &self.login.client)
             .await?;
@@ -1149,8 +1154,13 @@ impl AccessibleDevice {
             let client = self.connect_again().await?;
             let mut cfg = DeviceCfg::fetch(&client, &self.device_config).await?;
             // the plan set what the batch's addresses gave, which answer by now or stay
-            cfg.generate_live(&self.device_config, &client, &BTreeSet::new())
-                .await?;
+            cfg.generate_live(
+                &self.device_config,
+                &client,
+                &BTreeSet::new(),
+                CertificateSeen::AsRead,
+            )
+            .await?;
             cfg.take_ospf_decision(&self.ospf_decision.lock_anyway());
             if self.watchdog_held.load(Ordering::Relaxed) {
                 cfg.base_target.watchdog.watch_address =

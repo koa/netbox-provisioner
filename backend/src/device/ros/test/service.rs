@@ -202,3 +202,15 @@ fn webfig_moves_to_https_with_a_certificate() {
         "{script}"
     );
 }
+
+/// A needed certificate counts as in place where the diff shows what an apply would do (it
+/// installs one first), not where the apply reads the device after trying: a failed install
+/// keeps `www` on there.
+#[test]
+fn a_needed_certificate_is_in_place_after_the_install() {
+    use crate::device::{ros::cfg::CertificateSeen, www_certificate::WwwCertificate};
+    assert!(CertificateSeen::AfterInstall.in_place(WwwCertificate::Needed));
+    assert!(!CertificateSeen::AsRead.in_place(WwwCertificate::Needed));
+    assert!(CertificateSeen::AsRead.in_place(WwwCertificate::InPlace));
+    assert!(!CertificateSeen::AfterInstall.in_place(WwwCertificate::Off));
+}

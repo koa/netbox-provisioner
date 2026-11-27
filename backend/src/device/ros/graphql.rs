@@ -3,7 +3,7 @@
 //!
 //! What a reached device answers over GraphQL (`AccessibleDevice`, `DeviceCfg`): its config,
 //! the generated script, RouterOS versions, partitions, the live checks, each as a fact.
-use super::cfg::{DeviceCfg, DeviceStats, GeneratedCfg, render_script};
+use super::cfg::{CertificateSeen, DeviceCfg, DeviceStats, GeneratedCfg, render_script};
 use crate::facts::{self, FactKey, FactKind, Freshness};
 use crate::topology::DeviceId;
 use crate::topology::access::{DeviceTarget, device::DeviceAccess};
@@ -392,7 +392,9 @@ pub(crate) async fn generate(
         .filter(|other| other.id() != device.id())
         .flat_map(crate::device::watchdog::addresses)
         .collect();
-    device_cfg.generate_live(device, reader, &batch).await?;
+    device_cfg
+        .generate_live(device, reader, &batch, CertificateSeen::AfterInstall)
+        .await?;
     // as the apply would decide on the OSPF segments: alone the segments it shares stay
     // (`OspfAuthKept`), with `together` those with every end among them move
     let ospf = device_cfg.read_ospf(device, reader).await?;

@@ -359,12 +359,14 @@ impl DeviceCfg {
     /// (`keep_api_open_for`). The addresses `batch` gives (NetBox's of the other members of a
     /// batch) count as answering: they do once the batch is through, or every member goes back.
     /// A renumbered link's new address answered only after the script, and the check after it
-    /// saw the PoE port's ping target change (lab-np2, 2026-11-20).
+    /// saw the PoE port's ping target change (lab-np2, 2026-11-20). WebFig's certificate is
+    /// taken as `certificate` says.
     pub async fn generate_live(
         &mut self,
         device: &DeviceAccess,
         raw: &impl Reads,
         batch: &BTreeSet<IpAddr>,
+        certificate: CertificateSeen,
     ) -> Result<(), Error> {
         self.generate_for(device)?;
         let (coming, asked): (Vec<IpAddr>, Vec<IpAddr>) = self
@@ -405,7 +407,7 @@ impl DeviceCfg {
                 ));
         }
         self.www_certificate = www_certificate::read(raw, device).await?.state();
-        if self.www_certificate == WwwCertificate::InPlace {
+        if certificate.in_place(self.www_certificate) {
             self.base_target.use_www_ssl(
                 &self.base_current.ip_service,
                 CONFIG.api_networks.as_deref(),
@@ -576,6 +578,29 @@ async fn powered_ports(
 }
 
 /// The script that would bring a device in line with NetBox.
+/// How [`DeviceCfg::generate_live`] takes WebFig's certificate (A7).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CertificateSeen {
+    /// as the device has it: the apply, which tried to install a needed one before
+    /// (`prepare_certificate`); where that failed, `www` stays on
+    AsRead,
+    /// as an apply leaves it, which installs a needed one first: what the diff shows before
+    /// (a new address of the device, not yet in its certificate, turned `www` on in the
+    /// preview, 2026-11-27)
+    AfterInstall,
+}
+
+impl CertificateSeen {
+    /// Whether the config uses `www-ssl` (`use_www_ssl`) with the device's certificate `found`.
+    pub fn in_place(self, found: WwwCertificate) -> bool {
+        match (found, self) {
+            (WwwCertificate::InPlace, _)
+            | (WwwCertificate::Needed, CertificateSeen::AfterInstall) => true,
+            (WwwCertificate::Needed, CertificateSeen::AsRead) | (WwwCertificate::Off, _) => false,
+        }
+    }
+}
+
 #[derive(SimpleObject)]
 #[graphql(complex)]
 pub struct GeneratedCfg {
