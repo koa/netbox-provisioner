@@ -205,7 +205,7 @@ hängt bei Bedarf einen ephemeren Debug-Container an.
   Prod zieht nur Release-Versionen, ein Snapshot lässt sich gezielt in eine Test-Umgebung
   ausrollen.
 
-## Noch nicht geprüft
+## Geprüft
 
-Das Image lief noch in keinem Cluster (E3). Beide Workflows laufen auf GitHub: `ci` bei jedem
-Push, `cleanup` täglich (geprüft 2026-11-26).
+Das Image läuft produktiv in einem Cluster. Beide Workflows laufen auf GitHub: `ci` bei jedem
+Push, `cleanup` täglich (2026-11-26).
