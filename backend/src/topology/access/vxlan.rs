@@ -57,14 +57,16 @@ impl VxlanAccess {
             .unwrap_or_default()
     }
 
-    /// Addresses of every device using one of the VLANs actually tunneled over this
-    /// VXLAN (see `VlanAccess::tunnel`) - the head-end replication list.
+    /// Addresses of every RouterOS device using one of the VLANs actually tunneled over this
+    /// VXLAN (see `VlanAccess::tunnel`) - the head-end replication list. A switch without
+    /// RouterOS has the VLAN over a cable from one of them, it is no VTEP.
     pub fn vteps(&self) -> Box<[IpAddr]> {
         Box::from_iter(
             self.vlans()
                 .iter()
                 .filter(|vlan| vlan.tunnel().is_some())
                 .flat_map(|vlan| vlan.devices())
+                .filter(|dev| dev.has_routeros())
                 .filter_map(|dev| dev.primary_ip_v4().and_then(|ip| ip.addr()))
                 .collect::<BTreeSet<IpAddr>>(),
         )

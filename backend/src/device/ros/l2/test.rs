@@ -837,6 +837,7 @@ async fn build_tunnel_topology(
         Device {
             name: "switch-haus".into(),
             primary_ip_v4: Some(switch_ip),
+            has_routeros: true,
             ..Default::default()
         },
     );
@@ -845,6 +846,7 @@ async fn build_tunnel_topology(
         Device {
             name: "ap-wohnung".into(),
             primary_ip_v4: Some(ap_ip),
+            has_routeros: true,
             ..Default::default()
         },
     );
@@ -1487,6 +1489,7 @@ async fn create_default_bridge_device(explicit_bridge: bool) -> DeviceAccess {
             name: "ap-wohnung".into(),
             primary_ip_v4: Some(own_ip),
             wlan_ap_of: Some(wlan_group),
+            has_routeros: true,
             ..Default::default()
         },
     );
@@ -1496,6 +1499,7 @@ async fn create_default_bridge_device(explicit_bridge: bool) -> DeviceAccess {
             name: "srv-router".into(),
             primary_ip_v4: Some(controller_ip),
             wlan_controller_of: Some(wlan_group),
+            has_routeros: true,
             ..Default::default()
         },
     );

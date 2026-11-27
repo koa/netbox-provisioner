@@ -528,7 +528,8 @@ fn resident_plan(plan: &NetboxPlan, configured: &[DeviceAccess]) -> ResidentPlan
             _ => {}
         }
     }
-    let devices = changed_devices(plan, configured)
+    let devices = plan
+        .changed_devices(configured)
         .into_iter()
         .map(|device| Named {
             id: device.id().0,
@@ -552,78 +553,6 @@ fn resident_plan(plan: &NetboxPlan, configured: &[DeviceAccess]) -> ResidentPlan
             .collect(),
         devices,
     }
-}
-
-/// The RouterOS devices whose configuration `plan` changes: `configured`, those the steps touch,
-/// a changed WLAN's group's APs, VXLAN peers. A switch without RouterOS changes in NetBox only.
-fn changed_devices(plan: &NetboxPlan, configured: &[DeviceAccess]) -> Vec<DeviceAccess> {
-    let topology = plan.device().topology();
-    let aps = plan
-        .steps
-        .iter()
-        .filter_map(|step| match step {
-            PlanStep::UpdateWirelessLan(update) => helper::wlan::wlan(topology, update.id).ok(),
-            _ => None,
-        })
-        .filter_map(|wlan| wlan.wlan_group())
-        .flat_map(|group| group.aps());
-    // a port's VLAN tunneled over VXLAN: a device joining or leaving it changes the VTEPs of
-    // every other device with it
-    let preview = plan.preview_topology().ok();
-    let vteps = preview.iter().flat_map(|after| {
-        plan.steps
-            .iter()
-            .filter_map(|step| match step {
-                PlanStep::UpdatePortVlan(update) => Some(update),
-                _ => None,
-            })
-            .flat_map(move |update| {
-                let device = DeviceId(update.interface.device.id.preview_id());
-                update
-                    .vlan
-                    .iter()
-                    .chain(&update.vlan_before)
-                    .flat_map(move |vlan| vtep_peers(topology, after, VlanId(vlan.id), device))
-            })
-    });
-    let mut seen = BTreeSet::new();
-    configured
-        .iter()
-        .cloned()
-        .chain(plan.touched_devices())
-        .chain(aps)
-        .chain(vteps)
-        .filter(|device| device.has_routeros() && seen.insert(device.id()))
-        .collect()
-}
-
-/// The other devices with `vlan` over its VXLAN, when `device` joins or leaves it: before
-/// (`topology`) and `after` the plan. Where `device` is no VTEP (a switch without RouterOS)
-/// that names more devices than change, along with the one whose trunk to it does.
-fn vtep_peers(
-    topology: &Arc<Topology>,
-    after: &Arc<Topology>,
-    vlan: VlanId,
-    device: DeviceId,
-) -> Vec<DeviceAccess> {
-    let devices = |topology: &Arc<Topology>| {
-        topology
-            .list_vlans()
-            .find(|other| other.id == vlan && other.vxlan().is_some())
-            .map(|other| other.devices().into_vec())
-            .unwrap_or_default()
-    };
-    let before = devices(topology);
-    let after = devices(after);
-    let has = |devices: &[DeviceAccess]| devices.iter().any(|other| other.id() == device);
-    if has(&before) == has(&after) {
-        return Vec::new();
-    }
-    before
-        .into_iter()
-        .chain(after)
-        .filter(|other| other.id() != device)
-        .collect()
 }
 
 /// The user (`user_label`, as the admins' jobs name it) and the resident it acts for.
@@ -779,7 +708,7 @@ impl MutationResident {
         let job = job::start(&device, JobKind::NetboxWrite, started, |log| async move {
             let result = helper::write(&helpers, &current, &fingerprint, &user, &log).await;
             if let (Ok(plan), Some(job)) = (&result, log.job_id()) {
-                let devices = auto_rollout::configured(changed_devices(plan, &configured));
+                let devices = auto_rollout::configured(plan.changed_devices(&configured));
                 auto_rollout::note_change(job, &who, Some(owner.0), devices, undo);
             }
             log.enter(crate::device_state::NetboxState::Refetching);

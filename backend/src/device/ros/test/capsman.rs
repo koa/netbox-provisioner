@@ -63,6 +63,9 @@ async fn wlan_group_with(radios: u16) -> (DeviceAccess, DeviceAccess, DeviceAcce
         address(&mut builder, [192, 168, 100, 7], 32),
         address(&mut builder, [192, 168, 100, 6], 32),
     ];
+    // a switch without RouterOS with the WLAN's VLAN at a port: no VTEP
+    let switch = builder.devices.next_id();
+    let switch_ip = address(&mut builder, [192, 168, 100, 5], 32);
     let gateway = address(&mut builder, [192, 168, 104, 1], 24);
 
     builder.vlans.insert(
@@ -127,6 +130,21 @@ async fn wlan_group_with(radios: u16) -> (DeviceAccess, DeviceAccess, DeviceAcce
     };
     interface(controller, "wlan", None, Some(vlan), Box::new([gateway]));
     interface(
+        switch,
+        "ether2",
+        Some(PhysicalPortId::Ethernet(2)),
+        Some(vlan),
+        Box::new([]),
+    );
+    builder.devices.insert(
+        switch,
+        Device {
+            name: "lab-keller-switch".into(),
+            primary_ip_v4: Some(switch_ip),
+            ..Default::default()
+        },
+    );
+    interface(
         legacy_cap,
         "ether1",
         Some(PhysicalPortId::Ethernet(1)),
@@ -170,6 +188,7 @@ async fn wlan_group_with(radios: u16) -> (DeviceAccess, DeviceAccess, DeviceAcce
                 wlan_controller_of: (device == controller).then_some(wlan_group),
                 wlan_ap_of: (device != controller).then_some(wlan_group),
                 country: Some("ch".into()),
+                has_routeros: true,
                 ..Default::default()
             },
         );

@@ -489,6 +489,16 @@ MTU and primary IP as planned), and emits a `NetboxWritten` event per object wit
 `Started::ForResident`); writing needs `allow_netbox_write` and `netbox_write_token` (`NetboxWritesAllowed`),
 the lab config sets both. The topology is fetched again after each write or undo.
 
+`backend/tests/lab_helpers.rs` (E9) tries the NetBox helpers against the running lab
+(`cargo test -p backend --test lab_helpers -- --ignored --test-threads 1`, never in CI): it
+plans a helper over GraphQL as the lab admin, takes each device's preview script
+(`NetboxPlan.previewAccess(device:)`, `GeneratedCfg.announcesOutward` stops it before writing),
+writes, waits for the automatic rollout's next round (`lastRound`: applied to exactly the
+devices with a preview script, or nothing to do), compares the rollout's `ApplyPlanned` scripts
+with the preview (keys masked: a plan makes a new PSK each time), checks every device like
+NetBox, undoes and checks again, with the plan as before. Cases so far: „Loopback“ of
+`lab-keller-switch`.
+
 `backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR
 instances under QEMU (software emulation, no KVM needed) and proves actual distributed network
 behavior, not just that the generator's output parses. `--ignored` by default (`cargo test -p
@@ -904,7 +914,9 @@ later round finds it met, no admin needed. With the diffs it reads each device's
 (`fallback::without_scheduler`): an automatic one without `scheduler` stops the round the same
 way. A failure puts the members' sites into their error state, which an admin clears
 (`clearAutoRolloutError`). Each change the provisioner writes (`graphql::refetch`'s callers:
-`auto_rollout::note_change` with the job, user, owner and the RouterOS devices it changes) is
+`auto_rollout::note_change` with the job, user, owner and the RouterOS devices it changes,
+`NetboxPlan::changed_devices`: those the steps touch, a changed WLAN's APs, the devices with a
+VLAN a device joins or leaves over VXLAN, every VTEP of a VXLAN whose VTEPs change) is
 kept with each round's view of each device as of the round's start (`changes::observed`), so
 `changes::state_of` gives its state per device (`changes(resident:)`, the third resident tab,
 `SiteAutoRollout.changes`). A resident's change also keeps what takes it back

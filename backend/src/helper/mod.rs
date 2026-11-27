@@ -49,8 +49,8 @@ use crate::{
     device::AccessibleDevice,
     netbox::WlanStatus,
     topology::{
-        DeviceId, Topology,
-        access::{DeviceTarget, device::DeviceAccess, interface::InterfaceAccess},
+        DeviceId, Topology, VlanId, VxlanId,
+        access::{AccessTopology, DeviceTarget, device::DeviceAccess, interface::InterfaceAccess},
         findings::{DeviceRef, InterfaceRef, IpVersion},
     },
 };
@@ -59,7 +59,9 @@ use i18n::changelog;
 use ipnet::IpNet;
 use serde_json::{Value, json};
 use std::{
+    collections::{BTreeMap, BTreeSet},
     hash::{DefaultHasher, Hash, Hasher},
+    net::IpAddr,
     sync::Arc,
 };
 
@@ -247,18 +249,25 @@ impl NetboxPlan {
     /// applying would bring then. Its management address may be a new one the device doesn't
     /// have yet: `access(target: { address })` with the address it has now reaches it.
     async fn preview(&self) -> Result<DeviceAccess, crate::error_info::ApiError> {
-        Ok(self.preview_device()?)
+        Ok(self.preview_device(self.device.id())?)
     }
     /// The device reached as now (`target`, credentials as for `DeviceAccess.access`), with its
     /// config generated from NetBox after the plan: `generateCfg` is what applying would do
-    /// then.
+    /// then. `device` is another device of NetBox than the plan's (the lab test of the helpers
+    /// compares each one's with what the rollout applies).
     async fn preview_access(
         &self,
         target: Option<DeviceTarget>,
+        device: Option<u32>,
     ) -> Result<Option<AccessibleDevice>, crate::error_info::ApiError> {
-        let preview = self.preview_device()?;
-        Ok(self
+        let id = device.map_or(self.device.id(), DeviceId);
+        let now = self
             .device
+            .topology()
+            .get_device_by_id(&id)
+            .ok_or(Error::UnknownDevice(id.0))?;
+        let preview = self.preview_device(id)?;
+        Ok(now
             .connect(target.unwrap_or_default())
             .await?
             .map(|access| access.generating_for(preview)))
@@ -355,6 +364,56 @@ impl NetboxPlan {
             .collect()
     }
 
+    /// The RouterOS devices whose configuration it changes: `configured`, those the steps
+    /// touch, a changed WLAN's group's APs, the devices with a VLAN a device joins or leaves
+    /// over VXLAN, and those of a VXLAN whose VTEPs change (a VTEP's new primary IP). A switch
+    /// without RouterOS changes in NetBox only.
+    pub fn changed_devices(&self, configured: &[DeviceAccess]) -> Vec<DeviceAccess> {
+        let plan = self;
+        let topology = plan.device().topology();
+        let aps = plan
+            .steps
+            .iter()
+            .filter_map(|step| match step {
+                PlanStep::UpdateWirelessLan(update) => wlan::wlan(topology, update.id).ok(),
+                _ => None,
+            })
+            .filter_map(|wlan| wlan.wlan_group())
+            .flat_map(|group| group.aps());
+        // a port's VLAN tunneled over VXLAN: a device joining or leaving it changes the VTEPs of
+        // every other device with it
+        let preview = plan.preview_topology().ok();
+        let vteps = preview.iter().flat_map(|after| {
+            plan.steps
+                .iter()
+                .filter_map(|step| match step {
+                    PlanStep::UpdatePortVlan(update) => Some(update),
+                    _ => None,
+                })
+                .flat_map(move |update| {
+                    let device = DeviceId(update.interface.device.id.preview_id());
+                    update
+                        .vlan
+                        .iter()
+                        .chain(&update.vlan_before)
+                        .flat_map(move |vlan| vtep_peers(topology, after, VlanId(vlan.id), device))
+                })
+        });
+        let vxlans = preview
+            .iter()
+            .flat_map(|after| vtep_change(topology, after))
+            .collect::<Vec<_>>();
+        let mut seen = BTreeSet::new();
+        configured
+            .iter()
+            .cloned()
+            .chain(plan.touched_devices())
+            .chain(aps)
+            .chain(vteps)
+            .chain(vxlans)
+            .filter(|device| device.has_routeros() && seen.insert(device.id()))
+            .collect()
+    }
     /// `part`'s steps behind this plan's ([`append_steps`](Self::append_steps)), with what it
     /// found.
     pub fn append(&mut self, mut part: NetboxPlan) -> Result<(), Error> {
@@ -398,10 +457,11 @@ impl NetboxPlan {
             .map_err(|error| Error::Preview(error.to_string().into()))?;
         Ok(Arc::new(topology))
     }
-    fn preview_device(&self) -> Result<DeviceAccess, Error> {
+    /// The device `id` in the preview.
+    fn preview_device(&self, id: DeviceId) -> Result<DeviceAccess, Error> {
         self.preview_topology()?
-            .get_device_by_id(&self.device.id())
-            .ok_or(Error::UnknownDevice(self.device.id().0))
+            .get_device_by_id(&id)
+            .ok_or(Error::UnknownDevice(id.0))
     }
 
     /// The plan on the JSON of NetBox' `FetchTopology`, for the preview. Created objects get
@@ -716,6 +776,69 @@ impl NetboxPlan {
     }
 }
 
+/// The other devices with `vlan` over its VXLAN, when `device` joins or leaves it: before
+/// (`topology`) and `after` the plan. Where `device` is no VTEP (a switch without RouterOS)
+/// that names more devices than change, along with the one whose trunk to it does.
+fn vtep_peers(
+    topology: &Arc<Topology>,
+    after: &Arc<Topology>,
+    vlan: VlanId,
+    device: DeviceId,
+) -> Vec<DeviceAccess> {
+    let devices = |topology: &Arc<Topology>| {
+        topology
+            .list_vlans()
+            .find(|other| other.id == vlan && other.vxlan().is_some())
+            .map(|other| other.devices().into_vec())
+            .unwrap_or_default()
+    };
+    let before = devices(topology);
+    let after = devices(after);
+    let has = |devices: &[DeviceAccess]| devices.iter().any(|other| other.id() == device);
+    if has(&before) == has(&after) {
+        return Vec::new();
+    }
+    before
+        .into_iter()
+        .chain(after)
+        .filter(|other| other.id() != device)
+        .collect()
+}
+
+/// The RouterOS devices of each VXLAN whose VTEPs (the RouterOS devices with a VLAN tunneled
+/// over it, and their primary IPv4) differ between `topology` and `after`, as `topology` has
+/// them; one only `after` has is new and no device of it yet.
+fn vtep_change(topology: &Arc<Topology>, after: &Arc<Topology>) -> Vec<DeviceAccess> {
+    let vteps = |topology: &Arc<Topology>| {
+        let mut vteps = BTreeMap::<VxlanId, BTreeMap<DeviceId, Option<IpAddr>>>::new();
+        for vlan in topology.list_vlans() {
+            let Some(vxlan) = vlan.tunnel() else { continue };
+            for device in vlan.devices().iter().filter(|d| d.has_routeros()) {
+                vteps
+                    .entry(AccessTopology::id(&vxlan))
+                    .or_default()
+                    .insert(device.id(), device.primary_ip_v4().and_then(|ip| ip.addr()));
+            }
+        }
+        vteps
+    };
+    let (before, now) = (vteps(topology), vteps(after));
+    let empty = BTreeMap::new();
+    before
+        .keys()
+        .chain(now.keys())
+        .filter(|vxlan| before.get(vxlan).unwrap_or(&empty) != now.get(vxlan).unwrap_or(&empty))
+        .flat_map(|vxlan| {
+            before
+                .get(vxlan)
+                .unwrap_or(&empty)
+                .keys()
+                .chain(now.get(vxlan).unwrap_or(&empty).keys())
+        })
+        .filter_map(|id| topology.get_device_by_id(id))
+        .collect()
+}
+
 /// A random WPA key of 24 letters and digits.
 pub(crate) fn new_psk() -> Box<str> {
     use rand::RngExt;
@@ -800,7 +923,7 @@ mod test {
                 before_id: device.primary_ip_v4().map(|ip| ip.plan_id(ip.id().0)),
             }),
         ];
-        let after = plan.preview_device().expect("preview");
+        let after = plan.preview_device(plan.device().id()).expect("preview");
         let lo = after
             .interfaces()
             .into_iter()
@@ -818,6 +941,72 @@ mod test {
             .map(|n| n.to_string());
         assert_eq!(primary.as_deref(), Some("192.0.2.1/32"));
         assert!(!device.interfaces().iter().any(|i| i.name() == "lo-test"));
+    }
+
+    /// A VTEP getting another primary IPv4 changes the VTEP list of every other one of its
+    /// VXLAN: they are among the devices the plan changes, a router without the VXLAN isn't.
+    #[test]
+    fn a_vteps_new_address_changes_its_peers() {
+        let topology = example_topology();
+        let vxlan_devices = |vlan: &crate::topology::access::vlan::VlanAccess| {
+            vlan.devices()
+                .iter()
+                .filter(|d| d.has_routeros() && d.primary_ip_v4().is_some())
+                .map(DeviceAccess::id)
+                .collect::<BTreeSet<_>>()
+        };
+        let peers = topology
+            .list_vlans()
+            .filter(|vlan| vlan.tunnel().is_some())
+            .map(|vlan| vxlan_devices(&vlan))
+            .find(|devices| devices.len() > 1)
+            .expect("a VXLAN with two VTEPs");
+        let vtep = *peers.first().expect("a VTEP");
+        let device = topology.get_device_by_id(&vtep).expect("the VTEP");
+        let mut plan = NetboxPlan::new(&device, None);
+        plan.steps = vec![
+            PlanStep::CreateInterface(CreateInterface {
+                device: plan_device(&device),
+                name: "lo-test".into(),
+                kind: "virtual".into(),
+                vlan: None,
+                tags: Box::default(),
+                mac: None,
+            }),
+            PlanStep::CreateAddress(CreateAddress {
+                address: "192.0.2.1/32".into(),
+                device: plan_device(&device),
+                interface: "lo-test".into(),
+                prefix: "192.0.2.0/24".into(),
+                on: ObjectId::Planned(0),
+            }),
+            PlanStep::SetPrimaryIp(SetPrimaryIp {
+                device: plan_device(&device),
+                version: IpVersion::V4,
+                address: "192.0.2.1/32".into(),
+                before: None,
+                address_id: ObjectId::Planned(1),
+                before_id: device.primary_ip_v4().map(|ip| ip.plan_id(ip.id().0)),
+            }),
+        ];
+        let changed = plan
+            .changed_devices(&[])
+            .iter()
+            .map(DeviceAccess::id)
+            .collect::<BTreeSet<_>>();
+        assert!(peers.is_subset(&changed), "{peers:?} in {changed:?}");
+        let all_vteps = topology
+            .list_vlans()
+            .filter(|vlan| vlan.tunnel().is_some())
+            .flat_map(|vlan| vxlan_devices(&vlan))
+            .collect::<BTreeSet<_>>();
+        assert!(
+            topology
+                .list_devices()
+                .filter(|d| d.has_routeros() && !all_vteps.contains(&d.id()))
+                .all(|d| !changed.contains(&d.id())),
+            "only VTEPs: {changed:?}"
+        );
     }
 
     /// A link's steps in the preview: the cable joins the two ports, both have their address

@@ -303,7 +303,7 @@ pub fn plan(topology: &Arc<Topology>, input: &PortVlanInput) -> Result<NetboxPla
     }));
     // what the rules above miss: the device's L2 as the generator sets it up, if it did before
     if L2Setup::new(&device, KeepNameGenerator).is_ok() {
-        match plan.preview_device() {
+        match plan.preview_device(plan.device().id()) {
             Ok(after) => {
                 L2Setup::new(&after, KeepNameGenerator)?;
             }

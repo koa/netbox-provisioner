@@ -356,6 +356,11 @@ impl DeviceAccess {
     async fn api_serial(&self) -> Option<String> {
         self.serial().map(ToString::to_string)
     }
+    /// RouterOS runs on it (platform `routeros`): the provisioner configures it.
+    #[graphql(name = "hasRouteros")]
+    async fn api_has_routeros(&self) -> bool {
+        self.has_routeros()
+    }
     /// `maxAge`: how old, in seconds, what the device was asked may be at most (`facts`);
     /// each field has its own otherwise, `0` asks anew.
     async fn access(

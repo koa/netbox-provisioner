@@ -602,6 +602,12 @@ impl GeneratedCfg {
     async fn age(&self) -> u64 {
         self.as_of.elapsed().as_secs()
     }
+    /// It changes what the device announces outward (`outward`): the automatic rollout holds
+    /// it back (`HoldReason::Outward`).
+    #[graphql(name = "announcesOutward")]
+    async fn api_announces_outward(&self) -> bool {
+        self.announces_outward
+    }
 }
 
 impl GeneratedCfg {
@@ -612,11 +618,12 @@ impl GeneratedCfg {
     pub fn apply_warnings(&self) -> &[ApplyWarning] {
         &self.warnings
     }
-    /// Whether the script changes a radio (`/interface/wireless…`, `/interface/wifi…`,
-    /// `/interface/w60g…`), which may stay off a while after (`apply::RADIO_RESTART`).
+    /// Whether it changes what the device announces outward (`outward`).
     pub fn announces_outward(&self) -> bool {
         self.announces_outward
     }
+    /// Whether the script changes a radio (`/interface/wireless…`, `/interface/wifi…`,
+    /// `/interface/w60g…`), which may stay off a while after (`apply::RADIO_RESTART`).
     pub fn changes_radio(&self) -> bool {
         self.diff.tables.iter().any(|table| {
             ["interface/wireless", "interface/wifi", "interface/w60g"]

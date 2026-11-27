@@ -721,4 +721,7 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
   (`helper::test::preview_has_what_the_plan_creates`, `preview_has_the_new_link`), die Ids
   (`helper::plan::test`, `helper::write::test::planned_objects_get_netbox_ids`), die Pläne pro
   Helfer (`helper::connection::test`, …); im Lab-NetBox (`local/lab/`) von Hand, wie bei jedem
-  Helfer oben beschrieben. Ein automatischer Lab-Test fehlt (E9).
+  Helfer oben beschrieben. Gegen das laufende Lab prüft `backend/tests/lab_helpers.rs` (E9) einen
+  Helfer ganz: Vorschau-Skript jedes Geräts, Schreiben, das automatische Rollout wendet genau
+  diese Skripte an, danach jedes Gerät wie NetBox, Rückgängig und wieder wie vorher. Bisher mit
+  „Loopback“; die übrigen Helfer kommen einzeln dazu (E9).

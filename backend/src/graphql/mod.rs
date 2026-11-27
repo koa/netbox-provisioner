@@ -375,9 +375,7 @@ impl MutationAdmin {
                 .await;
                 if let (Ok(plan), Some(job)) = (&result, log.job_id()) {
                     let devices = auto_rollout::configured(
-                        plan.touched_devices()
-                            .into_iter()
-                            .chain([plan.device().clone()]),
+                        plan.changed_devices(std::slice::from_ref(plan.device())),
                     );
                     auto_rollout::note_change(job, &user, None, devices, Box::new([]));
                 }
