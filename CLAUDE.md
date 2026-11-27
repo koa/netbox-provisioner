@@ -496,10 +496,11 @@ plans a helper over GraphQL as the lab admin, takes each device's preview script
 writes, waits for the automatic rollout's next round (`lastRound`: applied to exactly the
 devices with a preview script, or nothing to do), compares the rollout's `ApplyPlanned` scripts
 with the preview (keys masked: a plan makes a new PSK each time), checks every device like
-NetBox, undoes and checks again, with the plan as before (`try_helper`; `write_checked` and
-`take_back` for a case of several helpers). Cases so far: „Loopback“ of `lab-keller-switch`;
-„Verbindung“ lab-hex ether5 ↔ lab-crs226 ether24 (free ports, no cable), undone, then again and
-taken out by „Abräumen“. Not lab-np2: the management proxy rolls out by hand and holds the
+NetBox, undoes and checks again, with the plan as before (`try_helper`; `try_taking_out` writes
+it, then the helper taking it out, like „Abräumen“ after „Verbindung“). Cases so far: „Loopback“
+of `lab-keller-switch`; „Verbindung“ lab-hex ether5 ↔ lab-crs226 ether24 (free ports, no
+cable) with „Abräumen“; „Kunden-Netz“ with DHCP on lab-crs226 ether24 (192.168.102.0/23,
+2a02:16a:fe00:9000::/56) with „Kunden-Port abräumen“. Not lab-np2: the management proxy rolls out by hand and holds the
 rollout back.
 
 `backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR

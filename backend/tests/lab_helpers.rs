@@ -6,7 +6,7 @@
 //! device got the script the plan's preview showed for it (`NetboxPlan.previewAccess`, against
 //! the rollout's `ApplyPlanned`), that every device is like NetBox afterwards, and the same
 //! once the write is undone, with the plan as before (or a helper taking it out again, like
-//! „Abräumen“ after „Verbindung“). It stops before writing at a device not
+//! „Abräumen“ after „Verbindung“, „Kunden-Port abräumen“ after „Kunden-Netz“). It stops before writing at a device not
 //! like NetBox and at a plan announcing something outward (`announcesOutward`), which the
 //! rollout would hold back anyway.
 //!
@@ -162,6 +162,24 @@ impl Lab {
             .and_then(|interface| interface["id"].as_u64())
             .map(|id| id as u32)
             .with_context(|| format!("no interface {name} at {device}"))
+    }
+
+    /// The id of the lab's site prefix `prefix` „Kunden-Netz“ offers.
+    async fn prefix_id(&self, prefix: &str) -> anyhow::Result<u32> {
+        let device = self.device_id("lab-crs226").await?;
+        let data = self
+            .query(&format!(
+                "{{ topology {{ deviceById(id: {device}) {{ customerNetOptions {{ parents {{ id prefix }} parentsV6 {{ id prefix }} }} }} }} }}"
+            ))
+            .await?;
+        let options = &data["topology"]["deviceById"]["customerNetOptions"];
+        ["parents", "parentsV6"]
+            .iter()
+            .flat_map(|list| options[list].as_array().cloned().unwrap_or_default())
+            .find(|parent| parent["prefix"] == prefix)
+            .and_then(|parent| parent["id"].as_u64())
+            .map(|id| id as u32)
+            .with_context(|| format!("no prefix {prefix}"))
     }
 
     /// The script an apply would run on `device` now, read anew.
@@ -465,6 +483,31 @@ impl Lab {
         self.same_plan(helper, &fingerprint).await
     }
 
+    /// Writes `helper`'s plan, then `removal`'s taking it out again, each checked like
+    /// [`Self::write_checked`]; the lab is as before after, `helper` plans as before. What is
+    /// written is taken back where a check fails.
+    async fn try_taking_out(&self, helper: &str, removal: &str) -> anyhow::Result<()> {
+        let (fingerprint, _) = self.plan_fingerprint(helper).await?;
+        let written = self.write_checked(helper).await?;
+        let result = match written.checked {
+            Ok(()) => match self.write_checked(removal).await {
+                Ok(removed) => match removed.checked {
+                    Ok(()) => self.same_plan(helper, &fingerprint).await,
+                    Err(error) => {
+                        self.take_back(&removed.write, false).await?;
+                        Err(error)
+                    }
+                },
+                Err(error) => Err(error),
+            },
+            Err(error) => Err(error),
+        };
+        if result.is_err() {
+            self.take_back(&written.write, false).await?;
+        }
+        result
+    }
+
     async fn same_plan(&self, helper: &str, fingerprint: &str) -> anyhow::Result<()> {
         let (again, _) = self.plan_fingerprint(helper).await?;
         ensure!(again == fingerprint, "{helper}: another plan than before");
@@ -559,25 +602,30 @@ async fn connection_and_disconnect() {
     let peer = lab.interface_id(crs226, "ether24").await.expect("ether24");
     let connection = format!("{{ connection: {{ interface: {port}, peer: {peer} }} }}");
     lab.try_helper(&connection).await.unwrap();
-
-    let (fingerprint, _) = lab.plan_fingerprint(&connection).await.unwrap();
-    let connected = lab.write_checked(&connection).await.unwrap();
     let disconnect = format!("{{ disconnect: {{ device: {hex}, interface: {port} }} }}");
-    let result = match connected.checked {
-        Ok(()) => match lab.write_checked(&disconnect).await {
-            Ok(disconnected) => match disconnected.checked {
-                Ok(()) => lab.same_plan(&connection, &fingerprint).await,
-                Err(error) => {
-                    lab.take_back(&disconnected.write, false).await.unwrap();
-                    Err(error)
-                }
-            },
-            Err(error) => Err(error),
-        },
-        Err(error) => Err(error),
-    };
-    if result.is_err() {
-        lab.take_back(&connected.write, false).await.unwrap();
-    }
-    result.unwrap();
+    lab.try_taking_out(&connection, &disconnect).await.unwrap();
+}
+
+/// „Kunden-Netz“ with DHCP on a free port of lab-crs226 (no cable), from the lab's prefixes,
+/// undone; then written again and taken out with „Kunden-Port abräumen“.
+#[tokio::test]
+#[ignore]
+async fn customer_net_and_disconnect() {
+    let lab = Lab::from_env();
+    let crs226 = lab.device_id("lab-crs226").await.expect("lab-crs226");
+    let port = lab.interface_id(crs226, "ether24").await.expect("ether24");
+    let (parent, parent_v6) = (
+        lab.prefix_id("192.168.102.0/23")
+            .await
+            .expect("the IPv4 prefix"),
+        lab.prefix_id("2a02:16a:fe00:9000::/56")
+            .await
+            .expect("the IPv6 prefix"),
+    );
+    let net = format!(
+        "{{ customerNet: {{ device: {crs226}, target: {{ interface: {port} }}, parent: {parent}, parentV6: {parent_v6}, dhcp: true }} }}"
+    );
+    lab.try_helper(&net).await.unwrap();
+    let disconnect = format!("{{ customerDisconnect: {{ device: {crs226}, interface: {port} }} }}");
+    lab.try_taking_out(&net, &disconnect).await.unwrap();
 }
