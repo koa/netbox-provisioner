@@ -9,8 +9,8 @@
 //! As with the loopbacks, a `/31` NetBox has free may be in use by devices it doesn't know of:
 //! one the network routes (`routes::Routes`) or with addresses in NetBox is passed over.
 use super::{
-    CreateAddress, CreateCable, CreatePrefix, NetboxPlan, PlanStep, Target, UpdateInterface,
-    device_ref, flags::InterfaceTag, port_name, routes::Routes,
+    CreateAddress, CreateCable, CreatePrefix, NetboxPlan, PlanId, PlanStep, UpdateInterface,
+    flags::InterfaceTag, plan_device, plan_interface, port_name, routes::Routes,
 };
 use crate::helper::FreeNetwork;
 use crate::topology::PrefixRef;
@@ -76,8 +76,8 @@ pub async fn plan(topology: &Arc<Topology>, input: &ConnectionInput) -> Result<N
             }
         }
         plan.steps.push(PlanStep::CreateCable(CreateCable {
-            a: interface_ref(&a),
-            b: interface_ref(&b),
+            a: plan_interface(&a),
+            b: plan_interface(&b),
             a_end: super::CableEnd::Interface,
         }));
     }
@@ -110,12 +110,12 @@ pub async fn plan(topology: &Arc<Topology>, input: &ConnectionInput) -> Result<N
                     device: end
                         .device()
                         .as_ref()
-                        .map(device_ref)
+                        .map(plan_device)
                         .expect("checked above"),
                     address: IpNet::new(address, 31).expect("a /31").to_string().into(),
                     interface: end.name().into(),
                     prefix: net.to_string().into(),
-                    on: Target::Existing(end.id().0),
+                    on: end.plan_id(end.id().0),
                 }));
             }
         }
@@ -141,7 +141,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &ConnectionInput) -> Result<N
         let ospf = !end.use_ospf();
         if label.is_some() || new_mtu.is_some() || ospf {
             plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
-                interface: interface_ref(end),
+                interface: plan_interface(end),
                 label,
                 label_before: end.label().map(Box::from),
                 mtu: new_mtu,
@@ -269,6 +269,7 @@ async fn next_free(
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::helper::ObjectId;
     use crate::topology::test::example_topology;
 
     /// A link NetBox has whole, cable and common network, gets no cable, prefix or address,
@@ -309,7 +310,7 @@ mod test {
             let PlanStep::UpdateInterface(update) = step else {
                 unreachable!()
             };
-            let end = if update.interface.id == a.id().0 {
+            let end = if update.interface.id == ObjectId::Netbox(a.id().0) {
                 &a
             } else {
                 &b

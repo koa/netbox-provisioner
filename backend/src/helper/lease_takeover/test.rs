@@ -1,5 +1,6 @@
 //! Scope: Tests of `helper::lease_takeover`; nothing else.
 use super::*;
+use crate::helper::ObjectId;
 use crate::topology::interfaces::test::Net;
 
 fn facts() -> Facts {
@@ -53,7 +54,7 @@ fn a_lease_becomes_a_client_device() {
             PlanStep::CreateAddress(address),
         ] if &*device.name == "drucker" && device.platform_id.is_none()
             && interface.mac.as_deref() == Some("AA:BB:CC:DD:EE:01")
-            && &*address.address == "10.10.0.50/24" && address.on == Target::Step(1)),
+            && &*address.address == "10.10.0.50/24" && address.on == ObjectId::Planned(1)),
         "{:?}",
         plan.steps
     );

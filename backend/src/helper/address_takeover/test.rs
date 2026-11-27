@@ -1,5 +1,6 @@
 //! Scope: Tests of `helper::address_takeover`; nothing else.
 use super::*;
+use crate::helper::ObjectId;
 use crate::topology::interfaces::test::Net;
 
 fn input(net: &Net, interface: &str, address: &str) -> AddressTakeoverInput {
@@ -21,7 +22,7 @@ fn a_new_network_becomes_a_prefix() {
         matches!(&plan.steps[..], [PlanStep::CreatePrefix(prefix), PlanStep::CreateAddress(address)]
             if &*prefix.prefix == "192.168.5.0/24" && prefix.pool.is_empty()
                 && &*address.address == "192.168.5.1/24" && &*address.interface == "ether2"
-                && address.on == Target::Existing(input.interface)),
+                && address.on == ObjectId::Netbox(input.interface)),
         "{:?}",
         plan.steps
     );

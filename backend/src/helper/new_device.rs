@@ -12,9 +12,10 @@
 //! types are named as MikroTik sells them („hAP ac“), so the operator chooses, the frontend
 //! preselects one whose model or part number is the board.
 use super::{
-    CableEnd, CreateCable, CreateDevice, CreateInterface, NetboxPlan, PlanStep, UpdateInterface,
+    CableEnd, CreateCable, CreateDevice, CreateInterface, NetboxPlan, PlanDevice, PlanId,
+    PlanInterface, PlanStep, UpdateInterface,
     connection::{self, ConnectionInput},
-    loopback,
+    loopback, plan_device, plan_interface,
 };
 use crate::{
     Error,
@@ -22,7 +23,6 @@ use crate::{
     topology::{
         CablePort, DeviceId, DeviceRole, InterfaceId, PoeMode, Topology,
         access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess},
-        findings::{DeviceRef, InterfaceRef, device_ref, interface_ref},
     },
 };
 use async_graphql::{InputObject, SimpleObject};
@@ -143,28 +143,23 @@ pub async fn plan(topology: &Arc<Topology>, input: &NewDeviceInput) -> Result<Ne
     let mut plan = base(topology, input, &facts)?;
     let preview = plan.preview_topology()?;
     let new_device = preview
-        .get_device_by_id(&DeviceId(u32::MAX))
+        .get_device_by_id(&DeviceId(plan.created_by(NEW_DEVICE_STEP).preview_id()))
         .ok_or(Error::NoPreview)?;
     let mut routes = None;
     loopback::add_to(&mut plan, &new_device, &mut routes).await?;
     if !is_bridge(&facts) {
         // the link to the router, on the preview with the device and its loopback
         let preview = plan.preview_topology()?;
-        let connection = connection::plan(
+        let mut connection = connection::plan(
             &preview,
             &ConnectionInput {
                 interface: port.id().0,
-                peer: new_port_id(),
+                peer: plan.created_by(NEW_PORT_STEP).preview_id(),
                 mtu: None,
             },
         )
         .await?;
-        let shift = plan.steps.len();
-        plan.steps
-            .extend(connection.steps.into_iter().map(|mut step| {
-                step.shift(shift);
-                step
-            }));
+        plan.append_steps(&mut connection)?;
         plan.undocumented.extend(connection.undocumented);
         plan.cut_off.extend(connection.cut_off);
         plan.checked_with = plan.checked_with.or(connection.checked_with);
@@ -178,7 +173,7 @@ pub enum Landing {
     /// the port has no cable
     Port,
     /// its one cable path ends at this port of a patch panel, with no cable on
-    Panel(CableEnd, InterfaceRef),
+    Panel(CableEnd, PlanInterface),
 }
 
 /// Where a device NetBox doesn't have yet would be cabled to `port`, `None` when something is
@@ -201,10 +196,10 @@ pub fn landing(port: &InterfaceAccess) -> Option<Landing> {
     let device = far.device()?;
     Some(Landing::Panel(
         end,
-        InterfaceRef {
-            id,
+        PlanInterface {
+            id: port.plan_id(id),
             name: far.name().unwrap_or_default().into(),
-            device: device_ref(&device),
+            device: plan_device(&device),
         },
     ))
 }
@@ -319,12 +314,11 @@ pub(crate) fn base(
         tenant_id: facts.tenant_id,
         wlan_group: wlan_group.as_ref().and_then(|g| g.name()).map(Box::from),
         wlan_group_id: wlan_group.as_ref().map(|g| g.id().0),
-        template: router.id().0,
+        template: router.plan_id(router.id().0),
     }));
-    let device = DeviceRef {
-        id: u32::MAX,
+    let device = PlanDevice {
+        id: plan.created_by(NEW_DEVICE_STEP),
         name: name.into(),
-        site: Some(site.id().0),
     };
     plan.steps.push(PlanStep::CreateInterface(CreateInterface {
         device: device.clone(),
@@ -334,8 +328,8 @@ pub(crate) fn base(
         tags: Box::default(),
         mac: None,
     }));
-    let new_port = InterfaceRef {
-        id: new_port_id(),
+    let new_port = PlanInterface {
+        id: plan.created_by(NEW_PORT_STEP),
         name: far_port.into(),
         device,
     };
@@ -346,7 +340,7 @@ pub(crate) fn base(
             a_end,
         })),
         _ if is_bridge(facts) => plan.steps.push(PlanStep::CreateCable(CreateCable {
-            a: interface_ref(&port),
+            a: plan_interface(&port),
             b: new_port.clone(),
             a_end: CableEnd::Interface,
         })),
@@ -375,10 +369,9 @@ fn is_bridge(facts: &Facts) -> bool {
     DeviceRole::from_slug(&facts.role_slug) == Some(DeviceRole::WlanBridge)
 }
 
-/// The id the preview gives the new device's port (step 1).
-fn new_port_id() -> u32 {
-    u32::MAX - 1
-}
+/// The steps of the plan (from its first) creating the new device and its port.
+const NEW_DEVICE_STEP: usize = 0;
+const NEW_PORT_STEP: usize = 1;
 
 /// NetBox's type for a port named as RouterOS does.
 fn port_type(name: &str) -> &'static str {

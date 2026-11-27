@@ -6,18 +6,16 @@
 use super::{
     CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreateIpRange,
     CreatePrefix, CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
-    DeleteWirelessLink, Helper, NetboxPlan, PlanStep, SetPrimaryIp, Target, UpdateDeviceLocation,
-    UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLan, UpdateWirelessLink, flags,
+    DeleteWirelessLink, Helper, NetboxPlan, ObjectId, PlanInterface, PlanStep, SetPrimaryIp,
+    UpdateDeviceLocation, UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLan,
+    UpdateWirelessLink, flags,
 };
 use crate::{
     Error,
     device_state::NetboxState,
     job::{Event, Log},
     netbox::rest::NetboxRest,
-    topology::{
-        PoeMode, RadioRole, Topology,
-        findings::{InterfaceRef, IpVersion},
-    },
+    topology::{PoeMode, RadioRole, Topology, findings::IpVersion},
 };
 use async_graphql::SimpleObject;
 use serde_json::{Value, json};
@@ -40,6 +38,10 @@ pub struct NetboxWritten {
     /// the JSON `undo` creates a deleted object again with (it gets a new id)
     #[graphql(skip)]
     pub recreate: Option<Box<str>>,
+    /// changed or deleted, an object an earlier step of the same job created
+    /// (`ObjectId::Planned`): `undo` doesn't set it back, it deletes the object
+    #[graphql(skip)]
+    pub of_created: bool,
 }
 
 /// A field a helper changed, as NetBox shows its values.
@@ -77,85 +79,78 @@ pub async fn write(
     }
     log.enter(NetboxState::Writing);
     let rest = NetboxRest::writer(i18n::changelog::message(&plan.description, user))?;
-    let mut created = Vec::<Option<u32>>::with_capacity(plan.steps.len());
-    // the ids the plan's preview gives the objects it creates: step `n` has `u32::MAX - n`
-    let first_created = u32::MAX - plan.steps.len() as u32;
-    let is_created = |id: u32| id > first_created;
+    let mut ids = Ids {
+        first: plan.first(),
+        created: Vec::with_capacity(plan.steps.len()),
+    };
     for step in &plan.steps {
         log.check()?;
-        // a device created by the plan has the interfaces of its device type already
-        let on_new_device =
-            matches!(step, PlanStep::CreateInterface(create) if is_created(create.device.id));
-        let real = |id: u32| {
-            if is_created(id) {
-                created.get((u32::MAX - id) as usize).copied().flatten()
-            } else {
-                Some(id)
-            }
-        };
-        let step = &step
-            .with_real_ids(real)
-            .ok_or_else(|| Error::NetboxChanged(plan.device().name().into()))?;
-        let id = write_step(&rest, step, &created, on_new_device, log).await?;
-        created.push(id);
+        let id = write_step(&rest, step, &ids, log).await?;
+        ids.created.push(id);
     }
     Ok(plan)
 }
 
-/// Writes one step of a plan, `created` the ids of the objects the steps before it created;
-/// gives the id of the object it creates.
+/// The NetBox ids of a plan's objects while it is written: NetBox's own, and those of the
+/// objects its steps created so far.
+struct Ids {
+    /// the plan's first step (`NetboxPlan::first`)
+    first: usize,
+    /// what each step written created
+    created: Vec<Option<u32>>,
+}
+
+impl Ids {
+    /// NetBox' id of `id`; an error for an object no step written so far created.
+    fn netbox(&self, id: ObjectId) -> Result<u32, Error> {
+        match id {
+            ObjectId::Netbox(id) => Ok(id),
+            ObjectId::Planned(step) => step
+                .checked_sub(self.first)
+                .and_then(|index| self.created.get(index).copied().flatten())
+                .ok_or_else(|| Error::Preview(format!("no object from step {step}").into())),
+        }
+    }
+}
+
+/// Writes one step of a plan; gives the id of the object it creates.
 async fn write_step(
     rest: &NetboxRest,
     step: &PlanStep,
-    created: &[Option<u32>],
-    on_new_device: bool,
+    ids: &Ids,
     log: &Log,
 ) -> Result<Option<u32>, Error> {
-    let resolve = |target: Target, name: &str| {
-        match target {
-            Target::Existing(id) => Some(id),
-            Target::Step(step) => created.get(step).copied().flatten(),
-        }
-        .ok_or_else(|| Error::NetboxChanged(name.into()))
-    };
     Ok(match step {
         PlanStep::CreateDevice(create) => Some(create_device(rest, create, log).await?),
-        PlanStep::CreateInterface(create) => {
-            Some(create_interface(rest, create, on_new_device, log).await?)
-        }
+        PlanStep::CreateInterface(create) => Some(create_interface(rest, create, ids, log).await?),
         PlanStep::CreateAddress(create) => {
-            let interface = resolve(create.on, &create.interface)?;
+            let interface = ids.netbox(create.on)?;
             Some(create_address(rest, create, interface, log).await?)
         }
         PlanStep::SetPrimaryIp(set) => {
-            let address = resolve(set.address_id, &set.address)?;
-            set_primary_ip(rest, set, address, log).await?;
+            set_primary_ip(rest, set, ids, log).await?;
             None
         }
-        PlanStep::CreateCable(create) => Some(create_cable(rest, create, log).await?),
+        PlanStep::CreateCable(create) => Some(create_cable(rest, create, ids, log).await?),
         PlanStep::CreatePrefix(create) => Some(create_prefix(rest, create, log).await?),
         PlanStep::CreateIpRange(create) => Some(create_ip_range(rest, create, log).await?),
         PlanStep::UpdateInterface(update) => {
-            update_interface(rest, update, log).await?;
+            update_interface(rest, update, ids, log).await?;
             None
         }
         PlanStep::UpdatePort(update) => {
-            let bridge = match update.bridge_id {
-                Some(target) => Some(resolve(target, &update.interface.name)?),
-                None => None,
-            };
-            update_port(rest, update, bridge, log).await?;
+            update_port(rest, update, ids, log).await?;
             None
         }
         PlanStep::CreateWirelessLink(create) => {
-            Some(create_wireless_link(rest, create, log).await?)
+            Some(create_wireless_link(rest, create, ids, log).await?)
         }
         PlanStep::UpdateWirelessLink(update) => {
-            update_wireless_link(rest, update, log).await?;
+            update_wireless_link(rest, update, ids, log).await?;
             None
         }
         PlanStep::UpdatePortVlan(update) => {
-            update_port_vlan(rest, update, log).await?;
+            update_port_vlan(rest, update, ids, log).await?;
             None
         }
         PlanStep::UpdateWirelessLan(update) => {
@@ -163,27 +158,27 @@ async fn write_step(
             None
         }
         PlanStep::UpdateDeviceLocation(update) => {
-            update_device_location(rest, update, log).await?;
+            update_device_location(rest, update, ids, log).await?;
             None
         }
         PlanStep::DeleteInterface(delete) => {
-            delete_interface(rest, delete, log).await?;
+            delete_interface(rest, delete, ids, log).await?;
             None
         }
         PlanStep::DeleteWirelessLink(delete) => {
-            delete_wireless_link(rest, delete, log).await?;
+            delete_wireless_link(rest, delete, ids, log).await?;
             None
         }
         PlanStep::DeleteCable(delete) => {
-            delete_cable(rest, delete, log).await?;
+            delete_cable(rest, delete, ids, log).await?;
             None
         }
         PlanStep::DeleteAddress(delete) => {
-            delete_address(rest, delete, log).await?;
+            delete_address(rest, delete, ids, log).await?;
             None
         }
         PlanStep::DeletePrefix(delete) => {
-            delete_prefix(rest, delete, log).await?;
+            delete_prefix(rest, delete, ids, log).await?;
             None
         }
     })
@@ -218,20 +213,19 @@ async fn create_device(rest: &NetboxRest, create: &CreateDevice, log: &Log) -> R
 }
 
 /// Creates the interface once the device has none of its name; on a device the plan created
-/// (`on_new_device`) one from its device type is taken as it is.
+/// one from its device type is taken as it is.
 async fn create_interface(
     rest: &NetboxRest,
     create: &CreateInterface,
-    on_new_device: bool,
+    ids: &Ids,
     log: &Log,
 ) -> Result<u32, Error> {
+    let device = ids.netbox(create.device.id)?;
+    let on_new_device = create.device.id.is_planned();
     let existing = rest
         .find(
             "dcim/interfaces/",
-            &[
-                ("device_id", &create.device.id.to_string()),
-                ("name", &create.name),
-            ],
+            &[("device_id", &device.to_string()), ("name", &create.name)],
         )
         .await?;
     // from the device type: taken as it is, it goes with the device
@@ -243,7 +237,7 @@ async fn create_interface(
             format!("{} has {} already", create.device.name, create.name).into(),
         ));
     }
-    let mut body = json!({ "device": create.device.id, "name": create.name, "type": create.kind });
+    let mut body = json!({ "device": device, "name": create.name, "type": create.kind });
     if let Some(vlan) = create.vlan {
         body["mode"] = json!("access");
         body["untagged_vlan"] = json!(vlan);
@@ -310,17 +304,19 @@ async fn create_address(
 async fn set_primary_ip(
     rest: &NetboxRest,
     set: &SetPrimaryIp,
-    address: u32,
+    ids: &Ids,
     log: &Log,
 ) -> Result<(), Error> {
-    let path = format!("dcim/devices/{}/", set.device.id);
+    let address = ids.netbox(set.address_id)?;
+    let before_id = set.before_id.map(|id| ids.netbox(id)).transpose()?;
+    let path = format!("dcim/devices/{}/", ids.netbox(set.device.id)?);
     let field = match set.version {
         IpVersion::V4 => "primary_ip4",
         IpVersion::V6 => "primary_ip6",
     };
     let current = rest.get(&path).await?;
     let current_id = current[field]["id"].as_u64().map(|id| id as u32);
-    if current_id != set.before_id {
+    if current_id != before_id {
         return Err(Error::NetboxChanged(
             format!("{}: {field}", set.device.name).into(),
         ));
@@ -340,22 +336,31 @@ async fn set_primary_ip(
         .into(),
         deleted: false,
         recreate: None,
+        of_created: set.device.id.is_planned(),
     }));
     Ok(())
 }
 
 /// Creates the cable once both ends are free.
-async fn create_cable(rest: &NetboxRest, create: &CreateCable, log: &Log) -> Result<u32, Error> {
-    let ends = [(create.a_end, &create.a), (CableEnd::Interface, &create.b)];
-    for (kind, end) in ends {
-        let current = rest.get(&format!("{}/{}/", kind.path(), end.id)).await?;
+async fn create_cable(
+    rest: &NetboxRest,
+    create: &CreateCable,
+    ids: &Ids,
+    log: &Log,
+) -> Result<u32, Error> {
+    let ends = [
+        (create.a_end, &create.a, ids.netbox(create.a.id)?),
+        (CableEnd::Interface, &create.b, ids.netbox(create.b.id)?),
+    ];
+    for (kind, end, id) in ends {
+        let current = rest.get(&format!("{}/{id}/", kind.path())).await?;
         if !current["cable"].is_null() {
             return Err(Error::NetboxChanged(
                 format!("{} {} has a cable", end.device.name, end.name).into(),
             ));
         }
     }
-    let end = |(kind, interface): (CableEnd, &InterfaceRef)| json!([{ "object_type": kind.object_type(), "object_id": interface.id }]);
+    let end = |(kind, _, id): (CableEnd, &PlanInterface, u32)| json!([{ "object_type": kind.object_type(), "object_id": id }]);
     let object = rest
         .create(
             "dcim/cables/",
@@ -448,10 +453,12 @@ async fn create_ip_range(
 async fn create_wireless_link(
     rest: &NetboxRest,
     create: &CreateWirelessLink,
+    ids: &Ids,
     log: &Log,
 ) -> Result<u32, Error> {
-    for end in [&create.a, &create.b] {
-        let current = rest.get(&format!("dcim/interfaces/{}/", end.id)).await?;
+    let [a, b] = [ids.netbox(create.a.id)?, ids.netbox(create.b.id)?];
+    for (end, id) in [(&create.a, a), (&create.b, b)] {
+        let current = rest.get(&format!("dcim/interfaces/{id}/")).await?;
         if !current["wireless_link"].is_null() {
             return Err(Error::NetboxChanged(
                 format!("{} {} has a wireless link", end.device.name, end.name).into(),
@@ -462,8 +469,8 @@ async fn create_wireless_link(
         .create(
             "wireless/wireless-links/",
             json!({
-                "interface_a": create.a.id,
-                "interface_b": create.b.id,
+                "interface_a": a,
+                "interface_b": b,
                 "ssid": create.ssid,
                 "status": "connected",
                 "auth_type": "wpa-personal",
@@ -479,19 +486,21 @@ async fn create_wireless_link(
 async fn delete_interface(
     rest: &NetboxRest,
     delete: &DeleteInterface,
+    ids: &Ids,
     log: &Log,
 ) -> Result<(), Error> {
     let interface = &delete.interface;
-    let path = format!("dcim/interfaces/{}/", interface.id);
+    let id = ids.netbox(interface.id)?;
+    let path = format!("dcim/interfaces/{id}/");
     let current = rest.get(&path).await?;
     let addresses = rest
         .find(
             "ipam/ip-addresses/",
-            &[("interface_id", &interface.id.to_string()), ("limit", "1")],
+            &[("interface_id", &id.to_string()), ("limit", "1")],
         )
         .await?;
     if current["name"].as_str() != Some(&*interface.name)
-        || current["device"]["id"].as_u64() != Some(interface.device.id.into())
+        || current["device"]["id"].as_u64() != Some(ids.netbox(interface.device.id)?.into())
         || addresses["count"].as_u64() != Some(0)
     {
         return Err(Error::NetboxChanged(
@@ -518,7 +527,7 @@ async fn delete_interface(
             "custom_fields",
         ],
     );
-    deleted(rest, log, &path, &current, body).await?;
+    deleted(rest, log, &path, &current, body, interface.id).await?;
     Ok(())
 }
 
@@ -526,16 +535,16 @@ async fn delete_interface(
 async fn delete_wireless_link(
     rest: &NetboxRest,
     delete: &DeleteWirelessLink,
+    ids: &Ids,
     log: &Log,
 ) -> Result<(), Error> {
-    let path = format!("wireless/wireless-links/{}/", delete.id);
+    let id = ids.netbox(delete.id)?;
+    let path = format!("wireless/wireless-links/{id}/");
     let current = rest.get(&path).await?;
     let ends = ["interface_a", "interface_b"].map(|end| current[end]["id"].as_u64());
-    let same = |a: &InterfaceRef, b: &InterfaceRef| ends == [Some(a.id.into()), Some(b.id.into())];
-    if !same(&delete.a, &delete.b) && !same(&delete.b, &delete.a) {
-        return Err(Error::NetboxChanged(
-            format!("wireless link {}", delete.id).into(),
-        ));
+    let [a, b] = [ids.netbox(delete.a.id)?, ids.netbox(delete.b.id)?].map(u64::from);
+    if ends != [Some(a), Some(b)] && ends != [Some(b), Some(a)] {
+        return Err(Error::NetboxChanged(format!("wireless link {id}").into()));
     }
     // with its PSK, so that undo brings the same link back
     let body = recreate(
@@ -557,13 +566,20 @@ async fn delete_wireless_link(
             "custom_fields",
         ],
     );
-    deleted(rest, log, &path, &current, body).await?;
+    deleted(rest, log, &path, &current, body, delete.id).await?;
     Ok(())
 }
 
 /// Deletes the cable once it still ends at the plan's port.
-async fn delete_cable(rest: &NetboxRest, delete: &DeleteCable, log: &Log) -> Result<(), Error> {
-    let path = format!("dcim/cables/{}/", delete.id);
+async fn delete_cable(
+    rest: &NetboxRest,
+    delete: &DeleteCable,
+    ids: &Ids,
+    log: &Log,
+) -> Result<(), Error> {
+    let id = ids.netbox(delete.id)?;
+    let port = ids.netbox(delete.port.id)?;
+    let path = format!("dcim/cables/{id}/");
     let current = rest.get(&path).await?;
     let at_port = ["a_terminations", "b_terminations"].iter().any(|end| {
         current[end]
@@ -572,37 +588,54 @@ async fn delete_cable(rest: &NetboxRest, delete: &DeleteCable, log: &Log) -> Res
             .flatten()
             .any(|termination| {
                 termination["object_type"] == "dcim.interface"
-                    && termination["object_id"].as_u64() == Some(delete.port.id.into())
+                    && termination["object_id"].as_u64() == Some(port.into())
             })
     });
     if !at_port {
         return Err(Error::NetboxChanged(
             format!(
-                "{} {}: cable {}",
-                delete.port.device.name, delete.port.name, delete.id
+                "{} {}: cable {id}",
+                delete.port.device.name, delete.port.name
             )
             .into(),
         ));
     }
-    deleted(rest, log, &path, &current, recreate_cable(&current)).await?;
+    deleted(
+        rest,
+        log,
+        &path,
+        &current,
+        recreate_cable(&current),
+        delete.id,
+    )
+    .await?;
     Ok(())
 }
 
 /// Deletes the address once it is still on the plan's interface and no primary IP.
-async fn delete_address(rest: &NetboxRest, delete: &DeleteAddress, log: &Log) -> Result<(), Error> {
-    let path = format!("ipam/ip-addresses/{}/", delete.id);
+async fn delete_address(
+    rest: &NetboxRest,
+    delete: &DeleteAddress,
+    ids: &Ids,
+    log: &Log,
+) -> Result<(), Error> {
+    let id = ids.netbox(delete.id)?;
+    let path = format!("ipam/ip-addresses/{id}/");
     let current = rest.get(&path).await?;
     if current["address"].as_str() != Some(&*delete.address)
-        || current["assigned_object_id"].as_u64() != Some(delete.interface.id.into())
+        || current["assigned_object_id"].as_u64() != Some(ids.netbox(delete.interface.id)?.into())
     {
         return Err(Error::NetboxChanged(delete.address.clone()));
     }
     let device = rest
-        .get(&format!("dcim/devices/{}/", delete.interface.device.id))
+        .get(&format!(
+            "dcim/devices/{}/",
+            ids.netbox(delete.interface.device.id)?
+        ))
         .await?;
     if ["primary_ip4", "primary_ip6"]
         .iter()
-        .any(|field| device[field]["id"].as_u64() == Some(delete.id.into()))
+        .any(|field| device[field]["id"].as_u64() == Some(id.into()))
     {
         return Err(Error::PrimaryAddress {
             address: delete.address.clone(),
@@ -626,13 +659,18 @@ async fn delete_address(rest: &NetboxRest, delete: &DeleteAddress, log: &Log) ->
             "custom_fields",
         ],
     );
-    deleted(rest, log, &path, &current, body).await?;
+    deleted(rest, log, &path, &current, body, delete.id).await?;
     Ok(())
 }
 
 /// Deletes the prefix once it holds no address.
-async fn delete_prefix(rest: &NetboxRest, delete: &DeletePrefix, log: &Log) -> Result<(), Error> {
-    let path = format!("ipam/prefixes/{}/", delete.id);
+async fn delete_prefix(
+    rest: &NetboxRest,
+    delete: &DeletePrefix,
+    ids: &Ids,
+    log: &Log,
+) -> Result<(), Error> {
+    let path = format!("ipam/prefixes/{}/", ids.netbox(delete.id)?);
     let current = rest.get(&path).await?;
     let addresses = rest
         .find(
@@ -663,19 +701,21 @@ async fn delete_prefix(rest: &NetboxRest, delete: &DeletePrefix, log: &Log) -> R
             "custom_fields",
         ],
     );
-    deleted(rest, log, &path, &current, body).await?;
+    deleted(rest, log, &path, &current, body, delete.id).await?;
     Ok(())
 }
 
 /// Takes back what a job of `write` wrote (its `NetboxWritten` events), the last first:
 /// deletes what it created, sets back what it changed, creates again what it deleted. An object
 /// created again gets a new id: what is taken back after it (an address of a VLAN interface
-/// deleted after its addresses) refers to that one ([`Recreated`]).
+/// deleted after its addresses) refers to that one ([`Recreated`]). What the job changed at an
+/// object it created (`of_created`) stays: deleting the object takes it back; one the job
+/// deleted again is gone already.
 pub async fn undo(job: u32, written: &[NetboxWritten], user: &str, log: &Log) -> Result<(), Error> {
     log.enter(NetboxState::Undoing);
     let rest = NetboxRest::writer(format!("Undo of provisioner job {job} ({user})"))?;
     let mut recreated = Recreated::default();
-    for object in written.iter().rev() {
+    for object in to_undo(written) {
         log.check()?;
         let parse = |json: &str| {
             serde_json::from_str::<Value>(json)
@@ -721,6 +761,20 @@ pub async fn undo(job: u32, written: &[NetboxWritten], user: &str, log: &Log) ->
         log.emit(Event::NetboxUndone(undone));
     }
     Ok(())
+}
+
+/// What `undo` takes back of `written`, the last first: not what the job changed or deleted at
+/// an object it created, nor the creation of one it deleted again.
+fn to_undo(written: &[NetboxWritten]) -> impl Iterator<Item = &NetboxWritten> {
+    let gone = written
+        .iter()
+        .filter(|object| object.of_created && object.deleted)
+        .map(|object| &object.path)
+        .collect::<Vec<_>>();
+    written.iter().rev().filter(move |object| {
+        let created = object.before.is_none() && object.recreate.is_none();
+        !object.of_created && !(created && gone.contains(&&object.path))
+    })
 }
 
 /// The interfaces `undo` created again: their id before (in the paths and JSON it takes back)
@@ -777,10 +831,11 @@ impl Recreated {
 async fn update_interface(
     rest: &NetboxRest,
     update: &UpdateInterface,
+    ids: &Ids,
     log: &Log,
 ) -> Result<(), Error> {
     let name = &update.interface;
-    let path = format!("dcim/interfaces/{}/", name.id);
+    let path = format!("dcim/interfaces/{}/", ids.netbox(name.id)?);
     let current = rest.get(&path).await?;
     let label = current["label"].as_str().filter(|l| !l.is_empty());
     let mtu = current["mtu"].as_u64().map(|mtu| mtu as u16);
@@ -898,6 +953,7 @@ async fn update_interface(
         Value::Object(change),
         Value::Object(before),
         changes,
+        name.id,
     )
     .await
 }
@@ -906,10 +962,11 @@ async fn update_interface(
 async fn update_port_vlan(
     rest: &NetboxRest,
     update: &UpdatePortVlan,
+    ids: &Ids,
     log: &Log,
 ) -> Result<(), Error> {
     let port = &update.interface;
-    let path = format!("dcim/interfaces/{}/", port.id);
+    let path = format!("dcim/interfaces/{}/", ids.netbox(port.id)?);
     let current = rest.get(&path).await?;
     let untagged = current["untagged_vlan"]["id"].as_u64();
     let mut tagged = current["tagged_vlans"]
@@ -962,18 +1019,20 @@ async fn update_port_vlan(
             ),
         });
     }
-    write_update(rest, log, path, change, before, changes).await
+    write_update(rest, log, path, change, before, changes, port.id).await
 }
 
-/// Writes `update` once the port is still as the plan found it; `bridge` is its new bridge's id.
+/// Writes `update` once the port is still as the plan found it.
 async fn update_port(
     rest: &NetboxRest,
     update: &UpdatePort,
-    bridge: Option<u32>,
+    ids: &Ids,
     log: &Log,
 ) -> Result<(), Error> {
     let port = &update.interface;
-    let path = format!("dcim/interfaces/{}/", port.id);
+    let bridge = update.bridge_id.map(|id| ids.netbox(id)).transpose()?;
+    let bridge_before_plan = update.bridge_before.map(|id| ids.netbox(id)).transpose()?;
+    let path = format!("dcim/interfaces/{}/", ids.netbox(port.id)?);
     let current = rest.get(&path).await?;
     let name = current["name"].as_str().unwrap_or_default();
     let role = match current["rf_role"]["value"].as_str() {
@@ -985,7 +1044,7 @@ async fn update_port(
     if name != &*port.name
         || (update.rf_role.is_some() && role != update.rf_role_before)
         || ((bridge.is_some() || update.leaves_bridge.is_some())
-            && bridge_before != update.bridge_before)
+            && bridge_before != bridge_before_plan)
     {
         return Err(Error::NetboxChanged(
             format!("{} {}", port.device.name, port.name).into(),
@@ -1039,6 +1098,7 @@ async fn update_port(
         Value::Object(change),
         Value::Object(before),
         changes,
+        port.id,
     )
     .await
 }
@@ -1047,16 +1107,16 @@ async fn update_port(
 async fn update_wireless_link(
     rest: &NetboxRest,
     update: &UpdateWirelessLink,
+    ids: &Ids,
     log: &Log,
 ) -> Result<(), Error> {
-    let path = format!("wireless/wireless-links/{}/", update.id);
+    let id = ids.netbox(update.id)?;
+    let path = format!("wireless/wireless-links/{id}/");
     let current = rest.get(&path).await?;
     let ssid = current["ssid"].as_str().unwrap_or_default();
     let psk = current["auth_psk"].as_str().unwrap_or_default();
     if ssid != &*update.ssid_before || (update.psk.is_some() && !psk.is_empty()) {
-        return Err(Error::NetboxChanged(
-            format!("wireless link {}", update.id).into(),
-        ));
+        return Err(Error::NetboxChanged(format!("wireless link {id}").into()));
     }
     let mut change = serde_json::Map::new();
     let mut before = serde_json::Map::new();
@@ -1097,6 +1157,7 @@ async fn update_wireless_link(
         Value::Object(change),
         Value::Object(before),
         changes,
+        update.id,
     )
     .await
 }
@@ -1105,9 +1166,10 @@ async fn update_wireless_link(
 async fn update_device_location(
     rest: &NetboxRest,
     update: &UpdateDeviceLocation,
+    ids: &Ids,
     log: &Log,
 ) -> Result<(), Error> {
-    let path = format!("dcim/devices/{}/", update.device.id);
+    let path = format!("dcim/devices/{}/", ids.netbox(update.device.id)?);
     let current = rest.get(&path).await?;
     let location = current["location"]["id"].as_u64();
     if location != update.location_before.as_ref().map(|l| l.id.into()) {
@@ -1126,6 +1188,7 @@ async fn update_device_location(
         json!({ "location": update.location.as_ref().map(|l| l.id) }),
         json!({ "location": location }),
         changes,
+        update.device.id,
     )
     .await
 }
@@ -1183,12 +1246,13 @@ async fn update_wireless_lan(
         Value::Object(change),
         Value::Object(before),
         changes,
+        ObjectId::Netbox(update.id),
     )
     .await
 }
 
-/// Writes `change` to the object at `path`: `before` is what `undo` sets back, `changes` what
-/// the job shows.
+/// Writes `change` to the object `object` at `path`: `before` is what `undo` sets back,
+/// `changes` what the job shows.
 async fn write_update(
     rest: &NetboxRest,
     log: &Log,
@@ -1196,15 +1260,17 @@ async fn write_update(
     change: Value,
     before: Value,
     changes: Vec<FieldChange>,
+    object: ObjectId,
 ) -> Result<(), Error> {
-    let object = rest.update(&path, change).await?;
+    let written = rest.update(&path, change).await?;
     log.emit(Event::NetboxWritten(NetboxWritten {
         path: path.into(),
-        display: display(&object),
+        display: display(&written),
         before: Some(before.to_string().into()),
         changes: changes.into(),
         deleted: false,
         recreate: None,
+        of_created: object.is_planned(),
     }));
     Ok(())
 }
@@ -1223,14 +1289,15 @@ async fn tag_ids(rest: &NetboxRest, tags: &[flags::InterfaceTag]) -> Result<Vec<
     Ok(ids)
 }
 
-/// Deletes the object at `path` (`current` as NetBox has it), `undo` creates it again from
-/// `body`.
+/// Deletes the object `object` at `path` (`current` as NetBox has it), `undo` creates it
+/// again from `body`.
 async fn deleted(
     rest: &NetboxRest,
     log: &Log,
     path: &str,
     current: &Value,
     body: Value,
+    object: ObjectId,
 ) -> Result<(), Error> {
     rest.delete(path).await?;
     log.emit(Event::NetboxWritten(NetboxWritten {
@@ -1240,6 +1307,7 @@ async fn deleted(
         changes: Box::default(),
         deleted: true,
         recreate: Some(body.to_string().into()),
+        of_created: object.is_planned(),
     }));
     Ok(())
 }
@@ -1313,6 +1381,7 @@ fn logged_create(log: &Log, path: &str, object: &Value) -> Result<u32, Error> {
         changes: Box::default(),
         deleted: false,
         recreate: None,
+        of_created: false,
     }));
     Ok(id)
 }
@@ -1320,6 +1389,48 @@ fn logged_create(log: &Log, path: &str, object: &Value) -> Result<u32, Error> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    /// A new device's port fed over PoE and a new link deleted again in the same job: undo
+    /// deletes the device, the port's change goes with it, and the link is gone already; the
+    /// existing router port's change is set back.
+    #[test]
+    fn undo_leaves_what_goes_with_created_objects() {
+        let object = |path: &str, before: bool, deleted: bool, of_created: bool| NetboxWritten {
+            path: path.into(),
+            display: Box::default(),
+            before: before.then(|| "{}".into()),
+            changes: Box::default(),
+            deleted,
+            recreate: deleted.then(|| "{}".into()),
+            of_created,
+        };
+        let written = [
+            object("dcim/devices/50/", false, false, false),
+            object("dcim/interfaces/60/", true, false, true),
+            object("dcim/interfaces/7/", true, false, false),
+            object("wireless/wireless-links/8/", false, false, false),
+            object("wireless/wireless-links/8/", false, true, true),
+        ];
+        let undone = to_undo(&written)
+            .map(|object| &*object.path)
+            .collect::<Vec<_>>();
+        assert_eq!(undone, ["dcim/interfaces/7/", "dcim/devices/50/"]);
+    }
+
+    /// While a plan is written, its own objects get the ids NetBox gave them, counted from the
+    /// plan's first step; one no step written so far created stops the write.
+    #[test]
+    fn planned_objects_get_netbox_ids() {
+        let ids = Ids {
+            first: 2,
+            created: vec![Some(40), None],
+        };
+        assert_eq!(ids.netbox(ObjectId::Netbox(7)).ok(), Some(7));
+        assert_eq!(ids.netbox(ObjectId::Planned(2)).ok(), Some(40));
+        for missing in [0, 3, 4] {
+            assert!(ids.netbox(ObjectId::Planned(missing)).is_err());
+        }
+    }
 
     /// The address of a VLAN interface deleted after it refers to the interface created again,
     /// a cable to another interface stays as it was.

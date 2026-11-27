@@ -7,11 +7,13 @@
 //! network (`device::ros::dhcp::static_leases`): the plan creates the device (any device type
 //! and role, the router's site, no platform), its interface `eth0` with the MAC as primary one,
 //! and the address with the length of the network.
-use super::{CreateAddress, CreateDevice, CreateInterface, NetboxPlan, PlanStep, Target};
+use super::{
+    CreateAddress, CreateDevice, CreateInterface, NetboxPlan, PlanDevice, PlanId, PlanStep,
+};
 use crate::{
     Error,
     netbox::rest::NetboxRest,
-    topology::{DeviceId, Topology, access::AccessTopology, findings::DeviceRef},
+    topology::{DeviceId, Topology, access::AccessTopology},
 };
 use async_graphql::{InputObject, SimpleObject};
 use i18n::changelog::Plan;
@@ -182,12 +184,11 @@ pub(crate) fn base(
         tenant_id: None,
         wlan_group: None,
         wlan_group_id: None,
-        template: router.id().0,
+        template: router.plan_id(router.id().0),
     }));
-    let client = DeviceRef {
-        id: u32::MAX,
+    let client = PlanDevice {
+        id: plan.created_by(0),
         name: name.into(),
-        site: Some(site.id().0),
     };
     plan.steps.push(PlanStep::CreateInterface(CreateInterface {
         device: client.clone(),
@@ -202,7 +203,7 @@ pub(crate) fn base(
         device: client,
         interface: INTERFACE.into(),
         prefix: network.to_string().into(),
-        on: Target::Step(1),
+        on: plan.created_by(1),
     }));
     Ok(plan)
 }

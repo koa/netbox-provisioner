@@ -280,6 +280,7 @@ impl TopologyBuilder {
             locations: Default::default(),
             findings: Box::default(),
             source: None,
+            planned: 0,
             management_proxy: self.management_proxy,
         }
         .with_findings()

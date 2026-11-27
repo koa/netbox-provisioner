@@ -5,10 +5,10 @@
 //! instead of removing it (`docs/interface-view.md`). Its network becomes a prefix
 //! when NetBox has none of it and nothing in it, within the smallest one holding it; a host
 //! length (`/32`, `/128`) stays in that one.
-use super::{CreateAddress, CreatePrefix, NetboxPlan, PlanStep, Target};
+use super::{CreateAddress, CreatePrefix, NetboxPlan, PlanId, PlanStep, plan_device};
 use crate::{
     Error,
-    topology::{DeviceId, InterfaceId, Topology, findings::device_ref},
+    topology::{DeviceId, InterfaceId, Topology},
 };
 use async_graphql::InputObject;
 use i18n::changelog::Plan;
@@ -65,7 +65,7 @@ pub fn plan(topology: &Arc<Topology>, input: &AddressTakeoverInput) -> Result<Ne
             // a pool's prefixes are no site's, as those of the other helpers
             site: holder
                 .is_none_or(|holder| holder.pool.is_none())
-                .then(|| device_ref(&device).site)
+                .then(|| crate::topology::findings::device_ref(&device).site)
                 .flatten(),
             vlan: None,
             dhcp_lease_time: None,
@@ -76,10 +76,10 @@ pub fn plan(topology: &Arc<Topology>, input: &AddressTakeoverInput) -> Result<Ne
     };
     plan.steps.push(PlanStep::CreateAddress(CreateAddress {
         address: address.to_string().into(),
-        device: device_ref(&device),
+        device: plan_device(&device),
         interface: interface.name().into(),
         prefix: prefix.to_string().into(),
-        on: Target::Existing(interface.id().0),
+        on: interface.plan_id(interface.id().0),
     }));
     Ok(plan)
 }

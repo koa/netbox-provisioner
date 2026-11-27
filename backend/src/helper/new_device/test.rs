@@ -1,5 +1,6 @@
 //! Scope: Tests of `helper::new_device`; nothing else.
 use super::*;
+use crate::helper::ObjectId;
 use crate::topology::test::example_topology;
 
 /// A router of the stored export with a free Ethernet port, and the router's tenant.
@@ -56,13 +57,13 @@ fn the_preview_has_the_device_with_its_port() {
     let plan = base(&topology, &input(&port, " ap-neu "), &facts("router")).expect("plan");
     assert!(
         matches!(&plan.steps[..], [PlanStep::CreateDevice(device), PlanStep::CreateInterface(port)]
-            if &*device.name == "ap-neu" && port.device.id == u32::MAX && &*port.name == "ether1"),
+            if &*device.name == "ap-neu" && port.device.id == ObjectId::Planned(0) && &*port.name == "ether1"),
         "{:?}",
         plan.steps
     );
     let after = plan.preview_topology().expect("preview");
     let device = after
-        .get_device_by_id(&DeviceId(u32::MAX))
+        .get_device_by_id(&DeviceId(ObjectId::Planned(NEW_DEVICE_STEP).preview_id()))
         .expect("the new device");
     assert_eq!(device.name(), "ap-neu");
     assert!(device.has_routeros());
@@ -127,7 +128,7 @@ fn a_device_at_poe_is_fed() {
     let plan = base(&on, &input(&port, "ap-neu"), &facts("router")).expect("plan");
     let after = plan.preview_topology().expect("preview");
     let device = after
-        .get_device_by_id(&DeviceId(u32::MAX))
+        .get_device_by_id(&DeviceId(plan.created_by(NEW_DEVICE_STEP).preview_id()))
         .expect("the new device");
     assert_eq!(device.interfaces()[0].poe(), Some(PoeMode::Pd));
 }
@@ -172,7 +173,7 @@ fn an_access_point_gets_its_wlan_group() {
     let plan = base(&topology, &input, &facts("router")).expect("plan");
     let after = plan.preview_topology().expect("preview");
     let device = after
-        .get_device_by_id(&DeviceId(u32::MAX))
+        .get_device_by_id(&DeviceId(ObjectId::Planned(NEW_DEVICE_STEP).preview_id()))
         .expect("the new device");
     assert_eq!(device.wlan_ap_of().map(|g| g.id()), Some(group.id()));
     input.wlan_group = Some(u32::MAX);
@@ -180,45 +181,6 @@ fn an_access_point_gets_its_wlan_group() {
         base(&topology, &input, &facts("router")),
         Err(Error::UnknownWlanGroup(_))
     ));
-}
-
-/// Steps planned on the preview refer to created objects by their preview ids: written, they
-/// get NetBox's, an object not written yet stops the step.
-#[test]
-fn preview_ids_become_netbox_ids() {
-    let device = DeviceRef {
-        id: u32::MAX,
-        name: "ap-neu".into(),
-        site: None,
-    };
-    let step = PlanStep::CreateCable(CreateCable {
-        a: InterfaceRef {
-            id: 12,
-            name: "ether5".into(),
-            device: DeviceRef {
-                id: 3,
-                name: "router".into(),
-                site: None,
-            },
-        },
-        b: InterfaceRef {
-            id: u32::MAX - 1,
-            name: "ether1".into(),
-            device,
-        },
-        a_end: CableEnd::Interface,
-    });
-    let real = |id: u32| match id {
-        u32::MAX => Some(40),
-        id if id == u32::MAX - 1 => Some(400),
-        id => Some(id),
-    };
-    let Some(PlanStep::CreateCable(cable)) = step.with_real_ids(real) else {
-        panic!("translated");
-    };
-    assert_eq!((cable.a.id, cable.a.device.id), (12, 3));
-    assert_eq!((cable.b.id, cable.b.device.id), (400, 40));
-    assert!(step.with_real_ids(|id| (id < 1000).then_some(id)).is_none());
 }
 
 /// A router port whose cable ends open at a patch panel: the new cable starts there, for a
@@ -242,7 +204,7 @@ fn an_open_patch_panel_gets_the_cable() {
     let plan = base(&topology, &input(&port, "ap-neu"), &facts("router")).expect("plan");
     assert!(
         matches!(&plan.steps[2], PlanStep::CreateCable(cable)
-            if cable.a == panel && cable.a_end == end && cable.b.id == new_port_id()),
+            if cable.a == panel && cable.a_end == end && cable.b.id == ObjectId::Planned(NEW_PORT_STEP)),
         "{:?}",
         plan.steps
     );
@@ -254,7 +216,7 @@ fn an_open_patch_panel_gets_the_cable() {
         .iter()
         .map(|far| far.id().0)
         .collect::<Vec<_>>();
-    assert_eq!(reached, [new_port_id()]);
+    assert_eq!(reached, [ObjectId::Planned(NEW_PORT_STEP).preview_id()]);
     let through = routers()
         .flat_map(|d| d.interfaces().into_vec())
         .find(|i| {

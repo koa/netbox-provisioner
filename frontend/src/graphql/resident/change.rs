@@ -93,12 +93,14 @@ pub struct DeleteCable {
 
 /// A port and its device, by name.
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(graphql_type = "PlanInterface")]
 pub struct InterfaceRef {
     pub name: String,
     pub device: DeviceRef,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+#[cynic(graphql_type = "PlanDevice")]
 pub struct DeviceRef {
     pub name: String,
 }

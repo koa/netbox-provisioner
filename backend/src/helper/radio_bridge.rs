@@ -25,8 +25,8 @@
 //! another device, an address in another network) stops it with an error naming it.
 use super::{
     CreateAddress, CreateCable, CreateInterface, CreatePrefix, CreateWirelessLink, NetboxPlan,
-    PlanStep, Target, UpdateInterface, UpdatePort, UpdateWirelessLink, device_ref,
-    flags::InterfaceTag, loopback, new_psk, port_name, routes::Routes,
+    ObjectId, PlanId, PlanStep, UpdateInterface, UpdatePort, UpdateWirelessLink,
+    flags::InterfaceTag, loopback, new_psk, plan_device, plan_interface, port_name, routes::Routes,
 };
 use crate::helper::FreeNetwork;
 use crate::topology::PrefixRef;
@@ -36,7 +36,7 @@ use crate::{
     topology::{
         DeviceId, PhysicalPortId, PortType, PrefixPool, RadioRole, Topology,
         access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess},
-        findings::{DeviceRef, InterfaceRef, interface_ref, names},
+        findings::{DeviceRef, InterfaceRef, device_ref, interface_ref, names},
         interfaces::main_radio,
     },
 };
@@ -73,7 +73,7 @@ struct Side {
     ether: InterfaceAccess,
     router_port: InterfaceAccess,
     /// the interface `bridge`: an existing one or the step creating it
-    bridge: Target,
+    bridge: ObjectId,
     bridge_name: Box<str>,
     address: Option<String>,
 }
@@ -82,7 +82,7 @@ struct Side {
 struct End {
     device: DeviceAccess,
     interface: Option<InterfaceAccess>,
-    on: Target,
+    on: ObjectId,
     name: Box<str>,
     wanted: Option<String>,
 }
@@ -140,7 +140,9 @@ pub(super) fn labels(plan: &mut NetboxPlan, cables: &[BridgeCable]) {
             }
             let label = Some(Box::from(far.name()));
             let existing = plan.steps.iter_mut().find_map(|step| match step {
-                PlanStep::UpdateInterface(update) if update.interface.id == end.id().0 => {
+                PlanStep::UpdateInterface(update)
+                    if update.interface.id == end.plan_id(end.id().0) =>
+                {
                     Some(update)
                 }
                 _ => None,
@@ -148,7 +150,7 @@ pub(super) fn labels(plan: &mut NetboxPlan, cables: &[BridgeCable]) {
             match existing {
                 Some(update) => update.label = label,
                 None => plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
-                    interface: interface_ref(end),
+                    interface: plan_interface(end),
                     label,
                     label_before: end.label().map(Box::from),
                     mtu: None,
@@ -224,7 +226,7 @@ fn link_plan(topology: &Arc<Topology>, input: &RadioBridgeInput) -> Result<LinkP
     };
     // the station only hears the AP again once both have the new radio settings
     if radios(&mut plan, link, input.ssid.as_deref(), true)? {
-        plan.apply_together = vec![device_ref(&ap), device_ref(&station)].into();
+        plan.apply_together = [&ap, &station].map(device_ref).into();
     }
     Ok(LinkPlan {
         plan,
@@ -265,8 +267,8 @@ fn side(
         .bridge()
         .filter(|bridge| existing.iter().any(|e| e.id() == bridge.id()))
         .or_else(|| existing.first().map(|e| (*e).clone()));
-    let (bridge, bridge_name): (Target, Box<str>) = match found {
-        Some(bridge) => (Target::Existing(bridge.id().0), Box::from(bridge.name())),
+    let (bridge, bridge_name): (ObjectId, Box<str>) = match found {
+        Some(bridge) => (bridge.plan_id(bridge.id().0), Box::from(bridge.name())),
         None => {
             if interfaces.iter().any(|i| i.name() == "bridge") {
                 return Err(Error::NameTaken {
@@ -275,14 +277,14 @@ fn side(
                 });
             }
             plan.steps.push(PlanStep::CreateInterface(CreateInterface {
-                device: device_ref(device),
+                device: plan_device(device),
                 name: "bridge".into(),
                 kind: "bridge".into(),
                 vlan: None,
                 tags: vec![InterfaceTag::Ospf].into(),
                 mac: None,
             }));
-            (Target::Step(plan.steps.len() - 1), Box::from("bridge"))
+            (plan.last_created(), Box::from("bridge"))
         }
     };
 
@@ -296,7 +298,7 @@ fn side(
         });
     }
     let in_bridge =
-        |port: &InterfaceAccess| port.bridge().map(|b| Target::Existing(b.id().0)) == Some(bridge);
+        |port: &InterfaceAccess| port.bridge().map(|b| b.plan_id(b.id().0)) == Some(bridge);
     let radio_role = radio.data().and_then(|d| d.radio.as_ref()).map(|r| r.role);
     for (port, new_name, new_role) in [
         (&ether, None, None),
@@ -305,13 +307,13 @@ fn side(
         let to_bridge = !in_bridge(port);
         if to_bridge || new_name.is_some() || new_role.is_some() {
             plan.steps.push(PlanStep::UpdatePort(UpdatePort {
-                interface: interface_ref(port),
+                interface: plan_interface(port),
                 name: new_name.map(Box::from),
                 rf_role: new_role,
                 rf_role_before: radio_role.filter(|_| new_role.is_some()),
                 bridge: to_bridge.then(|| bridge_name.clone()),
                 bridge_id: to_bridge.then_some(bridge),
-                bridge_before: port.bridge().map(|b| b.id().0),
+                bridge_before: port.bridge().map(|b| b.plan_id(b.id().0)),
                 leaves_bridge: None,
             }));
         }
@@ -378,8 +380,8 @@ pub(super) fn router_cable(
                         });
                     }
                     plan.steps.push(PlanStep::CreateCable(CreateCable {
-                        a: interface_ref(&router_port),
-                        b: interface_ref(free),
+                        a: plan_interface(&router_port),
+                        b: plan_interface(free),
                         a_end: super::CableEnd::Interface,
                     }));
                     free.clone()
@@ -458,7 +460,7 @@ pub(super) fn radios(
     let wanted = ssid.filter(|ssid| !ssid.is_empty());
     let mut changed = plan.steps.iter().any(|step| {
         matches!(step, PlanStep::UpdatePort(update)
-            if (update.interface.id == ap.id().0 || update.interface.id == station.id().0)
+            if (update.interface.id == ap.plan_id(ap.id().0) || update.interface.id == station.plan_id(station.id().0))
                 && (update.rf_role.is_some() || update.name.is_some()))
     });
     match ap.wireless_link() {
@@ -479,9 +481,9 @@ pub(super) fn radios(
                 changed = true;
                 plan.steps
                     .push(PlanStep::UpdateWirelessLink(UpdateWirelessLink {
-                        id: end.id,
-                        a: interface_ref(ap),
-                        b: interface_ref(station),
+                        id: ap.plan_id(end.id),
+                        a: plan_interface(ap),
+                        b: plan_interface(station),
                         ssid,
                         ssid_before: link.ssid.clone(),
                         psk_set: psk.is_some(),
@@ -493,8 +495,8 @@ pub(super) fn radios(
             changed = true;
             plan.steps
                 .push(PlanStep::CreateWirelessLink(CreateWirelessLink {
-                    a: interface_ref(ap),
-                    b: interface_ref(station),
+                    a: plan_interface(ap),
+                    b: plan_interface(station),
                     ssid: wanted.unwrap_or(ap_device.name()).into(),
                     psk: new_psk(),
                 }));
@@ -517,17 +519,16 @@ async fn segment(
         let router = l3(&side.router_port);
         ends.push(End {
             device: router.device().expect("a router port"),
-            on: Target::Existing(router.id().0),
+            on: router.plan_id(router.id().0),
             name: router.name().into(),
             interface: Some(router),
             wanted: None,
         });
     }
     for side in sides {
-        let existing = match side.bridge {
-            Target::Existing(id) => topology.get_interface_by_id(crate::topology::InterfaceId(id)),
-            Target::Step(_) => None,
-        };
+        // none for one the plan creates
+        let existing =
+            topology.get_interface_by_id(crate::topology::InterfaceId(side.bridge.preview_id()));
         ends.push(End {
             device: side.device.clone(),
             interface: existing,
@@ -613,7 +614,7 @@ async fn segment(
                 };
                 plan.steps.push(PlanStep::CreateAddress(CreateAddress {
                     address: address.to_string().into(),
-                    device: device_ref(&end.device),
+                    device: plan_device(&end.device),
                     interface: end.name.clone(),
                     prefix: prefix.clone().into(),
                     on: end.on,
@@ -624,7 +625,7 @@ async fn segment(
             && !interface.use_ospf()
         {
             plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
-                interface: interface_ref(interface),
+                interface: plan_interface(interface),
                 label: None,
                 label_before: interface.label().map(Box::from),
                 mtu: None,

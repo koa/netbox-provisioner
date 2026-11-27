@@ -1,8 +1,8 @@
 //! Scope: The words of a step of a NetBox plan (`PlanStep`); nothing else.
 use crate::graphql::authenticated::{
     helper::InterfaceTag,
-    netbox_plan::{LocationRef, PlanStep as Step},
-    types::{InterfaceRef, IpVersion, PoeMode, RadioRole, VlanRef},
+    netbox_plan::{LocationRef, PlanInterface, PlanStep as Step},
+    types::{IpVersion, PoeMode, RadioRole, VlanRef},
 };
 use ::i18n::helper as t;
 
@@ -150,7 +150,7 @@ pub fn describe(step: &Step) -> String {
     }
 }
 
-fn port(interface: &InterfaceRef) -> t::Port<'_> {
+fn port(interface: &PlanInterface) -> t::Port<'_> {
     t::Port {
         device: &interface.device.name,
         name: &interface.name,

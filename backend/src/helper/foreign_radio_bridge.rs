@@ -22,9 +22,9 @@
 //! What is there stays: the network both router ports have is the transfer network, the one
 //! only a port has its DHCP network; another one stops the helper with an error naming it.
 use super::{
-    CreateAddress, CreatePrefix, NetboxPlan, PlanStep, Target, UpdateInterface, UpdatePort,
-    device_ref, flags::InterfaceTag, port_name, radio_bridge, radio_bridge::RadioBridgeInput,
-    routes::Routes,
+    CreateAddress, CreatePrefix, NetboxPlan, PlanId, PlanStep, UpdateInterface, UpdatePort,
+    flags::InterfaceTag, plan_device, plan_interface, port_name, radio_bridge,
+    radio_bridge::RadioBridgeInput, routes::Routes,
 };
 use crate::helper::FreeNetwork;
 use crate::{
@@ -32,7 +32,6 @@ use crate::{
     topology::{
         DeviceId, RadioRole, Topology,
         access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess},
-        findings::interface_ref,
         natural::naturalize_interface,
     },
 };
@@ -111,13 +110,13 @@ pub(super) async fn plan_with(
             let radio_role = radio.data().and_then(|d| d.radio.as_ref()).map(|r| r.role);
             if radio_role != Some(role) {
                 plan.steps.push(PlanStep::UpdatePort(UpdatePort {
-                    interface: interface_ref(radio),
+                    interface: plan_interface(radio),
                     name: None,
                     rf_role: Some(role),
                     rf_role_before: radio_role,
                     bridge: None,
                     bridge_id: None,
-                    bridge_before: radio.bridge().map(|b| b.id().0),
+                    bridge_before: radio.bridge().map(|b| b.plan_id(b.id().0)),
                     leaves_bridge: None,
                 }));
             }
@@ -250,10 +249,10 @@ async fn networks(
         for (end, address) in [(&ends[0], net.network()), (&ends[1], net.broadcast())] {
             plan.steps.push(PlanStep::CreateAddress(CreateAddress {
                 address: IpNet::new(address, 31).expect("a /31").to_string().into(),
-                device: device_ref(&end.device().expect("a router port")),
+                device: plan_device(&end.device().expect("a router port")),
                 interface: end.name().into(),
                 prefix: net.to_string().into(),
-                on: Target::Existing(end.id().0),
+                on: end.plan_id(end.id().0),
             }));
         }
     }
@@ -283,10 +282,10 @@ async fn networks(
                 let address = radio_bridge::next_host(topology, plan, routes, v4)?;
                 plan.steps.push(PlanStep::CreateAddress(CreateAddress {
                     address: address.to_string().into(),
-                    device: device_ref(&router),
+                    device: plan_device(&router),
                     interface: end.name().into(),
                     prefix: net.to_string().into(),
-                    on: Target::Existing(end.id().0),
+                    on: end.plan_id(end.id().0),
                 }));
             }
             // a /31 or /32 leaves no address for a bridge's lease
@@ -308,7 +307,7 @@ async fn networks(
         .collect::<Vec<_>>();
         if !tags_added.is_empty() {
             plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
-                interface: interface_ref(end),
+                interface: plan_interface(end),
                 label: None,
                 label_before: end.label().map(Box::from),
                 mtu: None,

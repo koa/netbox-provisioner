@@ -14,8 +14,8 @@
 //! As with the links, a network NetBox has free may be in use: one the network routes in part
 //! (`routes::Routes::overlapping`) or with addresses in NetBox is passed over.
 use super::{
-    CreateAddress, CreateInterface, CreateIpRange, CreatePrefix, NetboxPlan, PlanStep, Target,
-    UpdateInterface, device_ref, flags::InterfaceTag, routes::Routes,
+    CreateAddress, CreateInterface, CreateIpRange, CreatePrefix, NetboxPlan, PlanId, PlanStep,
+    UpdateInterface, flags::InterfaceTag, plan_device, plan_interface, routes::Routes,
 };
 use crate::{
     Error,
@@ -25,7 +25,6 @@ use crate::{
         access::{
             AccessTopology, device::DeviceAccess, interface::InterfaceAccess, vlan::VlanAccess,
         },
-        findings::interface_ref,
         natural::naturalize_interface,
     },
 };
@@ -281,21 +280,21 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
     let dhcp = input.dhcp.then_some(InterfaceTag::Dhcp);
     let (on, interface_name) = match &existing {
         Some(interface) => (
-            Target::Existing(interface.id().0),
+            interface.plan_id(interface.id().0),
             Box::from(interface.name()),
         ),
         None => {
             let vlan = vlan.as_ref().expect("a VLAN without its interface");
             let name: Box<str> = vlan.name().unwrap_or_default().into();
             plan.steps.push(PlanStep::CreateInterface(CreateInterface {
-                device: device_ref(&device),
+                device: plan_device(&device),
                 name: name.clone(),
                 kind: "virtual".into(),
                 vlan: Some(vlan.id.0),
                 tags: dhcp.into_iter().collect(),
                 mac: None,
             }));
-            (Target::Step(plan.steps.len() - 1), name)
+            (plan.last_created(), name)
         }
     };
     for (parent, net) in nets {
@@ -309,7 +308,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
         }));
         plan.steps.push(PlanStep::CreateAddress(CreateAddress {
             address: gateway(net).to_string().into(),
-            device: device_ref(&device),
+            device: plan_device(&device),
             interface: interface_name.clone(),
             prefix: net.to_string().into(),
             on,
@@ -324,7 +323,7 @@ pub async fn plan(topology: &Arc<Topology>, input: &CustomerNetInput) -> Result<
         && !interface.is_enable_dhcp_server()
     {
         plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
-            interface: interface_ref(interface),
+            interface: plan_interface(interface),
             label: None,
             label_before: interface.label().map(Box::from),
             mtu: None,

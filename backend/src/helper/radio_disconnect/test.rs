@@ -1,5 +1,6 @@
 //! Scope: Tests of `helper::radio_disconnect`; nothing else.
 use super::*;
+use crate::helper::ObjectId;
 use crate::topology::{
     interfaces::test::{Net, address},
     test::example_topology,
@@ -50,7 +51,7 @@ fn steps(plan: &NetboxPlan) -> Vec<String> {
                 "update {} {} label {:?} -{:?}",
                 u.interface.device.name, u.interface.name, u.label, u.tags_removed
             ),
-            PlanStep::DeleteWirelessLink(d) => format!("delete link {}", d.id),
+            PlanStep::DeleteWirelessLink(d) => format!("delete link {:?}", d.id),
             PlanStep::DeletePrefix(d) => format!("delete prefix {}", d.prefix),
             other => format!("{other:?}"),
         })
@@ -114,7 +115,7 @@ fn the_wireless_link_goes_when_asked() {
     let plan = plan(&topology, &input).expect("plan");
     assert_eq!(
         steps(&plan).last().map(String::as_str),
-        Some("delete link 1")
+        Some("delete link Netbox(1)")
     );
     assert!(
         !plan
@@ -156,10 +157,10 @@ fn the_preview_has_the_link_without_its_network() {
     assert!(!deleted.is_empty(), "{:#?}", plan.steps);
     let after = plan.preview_topology().expect("preview");
     assert!(
-        after.list_devices().all(|d| d
-            .interfaces()
+        after.list_devices().all(|d| d.interfaces().iter().all(|i| i
+            .ips()
             .iter()
-            .all(|i| i.ips().iter().all(|ip| !deleted.contains(&ip.id().0)))),
+            .all(|ip| !deleted.contains(&ObjectId::Netbox(ip.id().0))))),
         "the addresses are gone"
     );
     let radio_after = after.get_interface_by_id(radio.id()).unwrap();

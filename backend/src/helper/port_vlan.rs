@@ -12,7 +12,7 @@
 //! port goes into the modeled bridge carrying its VLAN, else into the default one
 //! (`docs/l2-generation.md`), and so does the VXLAN. The plan checks the same for its port and
 //! then runs the L2 setup on its preview, for what these rules miss.
-use super::{NetboxPlan, PlanStep, UpdatePortVlan, port_name};
+use super::{NetboxPlan, PlanStep, UpdatePortVlan, plan_interface, port_name};
 use crate::topology::access::vlan::VlanGroupRef;
 use crate::{
     Error,
@@ -20,7 +20,7 @@ use crate::{
     topology::{
         DeviceId, InterfaceId, Topology, VlanId,
         access::{device::DeviceAccess, interface::InterfaceAccess, vlan::VlanAccess},
-        findings::{VlanRef, interface_ref, vlan_ref},
+        findings::{VlanRef, vlan_ref},
         natural::naturalize_interface,
     },
 };
@@ -269,7 +269,7 @@ pub fn plan(topology: &Arc<Topology>, input: &PortVlanInput) -> Result<NetboxPla
             },
         );
         plan.steps.push(PlanStep::UpdatePortVlan(UpdatePortVlan {
-            interface: interface_ref(&port),
+            interface: plan_interface(&port),
             vlan: None,
             vlan_before: before.as_ref().and_then(vlan_ref),
             tagged_before: tagged.iter().filter_map(vlan_ref).collect(),
@@ -296,7 +296,7 @@ pub fn plan(topology: &Arc<Topology>, input: &PortVlanInput) -> Result<NetboxPla
         },
     );
     plan.steps.push(PlanStep::UpdatePortVlan(UpdatePortVlan {
-        interface: interface_ref(&port),
+        interface: plan_interface(&port),
         vlan: Some(chosen),
         vlan_before: before.as_ref().and_then(vlan_ref),
         tagged_before: tagged.iter().filter_map(vlan_ref).collect(),

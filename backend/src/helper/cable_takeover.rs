@@ -44,16 +44,11 @@ pub async fn plan(
         peer: input.peer,
         mtu: None,
     };
-    let connection = connection::plan(&after, &connect).await?;
+    let mut connection = connection::plan(&after, &connect).await?;
     let Some(mut plan) = cleared else {
         return Ok(connection);
     };
-    let offset = plan.steps.len();
-    plan.steps
-        .extend(connection.steps.into_iter().map(|mut step| {
-            step.shift(offset);
-            step
-        }));
+    plan.append_steps(&mut connection)?;
     plan.description = connection
         .description
         .into_iter()

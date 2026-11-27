@@ -183,10 +183,10 @@ Ein Plan (entschieden 2026-10-24):
    (/31, `ospf`, Labels), beide auf der Vorschau des Geräts gerechnet. Ein Brückengerät bekommt
    nur das Kabel; seinen Richtfunk macht danach „Funkbrücke“.
 
-Die Schritte nach dem Gerät verweisen auf seine Objekte mit den Ids der Vorschau (von `u32::MAX`
-abwärts, `PlanStep::with_real_ids`); der Schreib-Job setzt die Ids ein, die NetBox beim Anlegen
-vergibt. „Rückgängig“ löscht alles in umgekehrter Folge, zuletzt das Gerät mit den Ports seines
-Device Types. Nach dem Schreiben führt „Zum neuen Gerät“ auf dessen Seite mit der
+Die Schritte nach dem Gerät verweisen auf seine Objekte als geplante (`ObjectId::Planned`, siehe
+[Technik](#technik)); der Schreib-Job setzt die Ids ein, die NetBox beim Anlegen vergibt.
+„Rückgängig“ löscht alles in umgekehrter Folge, zuletzt das Gerät mit den Ports seines Device
+Types. Nach dem Schreiben führt „Zum neuen Gerät“ auf dessen Seite mit der
 Ersteinrichtung; der Router bekommt die Verbindung mit „Anwenden“.
 
 ### Loopback
@@ -697,15 +697,28 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
   Job, der sie rückwärts abarbeitet: Angelegtes löschen, alte Werte zurück, Gelöschtes aus dem
   JSON wieder anlegen, das NetBox vorher hatte. Ein wieder angelegtes Objekt bekommt eine neue Id;
   was danach zurückkommt (die Adressen eines gelöschten VLAN-Interfaces, ein Kabel, ein Wireless
-  Link, `bridge`/`parent` eines Ports), verweist auf die neue. Nach einem Neustart des
+  Link, `bridge`/`parent` eines Ports), verweist auf die neue. Was der Job an einem Objekt
+  geändert oder gelöscht hat, das er selbst angelegt hat (`NetboxWritten.of_created`), setzt
+  „Rückgängig“ nicht zurück: Das Löschen des Objekts nimmt es mit. Nach einem Neustart des
   Provisioners geht „Rückgängig“ nicht mehr, dann bleibt NetBox' Changelog. Bricht ein Plan
   mittendrin ab, sagt der Helfer „Nur teilweise geschrieben“.
 - **Gleichzeitige Änderungen.** Der Schreib-Job rechnet den Plan neu und vergleicht ihn mit dem
   gezeigten (`fingerprint`). Vor jedem Schritt prüft er den Wert, auf dem der Schritt aufbaut:
   `lo` fehlt noch, die Adresse ist noch frei, die Primary IP ist noch die alte. Das erkennt genau
   die Änderungen, die der Plan überschreiben würde, und nicht jede andere an denselben Objekten.
+- **Eigene Ids getrennt von NetBox'.** Ein Schritt verweist auf ein Objekt als
+  `ObjectId::Netbox(id)` oder als `ObjectId::Planned(n)`: das Objekt, das Schritt `n` anlegt und
+  das in NetBox noch keine Id hat. `n` zählt über die Pläne, auf deren Vorschau ein Plan
+  gerechnet ist (`NetboxPlan::first`), so dass ein Teil hinter einen anderen kommt, ohne dass
+  sich ein Verweis verschiebt; einen Teil, der nicht auf der Vorschau des Plans gerechnet ist,
+  weist `append_steps` ab. Nur die Vorschau gibt einem geplanten Objekt eine Zahl
+  (`preview_id`, von `u32::MAX` abwärts), und die Topologie der Vorschau kennt ihre Anzahl
+  (`Topology::planned`): Ein Helfer, der auf ihr rechnet, bekommt dafür wieder `Planned`
+  (`PlanId::plan_id`, `plan_device`, `plan_interface`). Beim Schreiben löst `Ids::netbox` jedes
+  `Planned` zur Id auf, die NetBox dem Objekt gegeben hat.
 - **Danach neu laden.** Nach dem Schreiben oder Rückgängig lädt der Provisioner die Topologie neu.
 - **Tests:** die Vorschau auf dem gespeicherten Export
-  (`helper::test::preview_has_what_the_plan_creates`, `preview_has_the_new_link`), die Pläne pro
+  (`helper::test::preview_has_what_the_plan_creates`, `preview_has_the_new_link`), die Ids
+  (`helper::plan::test`, `helper::write::test::planned_objects_get_netbox_ids`), die Pläne pro
   Helfer (`helper::connection::test`, …); im Lab-NetBox (`local/lab/`) von Hand, wie bei jedem
   Helfer oben beschrieben. Ein automatischer Lab-Test fehlt (E9).

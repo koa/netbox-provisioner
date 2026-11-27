@@ -1,5 +1,6 @@
 //! Scope: Tests of `customer_net`; nothing else.
 use super::*;
+use crate::helper::ObjectId;
 use crate::topology::test::example_topology;
 
 /// A network on a VLAN without interface: the preview has the new virtual interface in the
@@ -23,7 +24,7 @@ fn a_vlan_gets_its_interface_with_the_gateway() {
     let mut plan = NetboxPlan::new(&device, None);
     plan.steps = vec![
         PlanStep::CreateInterface(CreateInterface {
-            device: device_ref(&device),
+            device: plan_device(&device),
             name: name.clone(),
             kind: "virtual".into(),
             vlan: Some(vlan.id.0),
@@ -40,10 +41,10 @@ fn a_vlan_gets_its_interface_with_the_gateway() {
         }),
         PlanStep::CreateAddress(CreateAddress {
             address: "198.51.100.1/24".into(),
-            device: device_ref(&device),
+            device: plan_device(&device),
             interface: name.clone(),
             prefix: "198.51.100.0/24".into(),
-            on: Target::Step(0),
+            on: ObjectId::Planned(0),
         }),
     ];
     let after = plan.preview_topology().expect("preview");

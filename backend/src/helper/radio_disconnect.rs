@@ -13,9 +13,10 @@
 //! Applying then cuts the bridge devices off (nothing announces their loopback any more), and a
 //! router reached only over this link (`NetboxPlan.cut_off`).
 use super::{
-    DeleteAddress, DeleteWirelessLink, NetboxPlan, PlanStep, UpdateInterface, device_ref,
+    DeleteAddress, DeleteWirelessLink, NetboxPlan, PlanId, PlanStep, UpdateInterface,
     disconnect::{address_text, delete_prefixes, has_other_link},
     flags::InterfaceTag,
+    plan_interface,
 };
 use crate::{
     Error,
@@ -25,7 +26,7 @@ use crate::{
             AccessTopology, device::DeviceAccess, interface::InterfaceAccess,
             ip_addresses::IpAddressAccess,
         },
-        findings::{interface_ref, names},
+        findings::{device_ref, names},
     },
 };
 use async_graphql::InputObject;
@@ -133,9 +134,9 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
                 });
             }
             plan.steps.push(PlanStep::DeleteAddress(DeleteAddress {
-                id: ip.id().0,
+                id: ip.plan_id(ip.id().0),
                 address: address_text(ip),
-                interface: interface_ref(end),
+                interface: plan_interface(end),
             }));
             freed.push(ip.clone());
         }
@@ -177,9 +178,9 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
     {
         plan.steps
             .push(PlanStep::DeleteWirelessLink(DeleteWirelessLink {
-                id: end.id,
-                a: interface_ref(&radio),
-                b: interface_ref(peer),
+                id: radio.plan_id(end.id),
+                a: plan_interface(&radio),
+                b: plan_interface(peer),
             }));
     }
     if plan.steps.is_empty() {
@@ -219,12 +220,12 @@ pub fn plan(topology: &Arc<Topology>, input: &RadioDisconnectInput) -> Result<Ne
 fn update(updates: &mut Vec<UpdateInterface>, interface: &InterfaceAccess) -> usize {
     if let Some(index) = updates
         .iter()
-        .position(|u| u.interface.id == interface.id().0)
+        .position(|u| u.interface.id == interface.plan_id(interface.id().0))
     {
         return index;
     }
     updates.push(UpdateInterface {
-        interface: interface_ref(interface),
+        interface: plan_interface(interface),
         label: None,
         label_before: interface.label().map(Box::from),
         mtu: None,

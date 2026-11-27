@@ -4,13 +4,10 @@
 //! port itself, so it is free again (`docs/interface-view.md`). Its cable stays. The
 //! bridge stays too: its last port gone, the plan names it (`NetboxPlan.emptied_bridge`), its
 //! network then reaches nobody; „Kunden-Anschluss abräumen“ on its row takes that out.
-use super::{NetboxPlan, PlanStep, UpdatePort, UpdatePortVlan, port_name};
+use super::{NetboxPlan, PlanId, PlanStep, UpdatePort, UpdatePortVlan, plan_interface, port_name};
 use crate::{
     Error,
-    topology::{
-        DeviceId, InterfaceId, Topology,
-        findings::{interface_ref, vlan_ref},
-    },
+    topology::{DeviceId, InterfaceId, Topology, findings::vlan_ref},
 };
 use async_graphql::InputObject;
 use i18n::changelog::Plan;
@@ -42,20 +39,20 @@ pub fn plan(topology: &Arc<Topology>, input: &BridgeLeaveInput) -> Result<Netbox
         },
     );
     plan.steps.push(PlanStep::UpdatePort(UpdatePort {
-        interface: interface_ref(&port),
+        interface: plan_interface(&port),
         name: None,
         rf_role: None,
         rf_role_before: None,
         bridge: None,
         bridge_id: None,
-        bridge_before: Some(bridge.id().0),
+        bridge_before: Some(bridge.plan_id(bridge.id().0)),
         leaves_bridge: Some(bridge.name().into()),
     }));
     let untagged = port.untagged_vlan();
     let tagged = port.tagged_vlans().collect::<Vec<_>>();
     if untagged.is_some() || !tagged.is_empty() {
         plan.steps.push(PlanStep::UpdatePortVlan(UpdatePortVlan {
-            interface: interface_ref(&port),
+            interface: plan_interface(&port),
             vlan: None,
             vlan_before: untagged.as_ref().and_then(vlan_ref),
             tagged_before: tagged.iter().filter_map(vlan_ref).collect(),
@@ -67,7 +64,7 @@ pub fn plan(topology: &Arc<Topology>, input: &BridgeLeaveInput) -> Result<Netbox
         .filter(|i| i.id() != port.id() && i.bridge().is_some_and(|b| b.id() == bridge.id()))
         .count();
     if others == 0 {
-        plan.emptied_bridge = Some(interface_ref(&bridge));
+        plan.emptied_bridge = Some(crate::topology::findings::interface_ref(&bridge));
     }
     Ok(plan)
 }

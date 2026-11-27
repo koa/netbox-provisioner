@@ -1,5 +1,6 @@
 //! Scope: Tests of `helper::connect_device`; nothing else.
 use super::*;
+use crate::helper::ObjectId;
 use crate::{
     helper::PlanStep,
     topology::{PrefixPool, access::ip_addresses::IpAddressAccess, test::example_topology},
@@ -70,7 +71,7 @@ fn the_old_link_goes_first() {
     assert!(
         plan.steps
             .iter()
-            .any(|step| matches!(step, PlanStep::DeleteCable(cable) if cable.port.id == device_port.id().0)),
+            .any(|step| matches!(step, PlanStep::DeleteCable(cable) if cable.port.id == ObjectId::Netbox(device_port.id().0))),
         "{:?}",
         plan.steps
     );
@@ -112,7 +113,7 @@ fn the_routers_port_loses_its_vlan() {
     assert!(
         plan.steps.iter().any(|step| matches!(
             step,
-            PlanStep::UpdatePortVlan(update) if update.interface.id == port.id().0 && update.vlan.is_none()
+            PlanStep::UpdatePortVlan(update) if update.interface.id == ObjectId::Netbox(port.id().0) && update.vlan.is_none()
         )),
         "{:?}",
         plan.steps
@@ -170,8 +171,8 @@ fn the_routers_port_leaves_its_bridge() {
     assert!(
         plan.steps.iter().any(|step| matches!(
             step,
-            PlanStep::UpdatePort(update) if update.interface.id == port.id().0
-                && update.bridge_before == Some(bridge.id().0)
+            PlanStep::UpdatePort(update) if update.interface.id == ObjectId::Netbox(port.id().0)
+                && update.bridge_before == Some(ObjectId::Netbox(bridge.id().0))
                 && update.bridge_id.is_none()
         )),
         "{:?}",

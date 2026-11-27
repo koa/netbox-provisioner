@@ -26,7 +26,7 @@ pub async fn then(
     };
     Ok(Some(match plan {
         Some(mut plan) => {
-            plan.append(next);
+            plan.append(next)?;
             plan
         }
         None => next,

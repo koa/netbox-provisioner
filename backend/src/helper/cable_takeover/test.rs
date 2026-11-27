@@ -1,5 +1,6 @@
 //! Scope: Tests of `helper::cable_takeover`; nothing else.
 use super::*;
+use crate::helper::ObjectId;
 use crate::{
     helper::{PlanStep, connection},
     topology::{PrefixPool, access::ip_addresses::IpAddressAccess, test::example_topology},
@@ -60,7 +61,7 @@ fn both_wrong_links_go() {
     for end in [&port, &far, &seen, &seen_far] {
         assert!(
             plan.steps.iter().any(|step| {
-                matches!(step, PlanStep::DeleteAddress(delete) if delete.interface.id == end.id().0)
+                matches!(step, PlanStep::DeleteAddress(delete) if delete.interface.id == ObjectId::Netbox(end.id().0))
             }),
             "{} {}: {:?}",
             end.device().unwrap().name(),
@@ -121,27 +122,4 @@ async fn a_link_in_place_stays() {
             .expect("plan")
             .steps
     );
-}
-
-/// Steps put after others reference the steps they referenced before.
-#[test]
-fn shifted_steps_keep_their_references() {
-    use crate::helper::{CreateAddress, Target};
-    let topology = example_topology();
-    let device = topology.list_devices().next().unwrap();
-    let mut step = PlanStep::CreateAddress(CreateAddress {
-        address: "10.0.0.0/31".into(),
-        device: crate::helper::device_ref(&device),
-        interface: "ether1".into(),
-        prefix: "10.0.0.0/31".into(),
-        on: Target::Step(1),
-    });
-    step.shift(3);
-    assert!(matches!(
-        step,
-        PlanStep::CreateAddress(CreateAddress {
-            on: Target::Step(4),
-            ..
-        })
-    ));
 }

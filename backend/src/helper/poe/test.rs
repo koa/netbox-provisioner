@@ -1,5 +1,6 @@
 //! Scope: Tests of `poe`; nothing else.
 use super::*;
+use crate::helper::ObjectId;
 use crate::topology::test::example_topology;
 
 /// The two ends of a cable.
@@ -50,8 +51,8 @@ fn both_ports_get_their_mode() {
     assert_eq!(
         modes,
         [
-            (pse.id().0, Some(PoeMode::Pse)),
-            (pd.id().0, Some(PoeMode::Pd))
+            (ObjectId::Netbox(pse.id().0), Some(PoeMode::Pse)),
+            (ObjectId::Netbox(pd.id().0), Some(PoeMode::Pd))
         ]
     );
     let from_far = super::plan(&topology, &input(&pd)).expect("plan");
@@ -102,7 +103,7 @@ fn a_cable_is_added_or_in_the_way() {
     };
     let plan = super::plan(&topology, &input).expect("plan");
     assert!(matches!(&plan.steps[0], PlanStep::CreateCable(c)
-            if c.a.id == other_free.id().0 && c.b.id == free.id().0));
+            if c.a.id == ObjectId::Netbox(other_free.id().0) && c.b.id == ObjectId::Netbox(free.id().0)));
     // an update for each port that has another mode
     let updates = usize::from(other_free.poe() != Some(PoeMode::Pse))
         + usize::from(free.poe() != Some(PoeMode::Pd));
@@ -145,8 +146,8 @@ fn no_poe_takes_both_ends() {
     assert_eq!(
         removed,
         [
-            (pd.id().0, Some(PoeMode::Pd)),
-            (pse.id().0, Some(PoeMode::Pse))
+            (ObjectId::Netbox(pd.id().0), Some(PoeMode::Pd)),
+            (ObjectId::Netbox(pse.id().0), Some(PoeMode::Pse))
         ]
     );
     let after = plan.preview_topology().expect("preview");
@@ -182,7 +183,7 @@ fn poe_on_before_the_other_end_is_known() {
     .expect("plan");
     assert!(
         matches!(&plan.steps[..], [PlanStep::UpdateInterface(u)]
-                if u.interface.id == port.id().0 && u.poe == Some(PoeMode::Pse)),
+                if u.interface.id == ObjectId::Netbox(port.id().0) && u.poe == Some(PoeMode::Pse)),
         "{:?}",
         plan.steps
     );

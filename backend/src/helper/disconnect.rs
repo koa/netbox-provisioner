@@ -8,15 +8,14 @@
 //! and their `ospf`. Applying then takes the addresses off the devices: a device reached only over this link is cut off until the new
 //! link is applied at both ends (`NetboxPlan.cut_off`).
 use super::{
-    DeleteAddress, DeleteCable, DeletePrefix, NetboxPlan, PlanStep, UpdateInterface, device_ref,
-    flags::InterfaceTag,
+    DeleteAddress, DeleteCable, DeletePrefix, NetboxPlan, PlanId, PlanStep, UpdateInterface,
+    flags::InterfaceTag, plan_interface,
 };
 use crate::{
     Error,
     topology::{
         DeviceId, InterfaceId, PrefixPool, Topology,
         access::{AccessTopology, interface::InterfaceAccess, ip_addresses::IpAddressAccess},
-        findings::interface_ref,
     },
 };
 use async_graphql::InputObject;
@@ -52,9 +51,9 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
 
     if let Some(cable) = port.cable() {
         plan.steps.push(PlanStep::DeleteCable(DeleteCable {
-            id: cable.id().0,
-            port: interface_ref(&port),
-            far: far.as_ref().map(interface_ref),
+            id: cable.plan_id(cable.id().0),
+            port: plan_interface(&port),
+            far: far.as_ref().map(plan_interface),
         }));
     }
     let pools = topology.pool_prefixes(PrefixPool::Transfer, false);
@@ -95,9 +94,9 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
             });
         }
         plan.steps.push(PlanStep::DeleteAddress(DeleteAddress {
-            id: ip.id().0,
+            id: ip.plan_id(ip.id().0),
             address: address_text(ip),
-            interface: interface_ref(interface),
+            interface: plan_interface(interface),
         }));
     }
     delete_prefixes(&mut plan, freed.iter().map(|(ip, _)| *ip));
@@ -109,7 +108,7 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
                 .filter(|label| Some(*label) == other_name.as_deref());
             if label.is_some() || end.use_ospf() {
                 plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
-                    interface: interface_ref(end),
+                    interface: plan_interface(end),
                     label: label.map(|_| "".into()),
                     label_before: end.label().map(Box::from),
                     mtu: None,
@@ -139,7 +138,8 @@ pub fn plan(topology: &Arc<Topology>, input: &DisconnectInput) -> Result<NetboxP
                 && !has_other_link(&owner, end)
                 && !plan.cut_off.iter().any(|cut| cut.id == owner.id().0)
             {
-                plan.cut_off.push(device_ref(&owner));
+                plan.cut_off
+                    .push(crate::topology::findings::device_ref(&owner));
             }
         }
     }
@@ -171,7 +171,7 @@ pub(super) fn delete_prefixes<'a>(
         {
             prefixes.push(prefix.id().0);
             plan.steps.push(PlanStep::DeletePrefix(DeletePrefix {
-                id: prefix.id().0,
+                id: prefix.plan_id(prefix.id().0),
                 prefix: net.to_string().into(),
             }));
         }
@@ -211,6 +211,7 @@ pub(super) fn address_text(ip: &IpAddressAccess) -> Box<str> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::helper::ObjectId;
     use crate::topology::test::example_topology;
 
     /// A link between routers in a network of the transfer pool: the plan deletes the cable,
@@ -252,7 +253,7 @@ mod test {
         );
         let deleted_at = |id: InterfaceId| {
             plan.steps.iter().any(|step| {
-                matches!(step, PlanStep::DeleteAddress(delete) if delete.interface.id == id.0)
+                matches!(step, PlanStep::DeleteAddress(delete) if delete.interface.id == ObjectId::Netbox(id.0))
             })
         };
         assert!(

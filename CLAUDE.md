@@ -306,8 +306,8 @@ check sees an unknown MikroTik there: `CreateDevice` with the router's site and 
 `routeros`, the device type and role chosen from `Query.newDeviceOptions`, the WLAN group of an
 AP; the cabled port, which the write takes from the device type when NetBox made it; then
 „Loopback“ and, but for a `wireless-bridge`, „Verbindung“ planned on the preview, whose steps refer
-to the new objects by their preview ids from `u32::MAX` down, `PlanStep::with_real_ids` in the
-write); an address the live check finds only on the device „<address> übernehmen“
+to the new objects as `ObjectId::Planned`, which the write resolves to NetBox's ids,
+`Ids::netbox`); an address the live check finds only on the device „<address> übernehmen“
 (`interface_live`: the static rows of `/ip/address` and `/ipv6/address` but link-local ones
 whose IP no NetBox interface of the device has, but those on interfaces of a type the provisioner
 doesn't manage (`interface_live::hand_made_interfaces`, by `/interface` type: tunnels, PPPoE
@@ -351,7 +351,7 @@ the device sees exactly one router, no radio bridge device, at a port NetBox has
 „Verbindung“ with both ends; where NetBox's cable goes elsewhere (`CableElsewhere`,
 `OtherFarPort`), „Kabel übernehmen“, `helper::cable_takeover`: „Verbindung abräumen“ at each
 end with another link, one after the other on the preview, then „Verbindung“ on the result,
-its steps shifted behind (`PlanStep::shift`); a cable over a patch panel is refused
+its steps behind (`NetboxPlan::append_steps`); a cable over a patch panel is refused
 (`PORT_PATCHED`), the new one would be direct.
 
 `device/ros/diff_view.rs` gives every diff a field view and a script back, kept with the
@@ -442,7 +442,9 @@ router port a `/29` with `dhcp` and `dhcp_lease_time` 120 s (`CreatePrefix.dhcp_
 `next_free_network` skips the prefixes the plan creates already. Topology carries the link's id and peer (`Interface.wireless_link`,
 `WirelessLinkEnd`); `example_topology` makes up both for an export lacking them. Deleting is undone by creating the object again from the
 JSON NetBox had (`NetboxWritten.recreate`, `helper::write::recreate`; it gets a new id): undoing an
-older write whose objects were deleted and created again since fails on their old ids. The GraphQL input `Helper` is a `@oneOf` (an enum,
+older write whose objects were deleted and created again since fails on their old ids. A
+change or delete at an object the same job created (`NetboxWritten.of_created`) isn't undone:
+deleting the object takes it back. The GraphQL input `Helper` is a `@oneOf` (an enum,
 `graphql::authenticated::helper`), naming the device or the two ports;
 the device page opens them in a modal (`components::helper_flow`, a stepper over the embedded
 (its own `<ol>` with `pf-m-horizontal`: `ProgressStepper` stacks the steps below `md`, a third of
@@ -472,7 +474,10 @@ use), listing it in `NetboxPlan.undocumented` (a `/31` also when NetBox has addr
 without a prefix); when no router answers, no address is handed out
 (`NoRouteCheck`). Its `preview` is the topology rebuilt from the
 NetBox response it was built from (`Topology.source`, `Topology::rebuilt_with`) with the plan
-applied to that JSON, created objects getting ids from `u32::MAX` down; `previewAccess` connects
+applied to that JSON, created objects getting `ObjectId::preview_id` (from `u32::MAX` down,
+`Topology::planned` counting them, so a helper computing on the preview gets
+`ObjectId::Planned` back: `PlanId::plan_id`, `plan_device`, `plan_interface`; a step never
+holds a made-up id as a NetBox one); `previewAccess` connects
 through the device as it is now (`AccessibleDevice::generating_for`) but generates from the
 preview, since the new primary IP may not be on the device yet. Writing (`writeNetboxPlan`) is a
 job: it recomputes the plan, refuses one whose `fingerprint` changed, checks before each step that

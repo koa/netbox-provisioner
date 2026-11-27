@@ -13,7 +13,7 @@
 //! Whether a board has PoE out at that port NetBox doesn't know (it has no board model); a
 //! port without it gets no `poe-out` from the generator anyway (`setup_poe`). What a device
 //! reports is read in `device::poe`.
-use super::{CreateCable, NetboxPlan, PlanStep, UpdateInterface, port_name};
+use super::{CreateCable, NetboxPlan, PlanStep, UpdateInterface, plan_interface, port_name};
 use crate::{
     Error,
     topology::{
@@ -80,8 +80,8 @@ pub fn plan(topology: &Arc<Topology>, input: &PoeInput) -> Result<NetboxPlan, Er
             }
         }
         plan.steps.push(PlanStep::CreateCable(CreateCable {
-            a: interface_ref(&pse),
-            b: interface_ref(&pd),
+            a: plan_interface(&pse),
+            b: plan_interface(&pd),
             a_end: super::CableEnd::Interface,
         }));
     }
@@ -114,7 +114,7 @@ fn pse_alone(port: &InterfaceAccess, device: u32) -> Result<NetboxPlan, Error> {
 fn set_mode(plan: &mut NetboxPlan, port: &InterfaceAccess, mode: PoeMode) {
     if port.poe() != Some(mode) {
         plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
-            interface: interface_ref(port),
+            interface: plan_interface(port),
             label: None,
             label_before: port.label().map(Box::from),
             mtu: None,
@@ -165,7 +165,7 @@ pub fn plan_remove(topology: &Arc<Topology>, input: &PoeRemoveInput) -> Result<N
         .filter(|far| far.poe() == Some(counterpart));
     for end in std::iter::once(port).chain(far_ends) {
         plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
-            interface: interface_ref(&end),
+            interface: plan_interface(&end),
             label: None,
             label_before: end.label().map(Box::from),
             mtu: None,

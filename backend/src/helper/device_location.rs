@@ -5,10 +5,10 @@
 //! location is then another. A RouterOS device without a tenant of its own takes its
 //! credentials from its location's tenant; a location giving it others is refused, the
 //! provisioner would lose it.
-use super::{LocationRef, NetboxPlan, PlanStep, UpdateDeviceLocation};
+use super::{LocationRef, NetboxPlan, PlanStep, UpdateDeviceLocation, plan_device};
 use crate::{
     Error,
-    topology::{DeviceId, Topology, access::device::DeviceAccess, findings::device_ref},
+    topology::{DeviceId, Topology, access::device::DeviceAccess},
 };
 use i18n::changelog::Plan;
 use std::sync::Arc;
@@ -45,7 +45,7 @@ pub fn plan(topology: &Arc<Topology>, input: &DeviceLocationInput) -> Result<Net
     );
     plan.steps
         .push(PlanStep::UpdateDeviceLocation(UpdateDeviceLocation {
-            device: device_ref(&device),
+            device: plan_device(&device),
             location: input.location.map(location).transpose()?,
             location_before: device.location_id().map(location).transpose()?,
         }));

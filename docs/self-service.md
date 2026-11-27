@@ -151,7 +151,8 @@ Gerät anschliessen (`helper::connect_device`, nur für Anwohner):
   VLANs; eine Verbindung braucht den Port für sich, die Bridge und ihre anderen Ports bleiben),
   und das VLAN des Ports (eine Verbindung hat Adressen, kein VLAN);
 - dann „Verbindung“ (Kabel, `/31` des Transfer-Pools, `ospf`, MTU, Labels) und, wo es fehlt,
-  „Loopback“; die Schritte jedes Teils hinter die davor geschoben (`PlanStep::shift`);
+  „Loopback“; jeder Teil auf der Vorschau der davor gerechnet, seine Schritte dahinter
+  (`NetboxPlan::append`);
 - ein Gerät ohne Port für den Anschluss ist `NO_UPLINK_PORT`;
 - zwei Geräte an denselben Port in einem Speichern sind `TWO_DEVICES_AT_PORT` (ein Kabel pro
   Port; sonst nähme das zweite dem ersten unbemerkt den Platz). Die Oberfläche lässt das gar

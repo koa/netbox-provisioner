@@ -18,7 +18,7 @@ fn changed(
 ) -> Arc<Topology> {
     Arc::new(
         topology
-            .rebuilt_with(|json| {
+            .rebuilt_with(0, |json| {
                 if let Some(addresses) = json["ip_address_list"].as_array_mut() {
                     addresses.retain(|address| !removed.iter().any(|id| address["id"] == *id));
                 }

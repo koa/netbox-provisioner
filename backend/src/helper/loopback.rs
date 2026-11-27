@@ -9,7 +9,7 @@
 //! the network routes (`routes::Routes`) is skipped and shown in the plan
 //! (`NetboxPlan.undocumented`), so it can be documented.
 use super::{
-    CreateAddress, CreateInterface, NetboxPlan, PlanStep, SetPrimaryIp, Target, device_ref,
+    CreateAddress, CreateInterface, NetboxPlan, PlanId, PlanStep, SetPrimaryIp, plan_device,
     routes::Routes,
 };
 use crate::topology::PrefixRef;
@@ -51,17 +51,17 @@ pub(crate) async fn add_to(
         .find(|i| i.name() == "lo")
         .cloned();
     let on = match &lo {
-        Some(lo) => Target::Existing(lo.id().0),
+        Some(lo) => lo.plan_id(lo.id().0),
         None => {
             plan.steps.push(PlanStep::CreateInterface(CreateInterface {
-                device: device_ref(device),
+                device: plan_device(device),
                 name: "lo".into(),
                 kind: "virtual".into(),
                 vlan: None,
                 tags: Box::default(),
                 mac: None,
             }));
-            Target::Step(plan.steps.len() - 1)
+            plan.last_created()
         }
     };
     // read once an address is needed: a plan that only sets what exists asks no router
@@ -74,7 +74,7 @@ pub(crate) async fn add_to(
         });
         let (address_id, address) = match &existing {
             Some(ip) => (
-                Target::Existing(ip.id().0),
+                ip.plan_id(ip.id().0),
                 ip.net().map(|net| net.to_string()).unwrap_or_default(),
             ),
             None => {
@@ -95,12 +95,12 @@ pub(crate) async fn add_to(
                     .to_string();
                 plan.steps.push(PlanStep::CreateAddress(CreateAddress {
                     address: address.clone().into(),
-                    device: device_ref(device),
+                    device: plan_device(device),
                     interface: "lo".into(),
                     prefix: prefix.to_string().into(),
                     on,
                 }));
-                (Target::Step(plan.steps.len() - 1), address)
+                (plan.last_created(), address)
             }
         };
         let primary = if v6 {
@@ -108,10 +108,10 @@ pub(crate) async fn add_to(
         } else {
             device.primary_ip_v4()
         };
-        let before_id = primary.as_ref().map(|ip| ip.id().0);
-        if address_id != Target::Existing(before_id.unwrap_or(u32::MAX)) {
+        let before_id = primary.as_ref().map(|ip| ip.plan_id(ip.id().0));
+        if Some(address_id) != before_id {
             plan.steps.push(PlanStep::SetPrimaryIp(SetPrimaryIp {
-                device: device_ref(device),
+                device: plan_device(device),
                 version,
                 address: address.into(),
                 before: primary

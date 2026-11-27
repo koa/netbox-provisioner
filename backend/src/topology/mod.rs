@@ -156,6 +156,9 @@ pub struct Topology {
     /// the NetBox response it is built from, which a helper's plan is tried on
     /// (`helper::preview`); none in tests built from parts
     source: Option<Source>,
+    /// how many steps of plans its ids hold, for a helper's preview (`helper::plan::ObjectId`);
+    /// none for NetBox's
+    planned: usize,
     /// the management proxy's device (`management_proxy.device` of the config), a management
     /// root (`topology::management`); given when built, the findings need it
     management_proxy: Option<Box<str>>,
@@ -201,6 +204,7 @@ impl Topology {
             locations,
             findings,
             source: _,
+            planned: _,
             management_proxy: _,
         } = self;
         [
@@ -337,8 +341,11 @@ impl Topology {
     pub fn locations(&self) -> &BTreeMap<u32, LocationData> {
         &self.locations
     }
+    /// It with `change` made to the NetBox response it is built from, holding the ids of
+    /// `planned` steps of plans then (`planned`).
     pub(crate) fn rebuilt_with(
         &self,
+        planned: usize,
         change: impl FnOnce(&mut serde_json::Value),
     ) -> Option<Result<Topology, serde_json::Error>> {
         let source = self.source.as_ref()?;
@@ -346,12 +353,16 @@ impl Topology {
             let mut json = serde_json::to_value(&*source.0)?;
             change(&mut json);
             let data: FetchTopology = serde_json::from_value(json)?;
-            Ok(fetch::build_topology_from(
-                data,
-                Instant::now(),
-                self.management_proxy.clone(),
-            ))
+            Ok(Topology {
+                planned,
+                ..fetch::build_topology_from(data, Instant::now(), self.management_proxy.clone())
+            })
         })())
+    }
+    /// How many steps of plans its ids hold: the preview of a plan with that many steps
+    /// (`helper::plan::ObjectId`), none for NetBox as it is.
+    pub(crate) fn planned(&self) -> usize {
+        self.planned
     }
 
     /// Whether `device` is an AP of a Wireless LAN Group whose radios NetBox has as `wlanN`

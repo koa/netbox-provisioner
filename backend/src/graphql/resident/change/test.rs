@@ -237,7 +237,7 @@ async fn a_device_goes_to_a_room_of_the_residents_sites() {
     let query = |location: u32| {
         format!(
             r#"{{ changePlan(resident: {}, changes: [{{ deviceRoom: {{ device: {device}, location: {location} }} }}]) {{
-                rooms {{ device {{ id }} location {{ id path }} }} devices {{ id }}
+                rooms {{ device {{ name }} location {{ id path }} }} devices {{ id }}
             }} }}"#,
             MEIER.0
         )
@@ -248,9 +248,16 @@ async fn a_device_goes_to_a_room_of_the_residents_sites() {
     let data = ask_on(raw.clone(), meier.clone(), &query(9101))
         .await
         .expect("a plan");
+    let name = raw["data"]["device_list"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|entry| entry["id"] == device.to_string().as_str())
+        .map(|entry| entry["name"].clone())
+        .expect("the device");
     assert_eq!(
         data["changePlan"]["rooms"],
-        json!([{ "device": { "id": device }, "location": { "id": 9101, "path": ["Werkstatt"] } }])
+        json!([{ "device": { "name": name }, "location": { "id": 9101, "path": ["Werkstatt"] } }])
     );
     assert_eq!(data["changePlan"]["devices"], json!([]));
     let not_owned = Err("\"NOT_OWNED\"".to_string());

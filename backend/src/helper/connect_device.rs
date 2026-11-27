@@ -10,11 +10,11 @@
 //! the VLAN of the router's port (a link has addresses, no VLAN). As with „Kabel
 //! übernehmen“, the steps of each part are shifted behind those before.
 use super::{
-    CableEnd, CreateCable, NetboxPlan, PlanStep, UpdatePortVlan,
+    CableEnd, CreateCable, NetboxPlan, PlanId, PlanInterface, PlanStep, UpdatePortVlan,
     bridge_leave::{self, BridgeLeaveInput},
     connection::{self, ConnectionInput},
     disconnect::{self, DisconnectInput},
-    loopback, port_name,
+    loopback, plan_device, plan_interface, port_name,
     routes::Routes,
 };
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
             AccessTopology, cable::CablePortAccess, device::DeviceAccess,
             front_port::FrontPortAccess, interface::InterfaceAccess,
         },
-        findings::{DeviceRef, InterfaceRef, interface_ref, vlan_ref},
+        findings::vlan_ref,
         management::{ManagementTree, shared_interfaces},
         natural::naturalize_interface,
     },
@@ -89,7 +89,7 @@ pub async fn plan(
         mtu: None,
     };
     let connection = connection::plan(&now(&plan)?, &connect).await?;
-    plan.append(connection);
+    plan.append(connection)?;
     // its loopback, where it lacks one: the router ID and management address
     let topology = now(&plan)?;
     let device = topology
@@ -99,7 +99,7 @@ pub async fn plan(
     let mut lo = NetboxPlan::new(&device, None);
     let mut routes: Option<Routes> = None;
     loopback::add_to(&mut lo, &device, &mut routes).await?;
-    plan.append(lo);
+    plan.append(lo)?;
     if plan.steps.is_empty() {
         return Err(Error::NothingToChange);
     }
@@ -177,7 +177,7 @@ fn prepare(topology: &Arc<Topology>, input: &ConnectDeviceInput) -> Result<Netbo
                 interface: end.id().0,
             };
             match disconnect::plan(&topology, &input) {
-                Ok(cleared) => plan.append(cleared),
+                Ok(cleared) => plan.append(cleared)?,
                 Err(Error::NothingToDisconnect(_)) => {}
                 Err(error) => return Err(error),
             }
@@ -193,7 +193,7 @@ fn prepare(topology: &Arc<Topology>, input: &ConnectDeviceInput) -> Result<Netbo
                 device: owner.id().0,
                 port: end,
             };
-            plan.append(bridge_leave::plan(&topology, &leave)?);
+            plan.append(bridge_leave::plan(&topology, &leave)?)?;
         }
     }
     // a link has addresses, no VLAN
@@ -204,7 +204,7 @@ fn prepare(topology: &Arc<Topology>, input: &ConnectDeviceInput) -> Result<Netbo
         let before = port.untagged_vlan();
         if before.is_some() || !tagged.is_empty() {
             plan.steps.push(PlanStep::UpdatePortVlan(UpdatePortVlan {
-                interface: interface_ref(&port),
+                interface: plan_interface(&port),
                 vlan: None,
                 vlan_before: before.as_ref().and_then(vlan_ref),
                 tagged_before: tagged.iter().filter_map(vlan_ref).collect(),
@@ -219,16 +219,12 @@ fn prepare(topology: &Arc<Topology>, input: &ConnectDeviceInput) -> Result<Netbo
                 .device()
                 .ok_or(Error::SocketWithoutPort(port_name(&port)))?;
             plan.steps.push(PlanStep::CreateCable(CreateCable {
-                a: InterfaceRef {
-                    id: AccessTopology::id(socket).0,
+                a: PlanInterface {
+                    id: socket.plan_id(AccessTopology::id(socket).0),
                     name: socket.name().unwrap_or_default().into(),
-                    device: DeviceRef {
-                        id: wall.id().0,
-                        name: wall.name().into(),
-                        site: wall.site().map(|site| AccessTopology::id(&site).0),
-                    },
+                    device: plan_device(&wall),
                 },
-                b: interface_ref(&device_port),
+                b: plan_interface(&device_port),
                 a_end: CableEnd::FrontPort,
             }));
         }

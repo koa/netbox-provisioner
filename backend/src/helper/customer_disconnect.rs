@@ -7,16 +7,17 @@
 //! a VLAN interface the device's customer ports with its VLAN. A VLAN interface left with
 //! nothing goes. The VLAN itself stays, other devices may have it.
 use super::{
-    DeleteAddress, DeleteInterface, NetboxPlan, PlanStep, UpdateInterface, UpdatePortVlan,
+    DeleteAddress, DeleteInterface, NetboxPlan, PlanId, PlanStep, UpdateInterface, UpdatePortVlan,
     disconnect::{address_text, delete_prefixes},
     flags::InterfaceTag,
+    plan_interface,
 };
 use crate::{
     Error,
     topology::{
         DeviceId, InterfaceId, Topology,
         access::{AccessTopology, interface::InterfaceAccess},
-        findings::{interface_ref, vlan_ref},
+        findings::vlan_ref,
     },
 };
 use async_graphql::InputObject;
@@ -64,9 +65,9 @@ pub fn plan(
             });
         }
         plan.steps.push(PlanStep::DeleteAddress(DeleteAddress {
-            id: ip.id().0,
+            id: ip.plan_id(ip.id().0),
             address: address_text(ip),
-            interface: interface_ref(&l3),
+            interface: plan_interface(&l3),
         }));
     }
     delete_prefixes(&mut plan, addresses.iter());
@@ -87,7 +88,7 @@ pub fn plan(
     let delete = vlan_interface && !keeps(&l3);
     if l3.is_enable_dhcp_server() && !delete {
         plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
-            interface: interface_ref(&l3),
+            interface: plan_interface(&l3),
             label: None,
             label_before: l3.label().map(Box::from),
             mtu: None,
@@ -134,7 +135,7 @@ pub fn plan(
             continue;
         }
         plan.steps.push(PlanStep::UpdatePortVlan(UpdatePortVlan {
-            interface: interface_ref(port),
+            interface: plan_interface(port),
             vlan: None,
             vlan_before: untagged.as_ref().and_then(vlan_ref),
             tagged_before: tagged.iter().filter_map(vlan_ref).collect(),
@@ -142,7 +143,7 @@ pub fn plan(
     }
     if delete {
         plan.steps.push(PlanStep::DeleteInterface(DeleteInterface {
-            interface: interface_ref(&l3),
+            interface: plan_interface(&l3),
         }));
     }
     if plan.steps.is_empty() {

@@ -578,7 +578,7 @@ fn changed_devices(plan: &NetboxPlan, configured: &[DeviceAccess]) -> Vec<Device
                 _ => None,
             })
             .flat_map(move |update| {
-                let device = DeviceId(update.interface.device.id);
+                let device = DeviceId(update.interface.device.id.preview_id());
                 update
                     .vlan
                     .iter()

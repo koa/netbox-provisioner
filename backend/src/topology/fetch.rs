@@ -843,6 +843,7 @@ impl Builder {
         Topology {
             fetch_time,
             source: Some(source),
+            planned: 0,
             management_proxy,
             devices: self.devices,
             sites: self

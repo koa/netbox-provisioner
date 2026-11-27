@@ -37,9 +37,11 @@ mod write;
 pub use plan::{
     CableEnd, CreateAddress, CreateCable, CreateDevice, CreateInterface, CreateIpRange,
     CreatePrefix, CreateWirelessLink, DeleteAddress, DeleteCable, DeleteInterface, DeletePrefix,
-    DeleteWirelessLink, LocationRef, PlanStep, SetPrimaryIp, Target, UpdateDeviceLocation,
-    UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLan, UpdateWirelessLink,
+    DeleteWirelessLink, LocationRef, ObjectId, PlanDevice, PlanInterface, PlanStep, SetPrimaryIp,
+    UpdateDeviceLocation, UpdateInterface, UpdatePort, UpdatePortVlan, UpdateWirelessLan,
+    UpdateWirelessLink,
 };
+pub(crate) use plan::{PlanId, plan_device, plan_interface};
 pub use write::{FieldChange, NetboxUndone, NetboxWritten, undo, write};
 
 use crate::{
@@ -228,6 +230,11 @@ pub struct NetboxPlan {
     pub emptied_bridge: Option<InterfaceRef>,
     #[graphql(skip)]
     device: DeviceAccess,
+    /// the number of its first step, counted over the plans it follows: the steps of the plan
+    /// whose preview it is computed on ([`Topology::planned`]); it refers to its own objects as
+    /// [`ObjectId::Planned`] from there on
+    #[graphql(skip)]
+    first: usize,
 }
 
 #[ComplexObject]
@@ -271,16 +278,39 @@ impl NetboxPlan {
             apply_together: Box::default(),
             emptied_bridge: None,
             device: device.clone(),
+            first: device.topology().planned(),
         }
+    }
+    /// The number of its first step ([`first`](Self::first)).
+    pub(crate) fn first(&self) -> usize {
+        self.first
+    }
+    /// The object the last step created.
+    pub(crate) fn last_created(&self) -> ObjectId {
+        ObjectId::Planned(self.first + self.steps.len() - 1)
+    }
+    /// The object step `step` of it (counted from its first) creates.
+    pub(crate) fn created_by(&self, step: usize) -> ObjectId {
+        ObjectId::Planned(self.first + step)
+    }
+    /// `part`'s steps behind its own: `part` must be computed on its preview, so that both
+    /// count their steps alike.
+    pub(crate) fn append_steps(&mut self, part: &mut NetboxPlan) -> Result<(), Error> {
+        if part.first != self.first + self.steps.len() {
+            return Err(Error::Preview(
+                "a part of a plan computed on another plan's preview".into(),
+            ));
+        }
+        self.steps.append(&mut part.steps);
+        Ok(())
     }
     pub fn device(&self) -> &DeviceAccess {
         &self.device
     }
-    /// The devices of the topology a step changes something at (a created one's id is a
-    /// preview id, which the topology hasn't); a room is NetBox's only, the device's
-    /// configuration stays.
+    /// The devices of the topology a step changes something at (one the plan creates isn't
+    /// there); a room is NetBox's only, the device's configuration stays.
     pub fn touched_devices(&self) -> Vec<DeviceAccess> {
-        let mut touched = Vec::<u32>::new();
+        let mut touched = Vec::<ObjectId>::new();
         for step in &self.steps {
             match step {
                 PlanStep::UpdatePortVlan(update) => touched.push(update.interface.device.id),
@@ -321,18 +351,14 @@ impl NetboxPlan {
         let topology = self.device.topology();
         touched
             .into_iter()
-            .filter_map(|id| topology.get_device_by_id(&crate::topology::DeviceId(id)))
+            .filter_map(|id| topology.get_device_by_id(&DeviceId(id.preview_id())))
             .collect()
     }
 
-    /// `part`'s steps behind this plan's, their references to steps moved along, with what
-    /// it found.
-    pub fn append(&mut self, part: NetboxPlan) {
-        let offset = self.steps.len();
-        self.steps.extend(part.steps.into_iter().map(|mut step| {
-            step.shift(offset);
-            step
-        }));
+    /// `part`'s steps behind this plan's ([`append_steps`](Self::append_steps)), with what it
+    /// found.
+    pub fn append(&mut self, mut part: NetboxPlan) -> Result<(), Error> {
+        self.append_steps(&mut part)?;
         self.description.extend(part.description);
         self.undocumented.extend(part.undocumented);
         for cut in part.cut_off {
@@ -355,6 +381,7 @@ impl NetboxPlan {
         if self.emptied_bridge.is_none() {
             self.emptied_bridge = part.emptied_bridge;
         }
+        Ok(())
     }
     pub fn fingerprint_value(&self) -> String {
         let mut hasher = DefaultHasher::new();
@@ -366,7 +393,7 @@ impl NetboxPlan {
         let topology = self
             .device
             .topology()
-            .rebuilt_with(|json| self.apply_to(json))
+            .rebuilt_with(self.first + self.steps.len(), |json| self.apply_to(json))
             .ok_or(Error::NoPreview)?
             .map_err(|error| Error::Preview(error.to_string().into()))?;
         Ok(Arc::new(topology))
@@ -377,16 +404,13 @@ impl NetboxPlan {
             .ok_or(Error::UnknownDevice(self.device.id().0))
     }
 
-    /// The plan on the JSON of NetBox' `FetchTopology`, for the preview. Created objects get ids
-    /// from the top of the range, which NetBox doesn't hand out.
+    /// The plan on the JSON of NetBox' `FetchTopology`, for the preview. Created objects get
+    /// their `ObjectId::preview_id`.
     fn apply_to(&self, json: &mut Value) {
-        let created_id = |step: usize| (u32::MAX - step as u32).to_string();
-        let target_id = |target: Target| match target {
-            Target::Existing(id) => id.to_string(),
-            Target::Step(step) => created_id(step),
-        };
-        fn device(json: &mut Value, id: u32) -> Option<&mut Value> {
-            let id = id.to_string();
+        let created_id = |step: usize| self.created_by(step).preview_id().to_string();
+        let target_id = |target: ObjectId| target.preview_id().to_string();
+        fn device(json: &mut Value, id: ObjectId) -> Option<&mut Value> {
+            let id = id.preview_id().to_string();
             json["device_list"]
                 .as_array_mut()?
                 .iter_mut()
@@ -493,7 +517,7 @@ impl NetboxPlan {
                     }
                 }
                 PlanStep::CreateCable(create) => {
-                    let end = |end: CableEnd, interface: &InterfaceRef| json!([{ "__typename": end.typename(), "id": interface.id.to_string() }]);
+                    let end = |end: CableEnd, interface: &PlanInterface| json!([{ "__typename": end.typename(), "id": interface.id.preview_id().to_string() }]);
                     if let Some(cables) = json["cable_list"].as_array_mut() {
                         cables.push(json!({
                             "id": created_id(index),
@@ -526,15 +550,16 @@ impl NetboxPlan {
                     }
                 }
                 PlanStep::DeleteCable(delete) => {
-                    let id = delete.id.to_string();
+                    let id = delete.id.preview_id().to_string();
                     if let Some(cables) = json["cable_list"].as_array_mut() {
                         cables.retain(|cable| cable["id"] != id.as_str());
                     }
                 }
                 PlanStep::DeleteAddress(delete) => {
-                    let id = delete.id.to_string();
-                    if let Some(addresses) = interface(json, &delete.interface.id.to_string())
-                        .and_then(|interface| interface["ip_addresses"].as_array_mut())
+                    let id = delete.id.preview_id().to_string();
+                    if let Some(addresses) =
+                        interface(json, &delete.interface.id.preview_id().to_string())
+                            .and_then(|interface| interface["ip_addresses"].as_array_mut())
                     {
                         addresses.retain(|address| address["id"] != id.as_str());
                     }
@@ -543,13 +568,15 @@ impl NetboxPlan {
                     }
                 }
                 PlanStep::DeletePrefix(delete) => {
-                    let id = delete.id.to_string();
+                    let id = delete.id.preview_id().to_string();
                     if let Some(prefixes) = json["prefix_list"].as_array_mut() {
                         prefixes.retain(|prefix| prefix["id"] != id.as_str());
                     }
                 }
                 PlanStep::UpdatePort(update) => {
-                    if let Some(interface) = interface(json, &update.interface.id.to_string()) {
+                    if let Some(interface) =
+                        interface(json, &update.interface.id.preview_id().to_string())
+                    {
                         if let Some(name) = &update.name {
                             interface["name"] = json!(name);
                         }
@@ -566,15 +593,15 @@ impl NetboxPlan {
                 PlanStep::CreateWirelessLink(create) => {
                     let link = json!({
                         "id": created_id(index),
-                        "interface_a": { "id": create.a.id.to_string() },
-                        "interface_b": { "id": create.b.id.to_string() },
+                        "interface_a": { "id": create.a.id.preview_id().to_string() },
+                        "interface_b": { "id": create.b.id.preview_id().to_string() },
                         "ssid": create.ssid,
                         "auth_type": "wpa-personal",
                         "auth_psk": create.psk,
                         "custom_field_data": {},
                     });
                     for end in [&create.a, &create.b] {
-                        if let Some(interface) = interface(json, &end.id.to_string()) {
+                        if let Some(interface) = interface(json, &end.id.preview_id().to_string()) {
                             interface["wireless_link"] = link.clone();
                         }
                     }
@@ -619,7 +646,9 @@ impl NetboxPlan {
                     }
                 }
                 PlanStep::UpdatePortVlan(update) => {
-                    if let Some(interface) = interface(json, &update.interface.id.to_string()) {
+                    if let Some(interface) =
+                        interface(json, &update.interface.id.preview_id().to_string())
+                    {
                         interface["untagged_vlan"] = match &update.vlan {
                             Some(vlan) => json!({ "id": vlan.id.to_string() }),
                             None => Value::Null,
@@ -628,7 +657,7 @@ impl NetboxPlan {
                     }
                 }
                 PlanStep::DeleteInterface(delete) => {
-                    let id = delete.interface.id.to_string();
+                    let id = delete.interface.id.preview_id().to_string();
                     if let Some(interfaces) = device(json, delete.interface.device.id)
                         .and_then(|device| device["interfaces"].as_array_mut())
                     {
@@ -637,14 +666,14 @@ impl NetboxPlan {
                 }
                 PlanStep::DeleteWirelessLink(delete) => {
                     for end in [&delete.a, &delete.b] {
-                        if let Some(interface) = interface(json, &end.id.to_string()) {
+                        if let Some(interface) = interface(json, &end.id.preview_id().to_string()) {
                             interface["wireless_link"] = Value::Null;
                         }
                     }
                 }
                 PlanStep::UpdateWirelessLink(update) => {
                     for end in [&update.a, &update.b] {
-                        if let Some(interface) = interface(json, &end.id.to_string()) {
+                        if let Some(interface) = interface(json, &end.id.preview_id().to_string()) {
                             let link = &mut interface["wireless_link"];
                             if let Some(ssid) = &update.ssid {
                                 link["ssid"] = json!(ssid);
@@ -657,7 +686,9 @@ impl NetboxPlan {
                     }
                 }
                 PlanStep::UpdateInterface(update) => {
-                    if let Some(interface) = interface(json, &update.interface.id.to_string()) {
+                    if let Some(interface) =
+                        interface(json, &update.interface.id.preview_id().to_string())
+                    {
                         if let Some(label) = &update.label {
                             interface["label"] = json!(label);
                         }
@@ -726,20 +757,12 @@ pub(crate) fn port_name(interface: &InterfaceAccess) -> Box<str> {
     .into()
 }
 
-/// The device, as `DeviceRef`, for a plan step.
-pub(crate) fn device_ref(device: &DeviceAccess) -> DeviceRef {
-    crate::topology::findings::device_ref(device)
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{
+        topology::access::{AccessTopology, interface::InterfaceAccess},
         topology::test::example_topology,
-        topology::{
-            access::{AccessTopology, interface::InterfaceAccess},
-            findings::interface_ref,
-        },
     };
 
     /// The preview is NetBox after the plan: a created interface with its new address, which
@@ -754,7 +777,7 @@ mod test {
         let mut plan = NetboxPlan::new(&device, None);
         plan.steps = vec![
             PlanStep::CreateInterface(CreateInterface {
-                device: device_ref(&device),
+                device: plan_device(&device),
                 name: "lo-test".into(),
                 kind: "virtual".into(),
                 vlan: None,
@@ -763,18 +786,18 @@ mod test {
             }),
             PlanStep::CreateAddress(CreateAddress {
                 address: "192.0.2.1/32".into(),
-                device: device_ref(&device),
+                device: plan_device(&device),
                 interface: "lo-test".into(),
                 prefix: "192.0.2.0/24".into(),
-                on: Target::Step(0),
+                on: ObjectId::Planned(0),
             }),
             PlanStep::SetPrimaryIp(SetPrimaryIp {
-                device: device_ref(&device),
+                device: plan_device(&device),
                 version: IpVersion::V4,
                 address: "192.0.2.1/32".into(),
                 before: None,
-                address_id: Target::Step(1),
-                before_id: device.primary_ip_v4().map(|ip| ip.id().0),
+                address_id: ObjectId::Planned(1),
+                before_id: device.primary_ip_v4().map(|ip| ip.plan_id(ip.id().0)),
             }),
         ];
         let after = plan.preview_device().expect("preview");
@@ -822,7 +845,7 @@ mod test {
         let mut plan = NetboxPlan::new(&a_device, None);
         let update = |end: &InterfaceAccess, far: &DeviceAccess| {
             PlanStep::UpdateInterface(UpdateInterface {
-                interface: interface_ref(end),
+                interface: plan_interface(end),
                 label: Some(far.name().into()),
                 label_before: end.label().map(Box::from),
                 mtu: Some(2000),
@@ -837,16 +860,16 @@ mod test {
         let address = |end: &InterfaceAccess, address: &str| {
             PlanStep::CreateAddress(CreateAddress {
                 address: address.into(),
-                device: device_ref(&end.device().unwrap()),
+                device: plan_device(&end.device().unwrap()),
                 interface: end.name().into(),
                 prefix: "192.0.2.0/31".into(),
-                on: Target::Existing(end.id().0),
+                on: ObjectId::Netbox(end.id().0),
             })
         };
         plan.steps = vec![
             PlanStep::CreateCable(CreateCable {
-                a: interface_ref(&a),
-                b: interface_ref(&b),
+                a: plan_interface(&a),
+                b: plan_interface(&b),
                 a_end: CableEnd::Interface,
             }),
             PlanStep::CreatePrefix(CreatePrefix {

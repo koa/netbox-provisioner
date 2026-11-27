@@ -299,7 +299,7 @@ async fn the_wave_nanos_of_the_export_pair_their_radios() {
     // far as the networks asks NetBox for free ones)
     let in_bridge = Arc::new(
         topology
-            .rebuilt_with(|json| {
+            .rebuilt_with(0, |json| {
                 for device in json["device_list"].as_array_mut().into_iter().flatten() {
                     for interface in device["interfaces"].as_array_mut().into_iter().flatten() {
                         if interface["id"] == "25" {

@@ -76,7 +76,7 @@ pub struct CreateDevice {
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct CreateInterface {
-    pub device: DeviceRef,
+    pub device: PlanDevice,
     pub name: String,
     pub kind: String,
     pub tags: Vec<InterfaceTag>,
@@ -86,14 +86,14 @@ pub struct CreateInterface {
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct CreateAddress {
     pub address: String,
-    pub device: DeviceRef,
+    pub device: PlanDevice,
     pub interface: String,
     pub prefix: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct SetPrimaryIp {
-    pub device: DeviceRef,
+    pub device: PlanDevice,
     pub version: IpVersion,
     pub address: String,
     pub before: Option<String>,
@@ -101,8 +101,8 @@ pub struct SetPrimaryIp {
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct CreateCable {
-    pub a: InterfaceRef,
-    pub b: InterfaceRef,
+    pub a: PlanInterface,
+    pub b: PlanInterface,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -122,7 +122,7 @@ pub struct CreateIpRange {
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct UpdateInterface {
-    pub interface: InterfaceRef,
+    pub interface: PlanInterface,
     pub label: Option<String>,
     pub label_before: Option<String>,
     pub mtu: Option<i32>,
@@ -136,14 +136,14 @@ pub struct UpdateInterface {
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct DeleteCable {
-    pub port: InterfaceRef,
-    pub far: Option<InterfaceRef>,
+    pub port: PlanInterface,
+    pub far: Option<PlanInterface>,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct DeleteAddress {
     pub address: String,
-    pub interface: InterfaceRef,
+    pub interface: PlanInterface,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -153,7 +153,7 @@ pub struct DeletePrefix {
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct UpdatePort {
-    pub interface: InterfaceRef,
+    pub interface: PlanInterface,
     pub name: Option<String>,
     pub rf_role: Option<RadioRole>,
     pub rf_role_before: Option<RadioRole>,
@@ -163,15 +163,15 @@ pub struct UpdatePort {
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct CreateWirelessLink {
-    pub a: InterfaceRef,
-    pub b: InterfaceRef,
+    pub a: PlanInterface,
+    pub b: PlanInterface,
     pub ssid: String,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct UpdateWirelessLink {
-    pub a: InterfaceRef,
-    pub b: InterfaceRef,
+    pub a: PlanInterface,
+    pub b: PlanInterface,
     pub ssid: Option<String>,
     pub ssid_before: String,
     pub psk_set: bool,
@@ -187,7 +187,7 @@ pub struct UpdateWirelessLan {
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct UpdateDeviceLocation {
-    pub device: DeviceRef,
+    pub device: PlanDevice,
     pub location: Option<LocationRef>,
     pub location_before: Option<LocationRef>,
 }
@@ -199,13 +199,13 @@ pub struct LocationRef {
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct DeleteWirelessLink {
-    pub a: InterfaceRef,
-    pub b: InterfaceRef,
+    pub a: PlanInterface,
+    pub b: PlanInterface,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct UpdatePortVlan {
-    pub interface: InterfaceRef,
+    pub interface: PlanInterface,
     pub vlan: Option<VlanRef>,
     pub vlan_before: Option<VlanRef>,
     pub tagged_before: Vec<VlanRef>,
@@ -213,7 +213,7 @@ pub struct UpdatePortVlan {
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
 pub struct DeleteInterface {
-    pub interface: InterfaceRef,
+    pub interface: PlanInterface,
 }
 
 #[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
@@ -322,4 +322,17 @@ pub struct HelperJob {
     pub kind: JobKind,
     pub state: JobState,
     pub netbox_written_count: i32,
+}
+
+/// A device a step refers to, by name.
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+pub struct PlanDevice {
+    pub name: String,
+}
+
+/// An interface a step refers to, by name and its device's.
+#[derive(cynic::QueryFragment, Debug, Clone, PartialEq)]
+pub struct PlanInterface {
+    pub name: String,
+    pub device: PlanDevice,
 }

@@ -4,8 +4,9 @@
 
 use super::flags;
 use crate::topology::{
-    PoeMode, RadioRole,
-    findings::{DeviceRef, InterfaceRef, IpVersion, VlanRef},
+    PoeMode, RadioRole, Topology,
+    access::{AccessTopology, device::DeviceAccess, interface::InterfaceAccess},
+    findings::{IpVersion, VlanRef},
 };
 use async_graphql::{SimpleObject, Union};
 
@@ -33,128 +34,92 @@ pub enum PlanStep {
     UpdateDeviceLocation(UpdateDeviceLocation),
 }
 
-/// An object of NetBox or one an earlier step of the plan creates.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Target {
-    Existing(u32),
-    Step(usize),
+/// An object a step refers to: one NetBox has, or the one step `n` of the plan creates
+/// (`Planned(n)`, counted from the plan's first step, [`super::NetboxPlan::first`]), which has
+/// no id in NetBox before it is written. The preview gives the latter an id of its own
+/// (`preview_id`), and a plan computed on that preview gets it back as `Planned`
+/// (`in_topology`): a NetBox id and one the provisioner made up never mix.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ObjectId {
+    Netbox(u32),
+    Planned(usize),
 }
 
-impl Target {
-    fn shift(&mut self, by: usize) {
-        if let Target::Step(step) = self {
-            *step += by;
+impl ObjectId {
+    /// The object with the id `id` in `topology`: one a plan creates if `topology` is the
+    /// preview of a plan with that step ([`Topology::planned`]), else NetBox's.
+    pub(crate) fn in_topology(topology: &Topology, id: u32) -> ObjectId {
+        let step = (u32::MAX - id) as usize;
+        if step < topology.planned() {
+            ObjectId::Planned(step)
+        } else {
+            ObjectId::Netbox(id)
         }
     }
-}
-
-impl PlanStep {
-    /// The step after `by` steps put in front of its plan: its references to steps move along.
-    pub(super) fn shift(&mut self, by: usize) {
+    /// Its id in the preview: NetBox's, or one from the top of the range, which NetBox doesn't
+    /// hand out.
+    pub(crate) fn preview_id(self) -> u32 {
         match self {
-            PlanStep::CreateAddress(create) => create.on.shift(by),
-            PlanStep::SetPrimaryIp(set) => set.address_id.shift(by),
-            PlanStep::UpdatePort(update) => {
-                if let Some(bridge) = &mut update.bridge_id {
-                    bridge.shift(by);
-                }
-            }
-            // no reference to another step
-            PlanStep::CreateDevice(_)
-            | PlanStep::CreateInterface(_)
-            | PlanStep::CreateCable(_)
-            | PlanStep::CreatePrefix(_)
-            | PlanStep::CreateIpRange(_)
-            | PlanStep::UpdateInterface(_)
-            | PlanStep::DeleteCable(_)
-            | PlanStep::DeleteAddress(_)
-            | PlanStep::DeletePrefix(_)
-            | PlanStep::CreateWirelessLink(_)
-            | PlanStep::UpdateWirelessLink(_)
-            | PlanStep::DeleteWirelessLink(_)
-            | PlanStep::UpdatePortVlan(_)
-            | PlanStep::DeleteInterface(_)
-            | PlanStep::UpdateWirelessLan(_)
-            | PlanStep::UpdateDeviceLocation(_) => {}
+            ObjectId::Netbox(id) => id,
+            ObjectId::Planned(step) => u32::MAX - step as u32,
         }
     }
-    /// The step with the ids of objects the plan creates replaced by `real`: a plan computed on
-    /// the preview of another one (`helper::new_device`) refers to them by their ids there,
-    /// from `u32::MAX` down, which NetBox only has once their step is written. `None` from
-    /// `real` for an id that isn't there yet.
-    pub(crate) fn with_real_ids(&self, real: impl Fn(u32) -> Option<u32>) -> Option<PlanStep> {
-        let device = |device: &mut DeviceRef| -> Option<()> {
-            device.id = real(device.id)?;
-            Some(())
-        };
-        let interface = |interface: &mut InterfaceRef| -> Option<()> {
-            interface.id = real(interface.id)?;
-            device(&mut interface.device)
-        };
-        let target = |target: &mut Target| -> Option<()> {
-            if let Target::Existing(id) = target {
-                *id = real(*id)?;
-            }
-            Some(())
-        };
-        let mut step = self.clone();
-        match &mut step {
-            PlanStep::CreateInterface(create) => device(&mut create.device)?,
-            PlanStep::CreateAddress(create) => {
-                device(&mut create.device)?;
-                target(&mut create.on)?;
-            }
-            PlanStep::SetPrimaryIp(set) => {
-                device(&mut set.device)?;
-                target(&mut set.address_id)?;
-            }
-            PlanStep::CreateCable(create) => {
-                interface(&mut create.a)?;
-                interface(&mut create.b)?;
-            }
-            PlanStep::UpdateInterface(update) => interface(&mut update.interface)?,
-            PlanStep::UpdatePort(update) => {
-                interface(&mut update.interface)?;
-                if let Some(bridge) = &mut update.bridge_id {
-                    target(bridge)?;
-                }
-            }
-            PlanStep::CreateWirelessLink(create) => {
-                interface(&mut create.a)?;
-                interface(&mut create.b)?;
-            }
-            PlanStep::UpdatePortVlan(update) => interface(&mut update.interface)?,
-            PlanStep::DeleteCable(delete) => {
-                delete.id = real(delete.id)?;
-                interface(&mut delete.port)?;
-                if let Some(far) = &mut delete.far {
-                    interface(far)?;
-                }
-            }
-            PlanStep::DeleteAddress(delete) => {
-                delete.id = real(delete.id)?;
-                interface(&mut delete.interface)?;
-            }
-            PlanStep::DeletePrefix(delete) => delete.id = real(delete.id)?,
-            PlanStep::UpdateWirelessLink(update) => {
-                update.id = real(update.id)?;
-                interface(&mut update.a)?;
-                interface(&mut update.b)?;
-            }
-            PlanStep::DeleteWirelessLink(delete) => {
-                delete.id = real(delete.id)?;
-                interface(&mut delete.a)?;
-                interface(&mut delete.b)?;
-            }
-            PlanStep::DeleteInterface(delete) => interface(&mut delete.interface)?,
-            PlanStep::UpdateDeviceLocation(update) => device(&mut update.device)?,
-            PlanStep::CreateDevice(create) => create.template = real(create.template)?,
-            // only objects no plan creates: sites, VLANs, WLANs
-            PlanStep::CreatePrefix(_)
-            | PlanStep::CreateIpRange(_)
-            | PlanStep::UpdateWirelessLan(_) => {}
-        }
-        Some(step)
+    /// Whether a step of the plan creates it.
+    pub fn is_planned(self) -> bool {
+        matches!(self, ObjectId::Planned(_))
+    }
+}
+
+/// An object of the topology, as a step refers to it.
+pub(crate) trait PlanId {
+    /// It, `id` its id in its topology.
+    fn plan_id(&self, id: u32) -> ObjectId;
+}
+
+impl<A: AccessTopology> PlanId for A {
+    fn plan_id(&self, id: u32) -> ObjectId {
+        ObjectId::in_topology(&self.topology(), id)
+    }
+}
+
+/// A device a step refers to, by name.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct PlanDevice {
+    #[graphql(skip)]
+    pub id: ObjectId,
+    pub name: Box<str>,
+}
+
+/// An interface a step refers to, by name and its device's.
+#[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
+pub struct PlanInterface {
+    #[graphql(skip)]
+    pub id: ObjectId,
+    pub name: Box<str>,
+    pub device: PlanDevice,
+}
+
+/// `device`, as a step refers to it.
+pub(crate) fn plan_device(device: &DeviceAccess) -> PlanDevice {
+    PlanDevice {
+        id: device.plan_id(device.id().0),
+        name: device.name().into(),
+    }
+}
+
+/// `interface`, as a step refers to it.
+pub(crate) fn plan_interface(interface: &InterfaceAccess) -> PlanInterface {
+    PlanInterface {
+        id: interface.plan_id(interface.id().0),
+        name: interface.name().into(),
+        device: match interface.device() {
+            Some(device) => plan_device(&device),
+            // NetBox has no interface without a device
+            None => PlanDevice {
+                id: ObjectId::Netbox(0),
+                name: Box::default(),
+            },
+        },
     }
 }
 
@@ -190,14 +155,14 @@ pub struct CreateDevice {
     #[graphql(skip)]
     pub wlan_group_id: Option<u32>,
     #[graphql(skip)]
-    pub template: u32,
+    pub template: ObjectId,
 }
 
 /// A new interface `name` of NetBox type `kind` (`virtual`) on `device`, with an untagged
 /// VLAN (802.1Q mode access), tags and, for a lease client, its primary MAC address.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct CreateInterface {
-    pub device: DeviceRef,
+    pub device: PlanDevice,
     pub name: Box<str>,
     pub kind: Box<str>,
     #[graphql(skip)]
@@ -213,33 +178,33 @@ pub struct CreateInterface {
 pub struct CreateAddress {
     /// with its length, `192.168.100.9/32`
     pub address: Box<str>,
-    pub device: DeviceRef,
+    pub device: PlanDevice,
     pub interface: Box<str>,
     /// the prefix it is taken from: the pool's, or the one the plan creates
     pub prefix: Box<str>,
     #[graphql(skip)]
-    pub on: Target,
+    pub on: ObjectId,
 }
 
 /// `address` becomes the primary IP of `device` for `version`, instead of `before`.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct SetPrimaryIp {
-    pub device: DeviceRef,
+    pub device: PlanDevice,
     pub version: IpVersion,
     pub address: Box<str>,
     pub before: Option<Box<str>>,
     #[graphql(skip)]
-    pub address_id: Target,
+    pub address_id: ObjectId,
     #[graphql(skip)]
-    pub before_id: Option<u32>,
+    pub before_id: Option<ObjectId>,
 }
 
 /// A new cable between two interfaces, or from the open end of a patch panel (`a_end`, `a`
 /// then names the panel's port) to an interface.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct CreateCable {
-    pub a: InterfaceRef,
-    pub b: InterfaceRef,
+    pub a: PlanInterface,
+    pub b: PlanInterface,
     #[graphql(skip)]
     pub a_end: CableEnd,
 }
@@ -314,7 +279,7 @@ pub struct CreateIpRange {
 /// is checked only with `poe` or `poe_removed`.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct UpdateInterface {
-    pub interface: InterfaceRef,
+    pub interface: PlanInterface,
     pub label: Option<Box<str>>,
     pub label_before: Option<Box<str>>,
     pub mtu: Option<u16>,
@@ -331,7 +296,7 @@ pub struct UpdateInterface {
 /// `bridge_before`.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct UpdatePort {
-    pub interface: InterfaceRef,
+    pub interface: PlanInterface,
     pub name: Option<Box<str>>,
     pub rf_role: Option<RadioRole>,
     pub rf_role_before: Option<RadioRole>,
@@ -340,16 +305,16 @@ pub struct UpdatePort {
     /// the name of the bridge it leaves (`bridge_before`), for reading: no bridge then
     pub leaves_bridge: Option<Box<str>>,
     #[graphql(skip)]
-    pub bridge_id: Option<Target>,
+    pub bridge_id: Option<ObjectId>,
     #[graphql(skip)]
-    pub bridge_before: Option<u32>,
+    pub bridge_before: Option<ObjectId>,
 }
 
 /// A new wireless link between two radio ports, WPA personal with `psk`.
 #[derive(Clone, PartialEq, Eq, SimpleObject)]
 pub struct CreateWirelessLink {
-    pub a: InterfaceRef,
-    pub b: InterfaceRef,
+    pub a: PlanInterface,
+    pub b: PlanInterface,
     pub ssid: Box<str>,
     #[graphql(skip)]
     pub psk: Box<str>,
@@ -359,9 +324,10 @@ pub struct CreateWirelessLink {
 /// `ssid_before`), a PSK where it has none (WPA personal then). Shown is only that it gets one.
 #[derive(Clone, PartialEq, Eq, SimpleObject)]
 pub struct UpdateWirelessLink {
-    pub id: u32,
-    pub a: InterfaceRef,
-    pub b: InterfaceRef,
+    #[graphql(skip)]
+    pub id: ObjectId,
+    pub a: PlanInterface,
+    pub b: PlanInterface,
     pub ssid: Option<Box<str>>,
     pub ssid_before: Box<str>,
     pub psk_set: bool,
@@ -436,7 +402,7 @@ pub struct LocationRef {
 /// which it must still have.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct UpdateDeviceLocation {
-    pub device: DeviceRef,
+    pub device: PlanDevice,
     pub location: Option<LocationRef>,
     pub location_before: Option<LocationRef>,
 }
@@ -445,7 +411,7 @@ pub struct UpdateDeviceLocation {
 /// VLANs either way. The port must still have `vlan_before` and `tagged_before`.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct UpdatePortVlan {
-    pub interface: InterfaceRef,
+    pub interface: PlanInterface,
     pub vlan: Option<VlanRef>,
     pub vlan_before: Option<VlanRef>,
     pub tagged_before: Box<[VlanRef]>,
@@ -455,37 +421,41 @@ pub struct UpdatePortVlan {
 /// steps).
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct DeleteInterface {
-    pub interface: InterfaceRef,
+    pub interface: PlanInterface,
 }
 
 /// The wireless link `id` between `a` and `b`.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct DeleteWirelessLink {
-    pub id: u32,
-    pub a: InterfaceRef,
-    pub b: InterfaceRef,
+    #[graphql(skip)]
+    pub id: ObjectId,
+    pub a: PlanInterface,
+    pub b: PlanInterface,
 }
 
 /// The cable at `port`, to `far` if it reaches an interface (through patch panels too).
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct DeleteCable {
-    pub id: u32,
-    pub port: InterfaceRef,
-    pub far: Option<InterfaceRef>,
+    #[graphql(skip)]
+    pub id: ObjectId,
+    pub port: PlanInterface,
+    pub far: Option<PlanInterface>,
 }
 
 /// The IP address `address` (with its length) on `interface`.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct DeleteAddress {
-    pub id: u32,
+    #[graphql(skip)]
+    pub id: ObjectId,
     pub address: Box<str>,
-    pub interface: InterfaceRef,
+    pub interface: PlanInterface,
 }
 
 /// The prefix `prefix`, empty once the plan's addresses are gone.
 #[derive(Debug, Clone, PartialEq, Eq, SimpleObject)]
 pub struct DeletePrefix {
-    pub id: u32,
+    #[graphql(skip)]
+    pub id: ObjectId,
     pub prefix: Box<str>,
 }
 

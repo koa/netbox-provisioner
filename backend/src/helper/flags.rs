@@ -4,7 +4,7 @@
 //! switches (`docs/netbox-modeling.md`, Tags). The plan sets the ones switched and takes off the
 //! ones switched off; the findings of the device after it (`Topology.findings(after:)`) show
 //! what doesn't fit then, such as `ospf` at one end of a cable only.
-use super::{NetboxPlan, PlanStep, UpdateInterface};
+use super::{NetboxPlan, PlanStep, UpdateInterface, plan_interface};
 use crate::{
     Error,
     topology::{
@@ -166,7 +166,7 @@ pub fn plan(topology: &Arc<Topology>, input: &FlagsInput) -> Result<NetboxPlan, 
             continue;
         }
         plan.steps.push(PlanStep::UpdateInterface(UpdateInterface {
-            interface: interface_ref(&interface),
+            interface: plan_interface(&interface),
             label: None,
             label_before: interface.label().map(Box::from),
             mtu: None,
