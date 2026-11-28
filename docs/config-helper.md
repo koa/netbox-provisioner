@@ -726,4 +726,4 @@ für `transfer` `172.17.0.0/24` (Richtfunk) und `172.17.1.0/24` (direkt), für `
   diese Skripte an, danach jedes Gerät wie NetBox, Rückgängig und wieder wie vorher. Bisher mit
   „Loopback“, „Verbindung“ samt „Abräumen“ (zwei freie Ports von lab-hex und lab-crs226) und
   „Kunden-Netz“ samt „Kunden-Port abräumen“ (lab-crs226);
-  die übrigen Helfer kommen einzeln dazu (E9).
+  „Richtfunk“ und „Neues Gerät“ brauchen freie Hardware im Lab (E42).

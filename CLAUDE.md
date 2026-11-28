@@ -501,7 +501,9 @@ it, then the helper taking it out, like „Abräumen“ after „Verbindung“).
 of `lab-keller-switch`; „Verbindung“ lab-hex ether5 ↔ lab-crs226 ether24 (free ports, no
 cable) with „Abräumen“; „Kunden-Netz“ with DHCP on lab-crs226 ether24 (192.168.102.0/23,
 2a02:16a:fe00:9000::/56) with „Kunden-Port abräumen“. Not lab-np2: the management proxy rolls out by hand and holds the
-rollout back.
+rollout back. No case on the lab's one radio link (lab-sxt-a/b): taking it out leaves
+the SXTs without OSPF, unreachable for the way back; „Richtfunk“ and „Neues Gerät“ wait for free
+hardware (E42).
 
 `backend/tests/chr_network/` is a multi-CHR network test harness: boots real MikroTik CHR
 instances under QEMU (software emulation, no KVM needed) and proves actual distributed network
